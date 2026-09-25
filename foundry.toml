@@ -17,10 +17,16 @@ optimizer = true
 optimizer_runs = 200
 evm_version = "cancun"
 
+# The AST is the only compiler output that records whether a state variable is constant,
+# immutable, or storage; the LLR-SC-005 tests read it from the artifact.
+ast = true
+
 # Deploy and seed scripts read their inputs from deployments/config and write records to deployments/.
+# Tests read compiled artifacts from out/.
 fs_permissions = [
     { access = "read", path = "./deployments/config" },
     { access = "read-write", path = "./deployments" },
+    { access = "read", path = "./out" },
 ]
 
 [fuzz]

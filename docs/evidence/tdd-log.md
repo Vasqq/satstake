@@ -199,3 +199,115 @@ Mutations that survived the second review, and new ones for the secret protectio
 | Hook without `--redact` (with `--verbose`) | 1 |
 | Scan job with `continue-on-error: true` | 1 |
 | Scan limited to a commit range | 1 |
+
+## Group: SC build and data (LLR-SC-001, 004, 005, 010, 011)
+
+Tests written from 05 section 1.1 and the requirement rows in `test/SatStake.Build.t.sol`:
+
+| Test | Verifies |
+|---|---|
+| `test_SC004_errorSelectorsMatchInterface` | LLR-SC-004 |
+| `test_SC005_constantsHaveExactValues` | LLR-SC-005 |
+| `test_SC005_durationConstantsAreUint64` | LLR-SC-005 |
+| `test_SC010_pledgeFieldsEncodeInInterfaceOrder` | LLR-SC-010 |
+| `test_SC010_pledgeDecodesFullRangeOfEachField` | LLR-SC-010 |
+| `test_SC010_pledgeFieldTypesRejectWiderValues` | LLR-SC-010 |
+| `test_SC010_promiseTextIsString` | LLR-SC-010 |
+| `test_SC011_statusMembersInInterfaceOrder` | LLR-SC-011 |
+| `test_SC011_noneIsTheZeroValue` | LLR-SC-011 |
+| `test_SC011_pledgeStateMembersInInterfaceOrder` | LLR-SC-011 |
+
+LLR-SC-001 and LLR-SC-004 are method I; the build setting was already tagged in `foundry.toml`, and the SC-004 test is an extra check of the error signatures against section 1.1.
+
+### Red, 2026-09-25
+
+The first attempt did not reach the missing declarations: the test itself failed to parse, because `promise`, the field and parameter name in 05 section 1.1, is a reserved keyword in Solidity 0.8.28 (`Error (2314): Expected ',' but got reserved keyword 'promise'`). The requirement was fixed first (05 v1.5: `promiseText`), then the tests were updated and run again.
+
+Every test in this group depends only on declarations, so the expected red is a compile error naming the missing SatStake declarations. Command: `forge test`
+
+With no `src/SatStake.sol`:
+
+```
+Error (6275): Source "src/SatStake.sol" not found: File not found. Searched the following locations: "<repo>".
+ --> test/SatStake.Build.t.sol:5:1:
+  |
+5 | import {SatStake} from "../src/SatStake.sol";
+Error: Compilation failed
+```
+
+With an empty `contract SatStake {}`, the first missing declaration, `SatStake.Pledge`, is reported (solc stops at the first unresolved identifier):
+
+```
+Error (7920): Identifier not found or not unique.
+  --> test/SatStake.Build.t.sol:18:71:
+Error: Compilation failed
+```
+
+### Green, 2026-09-25
+
+`src/SatStake.sol` declares the enums, struct, constants, events, errors, and an empty constructor from 05 section 1.1. Same command:
+
+```
+[PASS] test_SC004_errorSelectorsMatchInterface()
+[PASS] test_SC005_constantsHaveExactValues()
+[PASS] test_SC005_durationConstantsAreUint64()
+[PASS] test_SC010_pledgeDecodesFullRangeOfEachField()
+[PASS] test_SC010_pledgeFieldTypesRejectWiderValues()
+[PASS] test_SC010_pledgeFieldsEncodeInInterfaceOrder()
+[PASS] test_SC010_promiseTextIsString()
+[PASS] test_SC011_noneIsTheZeroValue()
+[PASS] test_SC011_pledgeStateMembersInInterfaceOrder()
+[PASS] test_SC011_statusMembersInInterfaceOrder()
+Suite result: ok. 10 passed; 0 failed; 0 skipped
+```
+
+Mutations of the implementation, each applied and then reverted:
+
+| Mutation | Result |
+|---|---|
+| `deadline` declared `uint256` | `test_SC010_pledgeFieldTypesRejectWiderValues` fails |
+| `deadline` and `createdAt` swapped | 2 tests fail (encoding order, full-range decode) |
+| `referee` declared `uint256` | test does not compile |
+| `PledgeState.Kept` and `Broken` swapped | `test_SC011_pledgeStateMembersInInterfaceOrder` fails |
+| `MAX_PAGE = 101` | `test_SC005_constantsHaveExactValues` fails |
+
+`node tools/trace-check.mjs`: `trace-check: OK. 9/112 LLRs referenced, 0/55 journeys passing.`
+
+### Review follow-up, red, 2026-09-25
+
+Independent review found that the LLR-SC-005 tests passed against three wrong implementations, because a getter looks the same whether its variable is a constant, an immutable, or in storage, and the standard ABI encoding of a uint64 equals that of a uint256. `test_SC005_durationConstantsAreUint64` was replaced by two tests:
+
+- `test_SC005_gettersReturnInterfaceTypes`: packed encoding keeps each integer's own width (8 bytes for uint64, 32 for uint256).
+- `test_SC005_declaredConstantNotStorageOrImmutable`: reads `mutability` and the type string of each declaration from the compiler AST in `out/SatStake.sol/SatStake.json`. `foundry.toml` gains `ast = true` and read access to `./out` for this.
+
+The contract was already correct, so red was shown on a copy with the reviewer's mutations. Command: `forge test`
+
+| Mutation | Observed failure |
+|---|---|
+| `uint64 public MIN_DURATION = 60;` | `[FAIL: MIN_DURATION: mutable != constant] test_SC005_declaredConstantNotStorageOrImmutable()` |
+| `uint256 public immutable MAX_PROMISE_BYTES = 280;` | `[FAIL: MAX_PROMISE_BYTES: immutable != constant] test_SC005_declaredConstantNotStorageOrImmutable()` |
+| `uint64 public constant MAX_PAGE = 100;` | `[FAIL: MAX_PAGE: uint64 != uint256] test_SC005_declaredConstantNotStorageOrImmutable()`<br>`[FAIL: assertion failed: 8 != 32] test_SC005_gettersReturnInterfaceTypes()` |
+
+### Review follow-up, green, 2026-09-25
+
+Same command against the unchanged contract: `11 tests passed, 0 failed, 0 skipped (11 total tests)`.
+
+### Mutation evidence per test, 2026-09-25
+
+This is mutation evidence gathered after the declarations existed. Every test in the group depends only on declarations, so the original red run was a single compile error that hid each test's own failure. Each mutation below was applied to a copy of `src/SatStake.sol` and run with the unchanged tests.
+
+| Test | Mutation | Observed failure |
+|---|---|---|
+| `test_SC004_errorSelectorsMatchInterface` | `error DeadlineTooSoon(uint256 earliest)` | `assertion failed: 0x... != 0x...` |
+| `test_SC005_constantsHaveExactValues` | `MAX_PAGE = 101` | `assertion failed: 101 != 100` |
+| `test_SC005_gettersReturnInterfaceTypes` | `uint256 public constant MIN_DURATION = 60;` | `assertion failed: 32 != 8` |
+| `test_SC005_declaredConstantNotStorageOrImmutable` | `MIN_DURATION` as storage; `MAX_PROMISE_BYTES` as immutable | `mutable != constant`; `immutable != constant` |
+| `test_SC010_pledgeFieldsEncodeInInterfaceOrder` | `staker` and `token` swapped | `assertion failed: 0x... != 0x...` |
+| `test_SC010_pledgeDecodesFullRangeOfEachField` | `deadline` and `createdAt` swapped | `assertion failed: 18446744073709551614 != 18446744073709551615` |
+| `test_SC010_pledgeFieldTypesRejectWiderValues` | `uint256 deadline;` | `next call did not revert as expected` |
+| `test_SC010_promiseTextIsString` | `promiseText` moved to the first field | `EvmError: Revert` (decoder rejects the misplaced string) |
+| `test_SC011_statusMembersInInterfaceOrder` | `Status.Kept` and `Status.Broken` swapped | `assertion failed: 3 != 2` |
+| `test_SC011_noneIsTheZeroValue` | `Status.None` moved last | `assertion failed: 0 != 5` |
+| `test_SC011_pledgeStateMembersInInterfaceOrder` | `PledgeState.Kept` and `PledgeState.Broken` swapped | `assertion failed: 3 != 2` |
+
+Mutations that fail at compile time instead: `bytes promiseText` (`Error (9553)`, no implicit conversion from string to bytes), and any field or constant narrower than section 1.1.

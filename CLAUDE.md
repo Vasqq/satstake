@@ -140,6 +140,11 @@ Dates were pulled forward on 2026-09-24 after the review was found to be rolling
 
 Newest entry first. Each entry: date, what was done, decisions with one-line reasons, next step.
 
+- 2026-09-25: Phase 1 group "SC build and data" complete (LLR-SC-001, 004, 005, 010, 011): section 1.1 declarations in `src/SatStake.sol`, 11 tests, independent review, inspections for SC-001 and SC-004 recorded, per-test mutation evidence in the TDD log.
+  - Decision: LLR v1.5 renames `promise` to `promiseText` (reserved keyword in Solidity 0.8.28) and extends LLR-SC-011 to `PledgeState`.
+  - Decision: `foundry.toml` sets `ast = true` so tests can prove the four constants are `constant` with the section 1.1 types; AST output does not change bytecode or metadata.
+  - Carried forward: the create group must add a stored-pledge round trip tagged LLR-SC-010 (storage half); each group that emits an event adds that event's `@custom:trace`; the constructor stays an empty placeholder until LLR-SC-013; LLR-SC-004 inspection is repeated at every contract group.
+  - Next: group "SC allowlist" (LLR-SC-013, 014, 054), which also needs the FiatToken-style mock (LLR-VV-007) for tokens with code.
 - 2026-09-25: Scaffold complete. Foundry project (`foundry.toml`, forge-std v1.16.2, OpenZeppelin v5.7.0 as submodules at tag commits), `tools/trace-check.mjs` with 53 tests, secret-protection tests (LLR-DP-010, 011), `docs/ACCEPTANCE.md` (55 journeys, all Pending), CI (secrets, trace, contracts), `.claude/agents/` (implementer, requirements-reviewer, frontend-reviewer), MIT `LICENSE`. Two independent reviews run; every finding fixed or justified; red, green, and mutation evidence in `docs/evidence/tdd-log.md`. Trace check green: 5 of 112 LLRs referenced.
   - Decision: 06 v1.3 to v1.5 and LLR-VV-009 v1.4 (change logs in each document). Conditions 3 and 4 apply once an LLR is referenced, so CI can be green mid-project; release accepts `Awaiting walkthrough`, since the gate runs before Liam's walkthrough; scan set and evidence rules made explicit.
   - Decision: CI runs the checksum-verified gitleaks 8.30.1 binary over the full history instead of gitleaks-action, which pinned an older gitleaks and scanned only the pushed range.
