@@ -1,6 +1,6 @@
 # 01 Verification Pass
 
-Version 1.0, 2026-09-24. Second research pass. Purpose: resolve the remaining factual ambiguities before any requirement is written, so that no requirement rests on an unverified platform assumption.
+Version 1.1, 2026-09-24. Second research pass, with Phase 0 results appended (see the end of this document). Purpose: resolve the remaining factual ambiguities before any requirement is written, so that no requirement rests on an unverified platform assumption.
 
 Tags: [S] supported by a cited source. [A] assumption, must be confirmed in Phase 0. [Q] open question, cannot be resolved by desk research.
 
@@ -35,3 +35,22 @@ Each [A] or [Q] item above that a requirement depends on is repeated here as a c
 4. Call `pause`-related view functions (`paused()`) on both tokens to confirm the FiatToken interface (V-09).
 5. Obtain testnet cirBTC through App Kit Swap (V-07).
 6. Rerun the prior-art queries (V-14).
+
+## Phase 0 results (2026-09-24)
+
+| Check | Result | Evidence |
+|---|---|---|
+| 1. cirBTC mainnet address (V-06) | Confirmed `0x171A4217b86A807A64eB94757Db6849fb4bDbAA0` on both official pages. On chain 5042: name "Circle Wrapped Bitcoin", symbol cirBTC, 8 decimals. V-06 is now [S]. | `deployments/accounts.md` |
+| 2. EVM target (V-13) | Solidity 0.8.28, optimizer 200 runs: a probe using `TSTORE`, `TLOAD`, and `MCOPY` deployed and ran on Arc testnet under both `cancun` and `prague`. Foundry 1.0.0 does not offer `osaka`. Decision: keep `cancun` (LLR-SC-001 default), because `prague` adds no opcode the contract uses and `cancun` has the widest support across Slither and verifiers. | `docs/evidence/phase0.md` |
+| 3. Explorer logged out (V-03) | `explorer.arc.io` address and transaction pages render without login. The testnet explorer `testnet.arcscan.app` now redirects to `explorer.testnet.arc.io`. | `docs/evidence/phase0.md` |
+| 4. FiatToken interface (V-09) | `paused()` returns false for USDC and cirBTC on mainnet and testnet; `isBlacklisted(address)` answers on both testnet tokens; the explorer labels cirBTC's implementation `FiatTokenV2_2`. V-09 is now [S] for the interface; pause behaviour itself stays tested only with mocks. | `docs/evidence/phase0.md` |
+| 5. Testnet cirBTC (V-07) | App Kit Swap (`@circle-fin/swap-kit` 1.7.0, no API key) swapped 5 testnet USDC for 1,425 sats of cirBTC. Its Solana dependency chain carried high advisories in `toml` 3.0.0; an npm override to `toml` 4.3.0 cleared them. The kit was used from a scratch directory and is not a project dependency. | `docs/evidence/phase0.md` |
+| 6. Prior art (V-14) | No commitment device with a referee and forfeit on Arc. Nearest new neighbour: ProofPay, buyer and seller trade escrow on Arc testnet (https://github.com/24hlivepay/ProofPay-Mainnet). Different niche. The name SatStake has no product, package, or repository conflict; `satstake.com` is a parked page. | Searches listed in `docs/evidence/phase0.md` |
+
+## Findings added in Phase 0
+
+| ID | Topic | Finding | Tag | Design impact |
+|---|---|---|---|---|
+| V-15 (resolved) | Judging criteria | Published on the program page: "Relevance to Arc, technical credibility, the quality of what you built, and whether the project is worth taking further. Promise counts for more than traction here." Source: https://dorahacks.io/hackathon/arc-microgrants/detail | [S] | CLAUDE.md section 8 maps the build to these four criteria. |
+| V-17 | Review timing | "Reviews run on a rolling basis and every decision is issued by October 21. Earlier submissions get earlier answers." Shortlisted projects are "scored and decided in batches". Twenty grants from a fixed pool; "Program dates and microgrant counts may be adjusted." Same source. | [S] | Schedule pulled forward: walkthrough target October 3, limit October 10. |
+| V-18 | Eligibility | The project must be deployed and working on mainnet at submission; a public builder profile is required; testnet-only builds are not eligible. Same source. | [S] | Submission waits for the mainnet release gate; the builder profile is GitHub `Vasqq`. |

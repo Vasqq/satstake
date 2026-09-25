@@ -8,6 +8,7 @@ Every skill, MCP server, and non-trivial package or tool used to build SatStake,
 | Node.js | 22 | https://nodejs.org | Trace checker, frontend toolchain, Claude Code Bash guard |
 | gitleaks | 8.30.1 | Homebrew core, https://github.com/gitleaks/gitleaks | Secret scan in the pre-commit hook and CI (LLR-DP-010, 011) |
 | GitHub CLI | installed | https://cli.github.com | Repository and Pages setup, CI status |
+| `@circle-fin/swap-kit`, `@circle-fin/adapter-viem-v2` | 1.7.0, 1.18.0 | npm, Circle maintainers | One-off testnet swap of USDC for cirBTC in Phase 0; run from a scratch directory, not a project dependency. `toml` overridden to 4.3.0 to clear high advisories |
 
 ## Agent safeguards
 

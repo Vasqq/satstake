@@ -6,8 +6,8 @@ Entry for the Arc Microgrants hackathon (DoraHacks, Circle's Arc chain). Read th
 
 Win one of the 20 Arc Microgrants (500 USDC each): https://dorahacks.io/hackathon/arc-microgrants/detail
 
-- Hard deadline: October 14, 2026, 23:59 ET. Target: ready for Liam's walkthrough by October 10.
-- Review is a batch after the deadline (recipients expected around October 21). Polish beats speed.
+- Hard deadline: October 14, 2026, 23:59 ET. Target: ready for Liam's walkthrough by October 3, and no later than October 10.
+- Review is rolling: submissions are screened as they arrive, shortlisted projects are scored and decided in batches, every decision is issued by October 21, and "earlier submissions get earlier answers" (V-17). Twenty grants, a fixed pool. Submit as soon as the release gate passes; never cut the method to go faster.
 - Product: lock cirBTC or USDC against a promise; a referee judges it; kept returns the stake, broken or missed sends it to a beneficiary.
 - The repository is also Liam's portfolio piece. He will walk through it later and must be able to follow every decision from the North Star down to a line of code and the test that proves it.
 
@@ -95,17 +95,18 @@ Do these in order and confirm each before moving on.
 6. Liam gives one beneficiary address he controls, for the seeded pledges.
 7. You confirm balances with `cast`, record the addresses (never secrets) in `deployments/accounts.md`, and tell Liam he is done.
 
-## 8. Judging rubric (proxy)
+## 8. Judging criteria
 
-No official rubric was published (V-15). Proxy built from Circle's and Arc's own statements:
+The program page names four, unweighted (V-15): "Relevance to Arc, technical credibility, the quality of what you built, and whether the project is worth taking further. Promise counts for more than traction here." Mapping to the earlier proxy:
 
-| Criterion | Weight |
+| Official criterion | What serves it |
 |---|---|
-| Arc load-bearing | 3 |
-| Unoccupied niche | 2 |
-| Memorability | 2 |
-| Demo clarity, including a handled failure | 2 |
-| Technical interest, real user, Circle fit, low burden | 1 each |
+| Relevance to Arc | cirBTC as the stake, USDC as gas, deterministic finality (NS 6) |
+| Technical credibility | Requirements chain, test-first evidence, 100% coverage, verified source |
+| Quality of what you built | Demo clarity including a handled failure, design and copy review |
+| Worth taking further | An unoccupied niche and a real user; a clear next step in the README |
+
+Submission needs: a live mainnet deployment with a link, a public repo, a short description of what it does and what it uses Arc for, and a public builder profile (GitHub `Vasqq`). Testnet-only builds are not eligible.
 
 ## 9. Repository layout
 
@@ -128,15 +129,22 @@ foundry.toml
 
 ## 10. Phases
 
-- **Phase 0 (Sept 24 to 26):** C0. Then the confirmation list in 01_VERIFICATION_PASS.md. Scaffold the repository, CI, `tools/trace-check.mjs`, and `docs/ACCEPTANCE.md` first, so every later step is checked. Check the name "SatStake" for conflicts. Rerun the prior-art searches. If a live mainnet near-duplicate appears, decide yourself whether to differentiate or pivot to the runner-up (ArcCanvas, a pixel wall on Arc's Memo predeploy), apply this same method, and record the decision.
-- **Phase 1 (Sept 27 to Oct 3):** Contract LLR groups in the order of 06 section 8. Testnet deployment. Live testnet run with evidence.
-- **Phase 2 (Oct 3 to 7):** Frontend LLR groups. Testnet dry run of every journey.
-- **Phase 3 (Oct 7 to 10):** Mainnet deployment, verification, and seeding. Frontend published against mainnet. README, submission text, `docs/WALKTHROUGH.md`. Release gate. Then `READY FOR WALKTHROUGH`.
+Dates were pulled forward on 2026-09-24 after the review was found to be rolling (V-17). If a phase slips, the October 10 limit still holds.
+
+- **Phase 0 (Sept 24 to 25):** C0. Then the confirmation list in 01_VERIFICATION_PASS.md. Scaffold the repository, CI, `tools/trace-check.mjs`, and `docs/ACCEPTANCE.md` first, so every later step is checked. Check the name "SatStake" for conflicts. Rerun the prior-art searches. If a live mainnet near-duplicate appears, decide yourself whether to differentiate or pivot to the runner-up (ArcCanvas, a pixel wall on Arc's Memo predeploy), apply this same method, and record the decision.
+- **Phase 1 (Sept 25 to 29):** Contract LLR groups in the order of 06 section 8. Testnet deployment. Live testnet run with evidence.
+- **Phase 2 (Sept 29 to Oct 2):** Frontend LLR groups. Testnet dry run of every journey.
+- **Phase 3 (Oct 2 to 3):** Mainnet deployment, verification, and seeding. Frontend published against mainnet. README, submission text, `docs/WALKTHROUGH.md`. Release gate. Then `READY FOR WALKTHROUGH`.
 
 ## 11. Status log
 
 Newest entry first. Each entry: date, what was done, decisions with one-line reasons, next step.
 
+- 2026-09-24: Phase 0 checks 1 to 6 complete (01 "Phase 0 results", `docs/evidence/phase0.md`). Testnet operator holds 1,425 sats of cirBTC. Name SatStake clear; niche still open.
+  - Decision: `evm_version = "cancun"`; `prague` also works but adds nothing the contract uses.
+  - Decision: the program page shows rolling review with batch decisions, not one batch after the deadline (V-17), so the walkthrough target moves from October 10 to October 3 and phase dates are pulled forward. October 10 stays the limit. No requirement or step of the method is cut.
+  - Decision: CLAUDE.md section 8 now uses the four published criteria (V-15 resolved) instead of the proxy rubric.
+  - Next: scaffold Foundry project (pinned libraries), `tools/trace-check.mjs`, `docs/ACCEPTANCE.md`, CI workflow, and `.claude/agents/` (implementer, requirements reviewer, frontend reviewer). Then Phase 1 group "SC build and data".
 - 2026-09-24: C0 complete. Repository `Vasqq/satstake` public, Pages source GitHub Actions. Safeguards in place and tested: `.gitignore`, gitleaks pre-commit hook (blocked a planted secret), `.claude/settings.json`, Bash guard hook (25 cases pass). Testnet key in `.env` with 20 USDC. Burners created and unlocked by password file; balances and token addresses recorded in `deployments/accounts.md`. cirBTC mainnet address confirmed on Circle and Arc pages and on-chain (Phase 0 check 1; check 4 mainnet half).
   - Decision: Liam funded the referee directly (0.97 USDC) instead of the deployer funding it, because the agent does not move mainnet funds.
   - Decision: the agent never broadcasts a mainnet transaction that moves tokens (seed pledges, their settlements, any transfer). It writes and simulates each one; Liam runs the prepared command. The deploy pays gas only and is run by the agent. `BLOCKED` for the walkthrough: Liam runs the seed and settle commands (LLR-DP-009).
