@@ -1,6 +1,6 @@
 # Secrets (LLR-DP-010). The testnet key lives in .env; mainnet keys stay in Foundry keystores outside the repo.
-.env
-.env.*
+.env*
+!.env.example
 *.pw
 *.key
 *.pem
@@ -8,6 +8,9 @@ keystore/
 keystores/
 *.keystore
 UTC--*
+# The burner keystores are named after their accounts; ignore them if ever copied in.
+satstake-deployer
+satstake-referee
 
 # Foundry
 cache/
@@ -26,6 +29,9 @@ lcov.info
 
 # Editor and OS
 .DS_Store
+._*
+Thumbs.db
+desktop.ini
 .idea/
 .vscode/
 *.swp

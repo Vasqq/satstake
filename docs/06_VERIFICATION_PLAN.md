@@ -1,6 +1,6 @@
 # 06 Verification and Traceability Plan
 
-Version 1.2, 2026-09-24. Defines how every requirement is shown to be met, how code and tests point back to requirements, and how that linkage is checked by machine. Modelled on DO-178C objectives (requirements-based testing, bidirectional traceability, structural coverage, independence through tooling) and scaled to a single-contract project.
+Version 1.5, 2026-09-25. Defines how every requirement is shown to be met, how code and tests point back to requirements, and how that linkage is checked by machine. Modelled on DO-178C objectives (requirements-based testing, bidirectional traceability, structural coverage, independence through tooling) and scaled to a single-contract project.
 
 ## 1. Document chain
 
@@ -50,15 +50,17 @@ function invariant_SC070_balanceCoversLocked() public { ... }
 
 ## 3. Trace checker (LLR-VV-002)
 
-`tools/trace-check.mjs`, Node with no dependencies, run locally and in CI. It parses the requirement tables in 04_HLR.md and 05_LLR.md and scans `src/`, `test/`, `app/src/`, `script/`, `e2e/`, and `docs/INSPECTIONS.md`. It fails when:
+`tools/trace-check.mjs`, Node with no dependencies, run locally and in CI. It parses the requirement tables in 04_HLR.md and 05_LLR.md and scans code and tests in `src/`, `test/`, `app/src/`, `script/`, `e2e/`, `tools/`, `.github/workflows/`, and `.githooks/`, the build and ignore files `foundry.toml`, the ESLint config, and `.gitignore`, plus the records in `docs/INSPECTIONS.md` and the `.md` and `.json` files under `docs/evidence/`, except the test-first log `docs/evidence/tdd-log.md`, which records test runs rather than demonstrations and never counts as a reference or as evidence. Test files are those under `test/` or `e2e/`, those whose name ends in `.t.sol` or contains `.test.` or `.spec.` before its extension, and those inside a `test/` or `__tests__/` directory; every other scanned code file is source. It fails when:
 
 1. An HLR lists no children, or lists a child LLR that does not exist.
 2. An LLR lists no parent, or a parent that does not list it back.
 3. An LLR with method T has no test carrying its ID.
 4. An LLR in scope SC, FE, or DP has no source reference. Absence requirements (LLR-SC-002, 014, 060, 061) are satisfied by the contract-level `@custom:trace` tag on `contract SatStake`. Build-setting requirements (LLR-SC-001, LLR-FE-080) are satisfied by a comment tag in `foundry.toml` or the ESLint config, plus an INSPECTIONS.md entry.
-5. An LLR with method I or A has no INSPECTIONS.md entry, or with method D has no evidence entry, at the release gate (`--release` flag).
-6. Any tag in code or tests names an ID that does not exist.
-7. A journey in 03_USER_JOURNEYS.md is missing from docs/ACCEPTANCE.md, or, with `--release`, has no passing result.
+5. At the release gate (`--release` flag), an LLR with method I or A has no INSPECTIONS.md row with result `Pass`, or an LLR with method D has no entry in `docs/evidence/`.
+6. Any text in scanned code or tests that has the shape of a requirement or journey ID, including a malformed one such as a wrong digit count, names an ID that does not exist.
+7. A journey in 03_USER_JOURNEYS.md is missing from docs/ACCEPTANCE.md, or, with `--release`, has a result other than `Pass` (or `Awaiting walkthrough` when its verification includes a walkthrough step).
+
+Conditions 3 and 4 apply to an LLR as soon as any scanned file, including INSPECTIONS.md and evidence, references it, and to every LLR under `--release`. Work in progress therefore stays green while untouched groups wait, but code without its test, or a test without its code, fails at once.
 
 On success it writes `docs/TRACE_MATRIX.md`: one row per LLR with parents, implementing files and lines, tests, and evidence.
 
@@ -115,3 +117,12 @@ A requirement changes only through this sequence: edit the requirement text, add
 ## 11. Release gate
 
 The submission is ready when all of the following hold: CI green; `trace-check --release` clean; coverage 100%; Slither with no unresolved high or medium; testnet evidence file present; mainnet deployment file complete with both verifications; seeded pledges visible; every journey in ACCEPTANCE.md passing except those awaiting the walkthrough; then Liam's walkthrough passed.
+
+## Change log
+
+| Version | Date | Change |
+|---|---|---|
+| 1.2 | 2026-09-24 | Baseline as handed over at C0 |
+| 1.3 | 2026-09-24 | Section 3: conditions 3 and 4 apply once an LLR is referenced, and to all LLRs under `--release`. As first written they failed CI for every LLR not yet implemented, which made a green build impossible until the last group and contradicted the rule that no commit has a failing build. |
+| 1.4 | 2026-09-25 | Section 3, after independent review of the checker: scan CI workflows, git hooks, and `.gitignore` so LLR-DP-010 and 011 have a findable source; define test-file classification; count INSPECTIONS and evidence mentions as references; require a `Pass` inspection result; treat malformed IDs as nonexistent; accept `Awaiting walkthrough` at release (LLR-VV-009 v1.4). |
+| 1.5 | 2026-09-25 | Section 3, after the second independent review: scan `tools/`; state that evidence means `.md` and `.json` files under `docs/evidence/` other than the test-first log; test-file names match `.test.` or `.spec.` with any extension. |

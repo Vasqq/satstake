@@ -140,6 +140,14 @@ Dates were pulled forward on 2026-09-24 after the review was found to be rolling
 
 Newest entry first. Each entry: date, what was done, decisions with one-line reasons, next step.
 
+- 2026-09-25: Scaffold complete. Foundry project (`foundry.toml`, forge-std v1.16.2, OpenZeppelin v5.7.0 as submodules at tag commits), `tools/trace-check.mjs` with 53 tests, secret-protection tests (LLR-DP-010, 011), `docs/ACCEPTANCE.md` (55 journeys, all Pending), CI (secrets, trace, contracts), `.claude/agents/` (implementer, requirements-reviewer, frontend-reviewer), MIT `LICENSE`. Two independent reviews run; every finding fixed or justified; red, green, and mutation evidence in `docs/evidence/tdd-log.md`. Trace check green: 5 of 112 LLRs referenced.
+  - Decision: 06 v1.3 to v1.5 and LLR-VV-009 v1.4 (change logs in each document). Conditions 3 and 4 apply once an LLR is referenced, so CI can be green mid-project; release accepts `Awaiting walkthrough`, since the gate runs before Liam's walkthrough; scan set and evidence rules made explicit.
+  - Decision: CI runs the checksum-verified gitleaks 8.30.1 binary over the full history instead of gitleaks-action, which pinned an older gitleaks and scanned only the pushed range.
+  - Decision: review finding 7 (absence-requirement tags accepted anywhere in source) left as is: "satisfied by" is sufficient, not exclusive, and the SC reviewer checks tag placement.
+  - Decision: `.claude/settings.json` allowlist widened to routine file, shell, and documentation-fetch commands in the repository, at Liam's request; deny rules and the Bash guard unchanged. Liam directed on 2026-09-25 that nothing is ever to wait on his approval: use allowed tools, add narrow allow rules within section 5, or skip and log.
+  - Found: `forge install --no-commit` staged each library's default-branch commit while checking out the tag; the tag commits were staged by hand. Check `git ls-files -s lib` after any future install.
+  - For Liam at the walkthrough: a reviewer subagent created a stray file `x` in the folder that contains this repository (outside it), holding only checker output. The agent may not touch files outside the repository, so please delete it.
+  - Next: Phase 1, group "SC build and data" (LLR-SC-001 to 005, 010 to 012) via the implementer, then independent review.
 - 2026-09-24: Phase 0 checks 1 to 6 complete (01 "Phase 0 results", `docs/evidence/phase0.md`). Testnet operator holds 1,425 sats of cirBTC. Name SatStake clear; niche still open.
   - Decision: `evm_version = "cancun"`; `prague` also works but adds nothing the contract uses.
   - Decision: the program page shows rolling review with batch decisions, not one batch after the deadline (V-17), so the walkthrough target moves from October 10 to October 3 and phase dates are pulled forward. October 10 stays the limit. No requirement or step of the method is cut.
