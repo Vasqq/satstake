@@ -1,0 +1,32 @@
+# Secrets (LLR-DP-010). The testnet key lives in .env; mainnet keys stay in Foundry keystores outside the repo.
+.env
+.env.*
+*.pw
+*.key
+*.pem
+keystore/
+keystores/
+*.keystore
+UTC--*
+
+# Foundry
+cache/
+broadcast/
+out/
+
+# Node
+node_modules/
+dist/
+coverage/
+lcov.info
+*.log
+
+# Claude Code personal overrides
+.claude/settings.local.json
+
+# Editor and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~

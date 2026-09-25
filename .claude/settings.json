@@ -1,0 +1,62 @@
+{
+  "permissions": {
+    "blockReadsOutsideWorkingDirectories": true,
+    "allow": [
+      "Bash(forge *)",
+      "Bash(cast *)",
+      "Bash(anvil *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(node *)",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(gitleaks *)"
+    ],
+    "deny": [
+      "Read(~/.ssh/**)",
+      "Read(~/.gnupg/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.config/**)",
+      "Read(~/.foundry/keystores/**)",
+      "Read(~/.satstake/**)",
+      "Read(~/Library/**)",
+      "Read(~/.zsh_history)",
+      "Read(~/.bash_history)",
+      "Edit(~/.foundry/**)",
+      "Edit(~/.satstake/**)",
+      "Edit(~/.ssh/**)",
+      "Bash(env)",
+      "Bash(env *)",
+      "Bash(printenv*)",
+      "Bash(set)",
+      "Bash(export)",
+      "Bash(cast wallet private-key*)",
+      "Bash(cast wallet decrypt-keystore*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push * --force*)",
+      "Bash(git push * -f*)",
+      "Bash(curl * | sh*)",
+      "Bash(curl * | bash*)",
+      "Bash(wget * | sh*)",
+      "Bash(wget * | bash*)",
+      "Bash(sudo *)",
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-bash.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
