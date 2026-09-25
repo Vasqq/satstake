@@ -137,6 +137,12 @@ foundry.toml
 
 Newest entry first. Each entry: date, what was done, decisions with one-line reasons, next step.
 
+- 2026-09-24: C0 complete. Repository `Vasqq/satstake` public, Pages source GitHub Actions. Safeguards in place and tested: `.gitignore`, gitleaks pre-commit hook (blocked a planted secret), `.claude/settings.json`, Bash guard hook (25 cases pass). Testnet key in `.env` with 20 USDC. Burners created and unlocked by password file; balances and token addresses recorded in `deployments/accounts.md`. cirBTC mainnet address confirmed on Circle and Arc pages and on-chain (Phase 0 check 1; check 4 mainnet half).
+  - Decision: Liam funded the referee directly (0.97 USDC) instead of the deployer funding it, because the agent does not move mainnet funds.
+  - Decision: the agent never broadcasts a mainnet transaction that moves tokens (seed pledges, their settlements, any transfer). It writes and simulates each one; Liam runs the prepared command. The deploy pays gas only and is run by the agent. `BLOCKED` for the walkthrough: Liam runs the seed and settle commands (LLR-DP-009).
+  - Decision: repository commits use Liam's GitHub noreply email, set locally, so no personal email is published.
+  - Decision: Liam pre-authorized GitHub setup for this repository and fixes to the agent's own configuration within section 5; he is asked only for money, passwords, or a CAPTCHA.
+  - Next: Phase 0 checks 2, 3, 5, 6 (EVM target on testnet, explorer logged out, testnet cirBTC via App Kit Swap, prior art), name check, then scaffold Foundry, CI, `tools/trace-check.mjs`, `docs/ACCEPTANCE.md`.
 - 2026-09-24: Spec v1.3. Security section rewritten: host-machine boundaries, authorized secrets only, repository and supply-chain rules, crypto practices; added LLR-DP-011, 012 and LLR-FE-074.
 - 2026-09-24: Spec v1.2. Commits are now sparse with imperative subjects; test-first evidence moved to `docs/evidence/tdd-log.md`. Liam is interrupted only before installing anything of security concern or for actions affecting him outside the project.
 - 2026-09-24: Spec v1.1. Added definition of done (NS 11), README derivation rule (NS 12), journey acceptance (HLR-042, LLR-VV-009, 010), test-first evidence (HLR-043, LLR-VV-011), independent review step, and a hands-off operating model with a single setup session. 38 HLRs and 109 LLRs; bidirectional links checked by script. Next: C0 with Liam, then Phase 0.

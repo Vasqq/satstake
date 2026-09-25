@@ -17,8 +17,6 @@
       "Read(~/.gnupg/**)",
       "Read(~/.aws/**)",
       "Read(~/.config/**)",
-      "Read(~/.foundry/keystores/**)",
-      "Read(~/.satstake/**)",
       "Read(~/Library/**)",
       "Read(~/.zsh_history)",
       "Read(~/.bash_history)",
