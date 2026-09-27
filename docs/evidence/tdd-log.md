@@ -311,3 +311,157 @@ This is mutation evidence gathered after the declarations existed. Every test in
 | `test_SC011_pledgeStateMembersInInterfaceOrder` | `PledgeState.Kept` and `PledgeState.Broken` swapped | `assertion failed: 3 != 2` |
 
 Mutations that fail at compile time instead: `bytes promiseText` (`Error (9553)`, no implicit conversion from string to bytes), and any field or constant narrower than section 1.1.
+
+## Group: SC allowlist (LLR-SC-013, 014, 054, LLR-VV-007)
+
+Tests written from the requirement rows and 06 sections 4 and 5, before any constructor logic, view body, or mock behaviour existed:
+
+| Test | Verifies |
+|---|---|
+| `test_SC013_revertsWithZeroTokens` | LLR-SC-013 |
+| `test_SC013_acceptsOneToken` | LLR-SC-013 |
+| `test_SC013_acceptsFourTokens` | LLR-SC-013 |
+| `test_SC013_revertsWithFiveTokens` | LLR-SC-013 |
+| `test_SC013_revertsOnZeroAddressAtEachPosition` | LLR-SC-013 |
+| `test_SC013_revertsOnZeroAddressEvenWithCode` | LLR-SC-013 |
+| `test_SC013_revertsOnAddressWithoutCodeAtEachPosition` | LLR-SC-013 |
+| `test_SC013_revertsOnAdjacentDuplicate` | LLR-SC-013 |
+| `test_SC013_revertsOnNonAdjacentDuplicate` | LLR-SC-013 |
+| `test_SC013_emitsTokenAllowedOncePerTokenInOrder` | LLR-SC-013 |
+| `test_SC013_recordsEachTokenAsAllowed` | LLR-SC-013, LLR-SC-054 |
+| `test_SC013_revertsUnlessListIsValid` (fuzz, lengths 0 to 6) | LLR-SC-013 |
+| `test_SC054_allowedTokensKeepsConstructorOrder` | LLR-SC-054 |
+| `test_SC054_isAllowedTokenReportsMembership` | LLR-SC-054 |
+| `test_SC054_isAllowedTokenMatchesList` (fuzz) | LLR-SC-054 |
+| `test_SC014_everyFunctionLeavesAllowlistUnchanged` (fuzz) | LLR-SC-014 |
+| `test_SC014_arbitraryCalldataLeavesAllowlistUnchanged` (fuzz) | LLR-SC-014 |
+| `test_VV007_decimalsAreConfigurable` | LLR-VV-007 |
+| `test_VV007_blocklistRevertsTransfersFromListedAddress` | LLR-VV-007 |
+| `test_VV007_blocklistRevertsTransfersToListedAddress` | LLR-VV-007 |
+| `test_VV007_pauseRevertsAllTransfers` | LLR-VV-007 |
+| `test_VV007_onlyIssuerControlsBlocklistAndPause` | LLR-VV-007 |
+| `test_VV007_feeTokenDeliversAmountLessFee` | LLR-VV-007 |
+
+The SC-014 tests read every selector from the compiled ABI, so functions added by later groups are exercised without editing them. The full ABI-surface test is LLR-SC-061, a later group.
+
+LLR-SC-014 is an absence requirement, so the red below is not its red. In step 2 the SC-014 tests failed because LLR-SC-013 had not recorded the tokens yet, not because a way to change the list existed. Their red for the absence itself is mutations 10 to 12 and 24, each of which adds a setter and is killed.
+
+`test/SatStake.Build.t.sol` changed only in `setUp`: it deployed `SatStake` with an empty token list, which LLR-SC-013 now rejects, so it deploys with one `MockFiatToken`. None of its tests changed.
+
+### Red, 2026-09-25
+
+Observed in two steps. Command: `forge test`
+
+Step 1, tests only, no mocks and no views. The expected compile error names the missing mocks first:
+
+```
+Error (6275): Source "test/mocks/MockFiatToken.sol" not found: File not found. Searched the following locations: "<repo>".
+Error (6275): Source "test/mocks/MockFeeToken.sol" not found: File not found. Searched the following locations: "<repo>".
+Error: Compilation failed
+```
+
+With mock stubs (signatures only, no behaviour) the next compile error is the missing view:
+
+```
+Error (9582): Member "allowedTokens" not found or not visible after argument-dependent lookup in contract SatStake.
+Error: Compilation failed
+```
+
+Step 2, so that each test's own failure is visible: `isAllowedToken` and `allowedTokens` declared with the section 1.1 signatures and empty bodies, the constructor still empty, and mocks whose `blocklist`, `unBlocklist`, `pause`, and `unpause` do nothing, whose `decimals` is the ERC-20 default, and which charge no fee. Every new test failed for its predicted reason (counterexample calldata trimmed):
+
+| Test | Observed failure |
+|---|---|
+| `test_SC013_revertsWithZeroTokens` | `next call did not revert as expected` |
+| `test_SC013_acceptsOneToken` | `assertion failed: [] != [0x5615...b72f]` |
+| `test_SC013_acceptsFourTokens` | `assertion failed: [] != [0x5615..., 0x2e23..., 0xF628..., 0x5991...]` |
+| `test_SC013_revertsWithFiveTokens` | `next call did not revert as expected` |
+| `test_SC013_revertsOnZeroAddressAtEachPosition` | `next call did not revert as expected` |
+| `test_SC013_revertsOnZeroAddressEvenWithCode` | `next call did not revert as expected` |
+| `test_SC013_revertsOnAddressWithoutCodeAtEachPosition` | `next call did not revert as expected` |
+| `test_SC013_revertsOnAdjacentDuplicate` | `next call did not revert as expected` |
+| `test_SC013_revertsOnNonAdjacentDuplicate` | `next call did not revert as expected` |
+| `test_SC013_emitsTokenAllowedOncePerTokenInOrder` | `assertion failed: 0 != 4` |
+| `test_SC013_recordsEachTokenAsAllowed` | `assertion failed` |
+| `test_SC013_revertsUnlessListIsValid` | `next call did not revert as expected; counterexample: ...` |
+| `test_SC054_allowedTokensKeepsConstructorOrder` | `assertion failed: [] != [0x5615..., ...]` |
+| `test_SC054_isAllowedTokenReportsMembership` | `assertion failed` |
+| `test_SC054_isAllowedTokenMatchesList` | `assertion failed: [] != [...]; counterexample: ...` |
+| `test_SC014_everyFunctionLeavesAllowlistUnchanged` | `assertion failed: [] != [...]; counterexample: ...` |
+| `test_SC014_arbitraryCalldataLeavesAllowlistUnchanged` | `assertion failed: [] != [...]; counterexample: ...` |
+| `test_VV007_decimalsAreConfigurable` | `assertion failed: 18 != 6` |
+| `test_VV007_blocklistRevertsTransfersFromListedAddress` | `assertion failed` (`isBlocklisted` still false) |
+| `test_VV007_blocklistRevertsTransfersToListedAddress` | `next call did not revert as expected` |
+| `test_VV007_pauseRevertsAllTransfers` | `assertion failed` (`paused` still false) |
+| `test_VV007_onlyIssuerControlsBlocklistAndPause` | `next call did not revert as expected` |
+| `test_VV007_feeTokenDeliversAmountLessFee` | `assertion failed: 1000 != 990` |
+
+```
+Encountered a total of 23 failing tests, 11 tests succeeded
+```
+
+The 11 passing tests are the unchanged "SC build and data" group.
+
+### Green, 2026-09-25
+
+Constructor validation and recording (LLR-SC-013), the two views (LLR-SC-054), `@custom:trace` on `TokenAllowed`, the constructor, and both views, and LLR-SC-014 on `contract SatStake`. Mocks: `MockFiatToken` checks pause and blocklist in `_update`, so `transfer`, `transferFrom`, and `mint` are all covered; `MockFeeToken` burns `feeBps` of every transfer. Same command:
+
+```
+Ran 3 test suites: 34 tests passed, 0 failed, 0 skipped (34 total tests)
+```
+
+### Refactor, 2026-09-26
+
+`test_SC014_everyFunctionLeavesAllowlistUnchanged` was strengthened after green: fuzzed arguments alone rarely name a deployed token, so a setter taking an address could survive. Each selector is now also called with every deployed token, the zero address, an address without code, and the fuzzed probe, alone and after an index 0 to 3. Its red for that case is shown by mutations 10 to 12 below.
+
+### Mutation evidence, 2026-09-26
+
+Each mutation was applied to a scratch copy of the repository and run with the unchanged tests (`forge test --no-match-contract Build`). Every mutation is killed.
+
+| # | Mutation | Failing tests |
+|---|---|---|
+| 0 | Accepts 5 tokens (`> 5`) | `revertsWithFiveTokens` |
+| 1 | Accepts an empty list | `revertsWithZeroTokens`, `revertsUnlessListIsValid` |
+| 2 | No zero-address check (code check left in place) | `revertsOnZeroAddressEvenWithCode` |
+| 3 | No code check | `revertsOnAddressWithoutCodeAtEachPosition`, `revertsUnlessListIsValid` |
+| 4 | Duplicate check against the previous entry only | `revertsOnNonAdjacentDuplicate`, `revertsUnlessListIsValid` |
+| 5 | No `TokenAllowed` event | `emitsTokenAllowedOncePerTokenInOrder` |
+| 6 | `TokenAllowed` emitted twice per token | `emitsTokenAllowedOncePerTokenInOrder` |
+| 7 | Token not recorded as allowed | 8 tests across SC-013, 014, 054 |
+| 8 | `allowedTokens` returns reversed order | 6 tests, including `allowedTokensKeepsConstructorOrder` |
+| 9 | `isAllowedToken` true for any contract | 5 tests, including `isAllowedTokenReportsMembership` |
+| 10 | Added `allowToken(address)` that sets membership | `everyFunctionLeavesAllowlistUnchanged` |
+| 11 | Added `removeToken(address)` that clears membership | `everyFunctionLeavesAllowlistUnchanged` |
+| 12 | Added `replaceToken(uint256,address)` that overwrites a list entry | `everyFunctionLeavesAllowlistUnchanged` |
+| 13 | `MockFiatToken` without the sender blocklist check | `blocklistRevertsTransfersFromListedAddress` |
+| 14 | `MockFiatToken` without the recipient blocklist check | `blocklistRevertsTransfersToListedAddress` |
+| 15 | `MockFiatToken` without the pause check | `pauseRevertsAllTransfers` |
+| 16 | `MockFiatToken` lets anyone blocklist or pause | `onlyIssuerControlsBlocklistAndPause` |
+| 17 | `MockFiatToken` with fixed 18 decimals | `decimalsAreConfigurable` |
+| 18 | `MockFeeToken` charges no fee | `feeTokenDeliversAmountLessFee` |
+| 19 | `MockFeeToken` charges a fee on mint | `feeTokenDeliversAmountLessFee` |
+
+### Review follow-up, 2026-09-26 and 2026-09-27
+
+Three findings from the independent review, each fixed after green, so each red is a mutation rather than a failing test against absent code.
+
+| Finding | Fix | Test |
+|---|---|---|
+| The LLR-SC-014 test called only a fuzzed address, so a setter gated to the deployer would survive | `test_SC014_everyFunctionLeavesAllowlistUnchanged` now repeats every call as `address(this)`, the deployer, as well as the fuzzed caller | the same test |
+| `MockFiatToken.approve` succeeded while paused or blocklisted; real FiatToken refuses both | `approve` checks the pause and both parties' blocklist entries | `test_VV007_approveRevertsWhilePaused`, `test_VV007_approveRevertsForBlocklistedOwnerOrSpender` |
+| `MockFeeToken` rounded its fee down, so a small transfer paid no fee and arrived whole | the fee is rounded up, so every nonzero transfer pays at least one unit | `test_VV007_feeTokenChargesAtLeastOneUnit` |
+
+The first finding's red is mutation 24 below, and it is load-bearing: with the test restricted to the fuzzed caller alone, that mutation survives (`forge test --no-match-contract Build`: 26 passed, 0 failed). With the deployer added, it is killed.
+
+### Mutation evidence, review follow-up, 2026-09-27
+
+Applied and run as before. Every mutation is killed.
+
+| # | Mutation | Failing tests |
+|---|---|---|
+| 20 | `MockFiatToken.approve` without the pause check | `approveRevertsWhilePaused` |
+| 21 | `MockFiatToken.approve` without the owner blocklist check | `approveRevertsForBlocklistedOwnerOrSpender` |
+| 22 | `MockFiatToken.approve` without the spender blocklist check | `approveRevertsForBlocklistedOwnerOrSpender` |
+| 23 | `MockFeeToken` fee rounded down instead of up | `feeTokenChargesAtLeastOneUnit` |
+| 24 | Added a deployer-only `allowToken(address)` | `everyFunctionLeavesAllowlistUnchanged` |
+
+Final run: `forge fmt --check` clean; `forge test` 37 passed, 0 failed; `forge coverage --report summary`: `src/SatStake.sol | 100.00% (14/14) | 100.00% (18/18) | 100.00% (4/4) | 100.00% (3/3)`; `node tools/trace-check.mjs`: `trace-check: OK. 13/112 LLRs referenced, 0/55 journeys passing.`

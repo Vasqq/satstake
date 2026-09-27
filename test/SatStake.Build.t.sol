@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {SatStake} from "../src/SatStake.sol";
+import {MockFiatToken} from "./mocks/MockFiatToken.sol";
 
 /// @notice Declarations of the normative interface in 05_LLR.md section 1.1: constants, the
 /// `Pledge` record, the `Status` and `PledgeState` enums, and the custom errors.
@@ -13,8 +14,9 @@ contract SatStakeBuildTest is Test {
     SatStake internal satStake;
 
     function setUp() public {
-        // The constructor does not validate its allowlist in this group, so any array deploys.
-        satStake = new SatStake(new address[](0));
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(new MockFiatToken(6));
+        satStake = new SatStake(tokens);
     }
 
     /// Decodes externally so that a decoder revert can be observed with `vm.expectRevert`.

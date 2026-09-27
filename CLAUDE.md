@@ -140,6 +140,12 @@ Dates were pulled forward on 2026-09-24 after the review was found to be rolling
 
 Newest entry first. Each entry: date, what was done, decisions with one-line reasons, next step.
 
+- 2026-09-27: Group "SC allowlist" complete and committed (LLR-SC-013, 014, 054, LLR-VV-007): constructor validation and recording, the two allowlist views, the FiatToken-style and fee-charging mocks, 26 tests in the group, LLR v1.6, INSPECTIONS rows for SC-014 and the SC-004 recheck. `forge fmt --check` clean, `forge test` 37/37, coverage 100%, trace check green at 13 of 112 LLRs.
+  - The three review findings carried over from the previous session were verified present in the code, each with its own test: the LLR-SC-014 sweep now repeats every call as the deployer, `MockFiatToken.approve` refuses a paused or blocklisted approval, and `MockFeeToken` rounds its fee up.
+  - The previous session left no TDD evidence for those fixes, so the five mutations (20 to 24) were rerun here rather than taken on report; all are killed. Mutation 24, a deployer-only `allowToken`, survives the pre-fix single-caller test (26 passed, 0 failed) and dies against the fixed one, so finding (1) is load-bearing and that is its red.
+  - The TDD log now states that LLR-SC-014 is an absence requirement: the step-2 red came from LLR-SC-013 being unimplemented, and the red for the absence itself is mutations 10 to 12 and 24.
+  - Found: naming a not-yet-implemented LLR in a comment (`LLR-SC-027` in `MockFeeToken`) makes the trace checker fail, since a referenced LLR must have an implementation. Reference only the LLR the file satisfies.
+  - Next: group "SC create" (LLR-SC-012, 020 to 029, plus the LLR-SC-010 storage round trip and LLR-SC-003 for createPledge), via the implementer, then independent review.
 - 2026-09-25: Phase 1 group "SC build and data" complete (LLR-SC-001, 004, 005, 010, 011): section 1.1 declarations in `src/SatStake.sol`, 11 tests, independent review, inspections for SC-001 and SC-004 recorded, per-test mutation evidence in the TDD log.
   - Decision: LLR v1.5 renames `promise` to `promiseText` (reserved keyword in Solidity 0.8.28) and extends LLR-SC-011 to `PledgeState`.
   - Decision: `foundry.toml` sets `ast = true` so tests can prove the four constants are `constant` with the section 1.1 types; AST output does not change bytecode or metadata.

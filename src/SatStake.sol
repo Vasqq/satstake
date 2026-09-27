@@ -5,7 +5,7 @@ pragma solidity 0.8.28;
 /// @notice Locks an allowlisted ERC-20 stake against a written promise. A named referee judges
 /// the promise before its deadline; a kept promise returns the stake to the staker, and a broken
 /// or unjudged one sends it to the named beneficiary.
-/// @custom:trace LLR-SC-001 LLR-SC-004
+/// @custom:trace LLR-SC-001 LLR-SC-004 LLR-SC-014
 contract SatStake {
     /// @notice Stored lifecycle of a pledge. `None` is the zero value, so an identifier that was
     /// never assigned reads as `None` and denotes a nonexistent pledge.
@@ -63,6 +63,7 @@ contract SatStake {
     uint256 public constant MAX_PAGE = 100;
 
     /// @notice A token was added to the allowlist at construction.
+    /// @custom:trace LLR-SC-013
     event TokenAllowed(address indexed token);
 
     /// @notice A pledge was created and its stake transferred into the contract.
@@ -155,6 +156,37 @@ contract SatStake {
     /// @custom:trace LLR-SC-004
     error AlreadySettled();
 
-    /// @param tokens The ERC-20 tokens pledges may use.
-    constructor(address[] memory tokens) {}
+    // Written only by the constructor. The list keeps the constructor's order for `allowedTokens`;
+    // the mapping answers membership without a loop.
+    address[] private _allowedTokens;
+    mapping(address => bool) private _isAllowed;
+
+    /// @param tokens The ERC-20 tokens pledges may use: 1 to 4 distinct contracts.
+    /// @custom:trace LLR-SC-013
+    constructor(address[] memory tokens) {
+        if (tokens.length == 0 || tokens.length > 4) revert InvalidAllowlist(); // LLR-SC-013
+        for (uint256 i = 0; i < tokens.length; i++) {
+            address token = tokens[i];
+            // Checked apart from the code check, so the rule holds on a chain that puts code at
+            // the zero address.
+            if (token == address(0)) revert InvalidAllowlist(); // LLR-SC-013
+            if (token.code.length == 0) revert InvalidAllowlist(); // LLR-SC-013
+            if (_isAllowed[token]) revert InvalidAllowlist(); // LLR-SC-013
+            _isAllowed[token] = true; // LLR-SC-013
+            _allowedTokens.push(token); // LLR-SC-054
+            emit TokenAllowed(token); // LLR-SC-013
+        }
+    }
+
+    /// @notice Whether pledges may use `token`.
+    /// @custom:trace LLR-SC-054
+    function isAllowedToken(address token) external view returns (bool) {
+        return _isAllowed[token];
+    }
+
+    /// @notice The allowed tokens, in the order given at deployment.
+    /// @custom:trace LLR-SC-054
+    function allowedTokens() external view returns (address[] memory) {
+        return _allowedTokens;
+    }
 }
