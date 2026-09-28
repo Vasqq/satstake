@@ -85,6 +85,7 @@ contract SatStake is ReentrancyGuard {
     );
 
     /// @notice The referee judged a pledge: `kept` is true for kept, false for broken.
+    /// @custom:trace LLR-SC-033
     event VerdictRecorded(uint256 indexed id, bool kept);
 
     /// @notice A pledge's stake was paid out in full to `recipient`.
@@ -266,6 +267,36 @@ contract SatStake is ReentrancyGuard {
         // nothing received so the check below raises the error the requirement names.
         uint256 received = balanceAfter > balanceBefore ? balanceAfter - balanceBefore : 0; // LLR-SC-027
         if (received != amount) revert UnexpectedTransferAmount(amount, received); // LLR-SC-027
+    }
+
+    /// @notice Records the referee's verdict that the promise was kept, which sends the stake back
+    /// to the staker at settlement. Only the pledge's referee may call it, only while the pledge is
+    /// Active, and only before its deadline.
+    /// @param id The pledge to judge.
+    /// @custom:trace LLR-SC-003 LLR-SC-030 LLR-SC-031 LLR-SC-032 LLR-SC-033
+    function markKept(uint256 id) external nonReentrant {
+        _recordVerdict(id, true);
+    }
+
+    /// @notice Records the referee's verdict that the promise was broken, which sends the stake to
+    /// the beneficiary at settlement. Only the pledge's referee may call it, only while the pledge
+    /// is Active, and only before its deadline.
+    /// @param id The pledge to judge.
+    /// @custom:trace LLR-SC-003 LLR-SC-030 LLR-SC-031 LLR-SC-032 LLR-SC-033
+    function markBroken(uint256 id) external nonReentrant {
+        _recordVerdict(id, false);
+    }
+
+    // The two verdicts differ only in the status they store and the flag they report, so their
+    // checks are written once and cannot drift apart.
+    function _recordVerdict(uint256 id, bool kept) private {
+        Pledge storage p = _pledges[id];
+        if (p.status == Status.None) revert PledgeNotFound(id); // LLR-SC-030
+        if (msg.sender != p.referee) revert NotReferee(); // LLR-SC-030
+        if (p.status != Status.Active) revert NotActive(p.status); // LLR-SC-031
+        if (block.timestamp >= p.deadline) revert VerdictWindowClosed(p.deadline); // LLR-SC-032
+        p.status = kept ? Status.Kept : Status.Broken; // LLR-SC-033
+        emit VerdictRecorded(id, kept); // LLR-SC-033
     }
 
     /// @notice Whether pledges may use `token`.

@@ -813,3 +813,222 @@ Run after this follow-up: `forge fmt --check` clean; `forge test` 86 passed, 0 f
 coverage --report summary`: `src/SatStake.sol | 100.00% (51/51) | 100.00% (75/75) | 100.00%
 (15/15) | 100.00% (5/5)`; `node tools/trace-check.mjs`: `trace-check: OK. 25/112 LLRs referenced,
 0/55 journeys passing.`
+
+## Group: SC verdict (LLR-SC-030 to 033, LLR-SC-003 for `markKept` and `markBroken`)
+
+Tests written from the four requirement rows, the "Verdict" order note above LLR-SC-030, the state
+machine in 05 section 1.2, the `LLR-SC-003` sentence that names `markKept` and `markBroken`, and 06
+section 4, before either function had a body. Every rule is exercised against both functions: the
+helper `_verdict(caller, id, kept)` calls `markKept` when `kept` and `markBroken` otherwise, and
+`_expectOnBoth` repeats a revert expectation for each of them.
+
+| Test | Verifies |
+|---|---|
+| `test_SC033_markKeptSetsTheStatusToKeptAndEmitsTheVerdict` | LLR-SC-033 |
+| `test_SC033_markBrokenSetsTheStatusToBrokenAndEmitsTheVerdict` | LLR-SC-033 |
+| `test_SC033_theVerdictReachesOnlyTheNamedPledge` | LLR-SC-033 |
+| `test_SC033_emitsVerdictRecordedOnceWithTheIdentifierIndexed` | LLR-SC-033 |
+| `test_SC030_revertsWithPledgeNotFoundForAnIdentifierNeverAssigned` | LLR-SC-030 |
+| `test_SC030_revertsWithNotRefereeForEveryOtherCaller` | LLR-SC-030 |
+| `test_SC030_theRefereeOfOnePledgeMayNotJudgeAnother` | LLR-SC-030 |
+| `test_SC031_revertsWithNotActiveForEveryOtherStatus` | LLR-SC-031 |
+| `test_SC032_acceptsAVerdictOneSecondBeforeTheDeadline` | LLR-SC-032 |
+| `test_SC032_revertsAtTheDeadline` | LLR-SC-032 |
+| `test_SC032_revertsAfterTheDeadline` | LLR-SC-032 |
+| `test_SC032_theWindowClosesAtTheDeadlineAndNotBeforeIt` (fuzz) | LLR-SC-032 |
+| `test_SC030_checksRunInTheOrderOfTheRequirements` | LLR-SC-030, LLR-SC-031, LLR-SC-032 |
+| `test_SC003_revertsWhenTheTokenReentersMarkKept` | LLR-SC-003 |
+| `test_SC003_revertsWhenTheTokenReentersMarkBroken` | LLR-SC-003 |
+
+The two boundaries 06 section 4 names for this group, a verdict at `deadline - 1` and at
+`deadline`, are the first two LLR-SC-032 tests by name; the fuzz test walks a minute either side of
+the deadline, so the boundary second itself is reached repeatedly.
+
+`test_SC031_revertsWithNotActiveForEveryOtherStatus` covers all four non-`Active` statuses of 05
+section 1.1. `Kept` and `Broken` are reached by recording a real verdict. `SettledToStaker` and
+`SettledToBeneficiary` cannot be reached at all until `settle` exists, so the test writes them into
+the stored record with `vm.store` through `_setStoredStatus`, rather than adding a path to the
+contract that no requirement asks for. The "SC settle" group can reach them through `settle`.
+
+### Refactor before the red run, 2026-09-27
+
+The storage reader the create tests use (`_loadSlots`, `_slotOf`, `_word`, `_mappingSlot`,
+`_storedPledge`, `_storedString`, `_storedTotalLocked`, `_storedPledgeIds`), the funding helper,
+the four party addresses, and the `IMintableToken` interface moved unchanged from
+`test/SatStake.Create.t.sol` into `test/base/SatStakeTestBase.sol`, which both test contracts now
+extend. Knowledge of the storage layout of 05 section 1.1 now sits in one file instead of two.
+`_setStoredStatus` is the one addition, for the paragraph above. `forge test` stayed at 86 passed,
+0 failed across the move.
+
+### Red, 2026-09-27
+
+Observed in two steps, as in the previous group. Command: `forge test`
+
+Step 1, tests only. The expected compile error names the missing function:
+
+```
+Compiler run failed:
+Error (9582): Member "markKept" not found or not visible after argument-dependent lookup in contract SatStake.
+  --> test/SatStake.Verdict.t.sol:56:13:
+   |
+56 |             satStake.markKept(id);
+   |             ^^^^^^^^^^^^^^^^^
+
+Error: Compilation failed
+```
+
+Step 2, so that each test's own failure is visible: `markKept(uint256)` and `markBroken(uint256)`
+declared with the section 1.1 signatures and empty bodies, no guard and no checks. Every new test
+failed for the reason its requirement predicts (fuzz counterexample trimmed):
+
+| Test | Observed failure |
+|---|---|
+| `test_SC033_markKeptSetsTheStatusToKeptAndEmitsTheVerdict` | `log != expected log` |
+| `test_SC033_markBrokenSetsTheStatusToBrokenAndEmitsTheVerdict` | `log != expected log` |
+| `test_SC033_theVerdictReachesOnlyTheNamedPledge` | `assertion failed: 1 != 2` |
+| `test_SC033_emitsVerdictRecordedOnceWithTheIdentifierIndexed` | `assertion failed: 0 != 1` |
+| `test_SC030_revertsWithPledgeNotFoundForAnIdentifierNeverAssigned` | `next call did not revert as expected` |
+| `test_SC030_revertsWithNotRefereeForEveryOtherCaller` | `next call did not revert as expected` |
+| `test_SC030_theRefereeOfOnePledgeMayNotJudgeAnother` | `next call did not revert as expected` |
+| `test_SC031_revertsWithNotActiveForEveryOtherStatus` | `assertion failed: 1 != 2` |
+| `test_SC032_acceptsAVerdictOneSecondBeforeTheDeadline` | `assertion failed: 1 != 2` |
+| `test_SC032_revertsAtTheDeadline` | `next call did not revert as expected` |
+| `test_SC032_revertsAfterTheDeadline` | `next call did not revert as expected` |
+| `test_SC032_theWindowClosesAtTheDeadlineAndNotBeforeIt` | `next call did not revert as expected; counterexample: ...` |
+| `test_SC030_checksRunInTheOrderOfTheRequirements` | `next call did not revert as expected` |
+| `test_SC003_revertsWhenTheTokenReentersMarkKept` | `next call did not revert as expected` |
+| `test_SC003_revertsWhenTheTokenReentersMarkBroken` | `next call did not revert as expected` |
+
+```
+Encountered a total of 15 failing tests, 86 tests succeeded
+```
+
+`1 != 2` is a status left `Active` (1) where the requirement asks for `Kept` (2), and the two
+LLR-SC-003 tests fail with `next call did not revert as expected` because an unguarded verdict
+recorded from inside `createPledge` goes through, which is the behaviour the guard exists to stop.
+
+### Green, 2026-09-27
+
+`markKept` and `markBroken`, each `nonReentrant` and each a single call into a private
+`_recordVerdict(id, kept)` that holds the four checks in the order of LLR-SC-030 to LLR-SC-032 and
+then writes the status and emits the event; `@custom:trace` on both functions and on
+`VerdictRecorded`, which had none. Same command:
+
+```
+Ran 5 test suites: 101 tests passed, 0 failed, 0 skipped (101 total tests)
+```
+
+The two verdicts share one body because they differ only in the status stored and the flag
+reported, so no check can drift between them. 06 section 2 shows the checks inline in `markKept`;
+the shared private function keeps that order in one place, and the `@custom:trace` tags stay on the
+external functions where LLR-SC-080 puts them.
+
+### Refactor, 2026-09-27
+
+No structure changed after green. `forge fmt` applied.
+
+### Mutation evidence, 2026-09-27
+
+Each mutation removes or weakens exactly one check, one stored value, one event, or one ordering.
+Each was applied to a copy of the repository outside it and run with the unchanged tests
+(`forge test`, the whole suite). Every mutation is killed; the killing tests are named with the
+`test_` prefix and the scope number trimmed.
+
+| # | Mutation | Failing tests |
+|---|---|---|
+| 84 | `markKept` without `nonReentrant` | `revertsWhenTheTokenReentersMarkKept` |
+| 85 | `markBroken` without `nonReentrant` | `revertsWhenTheTokenReentersMarkBroken` |
+| 86 | no `PledgeNotFound` check | `checksRunInTheOrderOfTheRequirements`, `revertsWithPledgeNotFoundForAnIdentifierNeverAssigned` |
+| 87 | `PledgeNotFound` reports a fixed identifier | `checksRunInTheOrderOfTheRequirements`, `revertsWithPledgeNotFoundForAnIdentifierNeverAssigned` |
+| 88 | no `NotReferee` check | `checksRunInTheOrderOfTheRequirements`, `revertsWithNotRefereeForEveryOtherCaller`, `theRefereeOfOnePledgeMayNotJudgeAnother` |
+| 89 | `NotReferee` lets the staker judge as well | `revertsWithNotRefereeForEveryOtherCaller` |
+| 90 | no `NotActive` check | `checksRunInTheOrderOfTheRequirements`, `revertsWithNotActiveForEveryOtherStatus` |
+| 91 | `NotActive` reports a fixed status | `revertsWithNotActiveForEveryOtherStatus` |
+| 92 | `NotActive` refuses a judged pledge but not a settled one | `revertsWithNotActiveForEveryOtherStatus` |
+| 93 | no `VerdictWindowClosed` check | `checksRunInTheOrderOfTheRequirements`, `revertsAfterTheDeadline`, `revertsAtTheDeadline`, and 1 more |
+| 94 | `VerdictWindowClosed` one second late (`>`) | `revertsAtTheDeadline`, `theWindowClosesAtTheDeadlineAndNotBeforeIt` |
+| 95 | `VerdictWindowClosed` reports zero instead of the deadline | `checksRunInTheOrderOfTheRequirements`, `revertsAfterTheDeadline`, `revertsAtTheDeadline`, and 1 more |
+| 96 | `NotReferee` checked before `PledgeNotFound` | `checksRunInTheOrderOfTheRequirements`, `revertsWithPledgeNotFoundForAnIdentifierNeverAssigned` |
+| 97 | `NotActive` checked before `NotReferee` | `checksRunInTheOrderOfTheRequirements` |
+| 98 | `VerdictWindowClosed` checked before `NotActive` | `checksRunInTheOrderOfTheRequirements` |
+| 99 | the status is not written | `revertsWhenTheTokenReentersMarkBroken`, `revertsWhenTheTokenReentersMarkKept`, `checksRunInTheOrderOfTheRequirements`, and 8 more |
+| 100 | the verdict is stored the other way round | `revertsWhenTheTokenReentersMarkBroken`, `revertsWhenTheTokenReentersMarkKept`, `checksRunInTheOrderOfTheRequirements`, and 8 more |
+| 101 | the verdict is written to pledge 1 whatever the identifier | `checksRunInTheOrderOfTheRequirements`, `theRefereeOfOnePledgeMayNotJudgeAnother`, `revertsWithNotActiveForEveryOtherStatus`, and 2 more |
+| 102 | no `VerdictRecorded` event | `emitsVerdictRecordedOnceWithTheIdentifierIndexed`, `markBrokenSetsTheStatusToBrokenAndEmitsTheVerdict`, `markKeptSetsTheStatusToKeptAndEmitsTheVerdict` |
+| 103 | `VerdictRecorded` always reports a kept promise | `emitsVerdictRecordedOnceWithTheIdentifierIndexed`, `markBrokenSetsTheStatusToBrokenAndEmitsTheVerdict` |
+
+Mutation 92 is why the two settled statuses are written with `vm.store`: a `NotActive` check that
+looks only for `Kept` and `Broken` passes every other test in the suite.
+
+Mutations 84 and 85 are the ones the guard exists for, so their failure is the one that matters:
+
+```
+[FAIL: next call did not revert as expected] test_SC003_revertsWhenTheTokenReentersMarkBroken()
+[FAIL: next call did not revert as expected] test_SC003_revertsWhenTheTokenReentersMarkKept()
+```
+
+The reentrant call is a valid verdict but for the guard: the hostile token is the referee of an
+Active pledge whose deadline is still ahead, and the test asserts all three before acting. With the
+guard gone, the call does not merely fail differently, it succeeds. A probe on the mutant, with the
+expectation removed and an assertion put in its place, confirmed it:
+
+```
+[FAIL: revert: probe: the unguarded reentrant verdict was recorded] test_SC003_revertsWhenTheTokenReentersMarkKept()
+```
+
+The probe reached its own `revert` only after asserting that the pledge stood at `Kept` and that
+the token had called back exactly once, in the middle of another account's `createPledge`. Each
+guarded test then finishes by making the same call from the same account outside any SatStake call
+and seeing it recorded, so the refusal above is the guard's doing and not a malformed call.
+
+Run after this group: `forge fmt --check` clean; `forge test` 101 passed, 0 failed; `forge coverage
+--report summary`: `src/SatStake.sol | 100.00% (63/63) | 100.00% (88/88) | 100.00% (19/19) |
+100.00% (8/8)`; `node tools/trace-check.mjs`: `trace-check: OK. 29/112 LLRs referenced, 0/55
+journeys passing.`
+
+Carry-forward: LLR-SC-003 still owes `settle`, both its `nonReentrant` and its `safeTransfer`, and
+the inspection row for LLR-SC-003 now covers `createPledge`, `markKept`, and `markBroken` but not
+`settle`. The "SC views" group still owes the two re-verifications the create group recorded.
+
+### Review follow-up, 2026-09-28
+
+The independent review found that nothing in the group asserted what a verdict leaves alone. Four
+statements added after `p.status = kept ? Status.Kept : Status.Broken;` survived the whole suite:
+releasing the stake from `_totalLocked`, moving the deadline to now, consuming an identifier, and
+pushing the pledge onto the caller's index. None breaches LLR-SC-030 to 033 as written, but the
+first would let a later settlement pay from another pledge's money, and the second and third
+contradict requirements that only the not-yet-written invariant group is scheduled to check.
+
+`test_SC033_theVerdictChangesTheStatusAndNothingElse` now captures the whole record, the locked
+total, and all three indexes before the verdict and compares them after, then creates one more
+pledge to show the next identifier was not consumed. All four mutants die on it, each with its own
+assertion:
+
+| # | Mutation | Failing test and message |
+|---|---|---|
+| 104 | verdict also releases the stake from `_totalLocked` | `theVerdictChangesTheStatusAndNothingElse`, `1000 != 2000` |
+| 105 | verdict also moves the deadline to now | `theVerdictChangesTheStatusAndNothingElse`, `1700000001 != 1700086400` |
+| 106 | verdict also consumes an identifier | `theVerdictChangesTheStatusAndNothingElse`, `4 != 3` |
+| 107 | verdict also pushes the pledge onto the caller's index | `theVerdictChangesTheStatusAndNothingElse`, `[1, 2, 1] != [1, 2]` |
+
+The test carries only `LLR-SC-033`. The properties it also guards belong to LLR-SC-071 and
+LLR-SC-074, which are not yet implemented, and naming an unimplemented ID in a scanned file fails
+the trace checker. The invariant group therefore still owes both, over arbitrary call sequences
+rather than this one ordering.
+
+Two further review findings, neither a defect in this group's work:
+
+- `PledgeSettled` is the one event with no `@custom:trace`, which LLR-SC-080 requires of every
+  event and which the release gate checks. Its tag is LLR-SC-044, so it cannot be added until
+  `settle` exists: tagging it now would mark LLR-SC-044 referenced and the checker would then
+  demand an implementation and a test for it. The settle group adds the tag with the function.
+- The error declarations that now serve LLR-SC-030 to 032 carry only `LLR-SC-004` in their tags.
+  This is the convention the project already follows, set by `TokenNotAllowed` and accepted at the
+  create group: an error declaration traces to LLR-SC-004, and the behavioural ID sits on the
+  check that raises it, where the trace matrix resolves it. Recorded here so it is settled once
+  rather than raised again at each group.
+
+Run after this follow-up: `forge fmt --check` clean; `forge test` 102 passed, 0 failed; `forge
+coverage --report summary`: `src/SatStake.sol | 100.00% (63/63) | 100.00% (88/88) | 100.00%
+(19/19) | 100.00% (8/8)`; `node tools/trace-check.mjs`: `trace-check: OK. 29/112 LLRs referenced,
+0/55 journeys passing.`
