@@ -21,6 +21,10 @@ evm_version = "cancun"
 # immutable, or storage; the LLR-SC-005 tests read it from the artifact.
 ast = true
 
+# The storage layout gives the slot of each private variable by name, so the tests that read
+# bookkeeping storage with `vm.load` do not depend on declaration order.
+extra_output = ["storageLayout"]
+
 # Deploy and seed scripts read their inputs from deployments/config and write records to deployments/.
 # Tests read compiled artifacts from out/.
 fs_permissions = [

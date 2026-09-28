@@ -1,6 +1,6 @@
 # 06 Verification and Traceability Plan
 
-Version 1.5, 2026-09-25. Defines how every requirement is shown to be met, how code and tests point back to requirements, and how that linkage is checked by machine. Modelled on DO-178C objectives (requirements-based testing, bidirectional traceability, structural coverage, independence through tooling) and scaled to a single-contract project.
+Version 1.7, 2026-09-27. Defines how every requirement is shown to be met, how code and tests point back to requirements, and how that linkage is checked by machine. Modelled on DO-178C objectives (requirements-based testing, bidirectional traceability, structural coverage, independence through tooling) and scaled to a single-contract project.
 
 ## 1. Document chain
 
@@ -81,7 +81,7 @@ Boundary cases that must appear by name in unit tests: deadline exactly `now + 6
 
 ## 5. Mock token (LLR-VV-007)
 
-`test/mocks/MockFiatToken.sol` implements ERC-20 with configurable decimals, an issuer-controlled blocklist that reverts transfers to or from listed addresses, and a pause that reverts all transfers. A second mock charges a transfer fee to exercise LLR-SC-027. Mocks live only in `test/`.
+`test/mocks/MockFiatToken.sol` implements ERC-20 with configurable decimals, an issuer-controlled blocklist that reverts transfers to or from listed addresses, and a pause that reverts all transfers. A second mock charges a transfer fee to exercise LLR-SC-027. A third mock is hostile on transfer: it can reenter `createPledge` or `settle` from within `transferFrom` or `transfer`, it can return `false` or no value at all, and it can take an account's balance during a transfer, to exercise LLR-SC-003 and the falling-balance case of LLR-SC-027. Mocks live only in `test/`.
 
 ## 6. Structural coverage (LLR-VV-003)
 
@@ -126,3 +126,5 @@ The submission is ready when all of the following hold: CI green; `trace-check -
 | 1.3 | 2026-09-24 | Section 3: conditions 3 and 4 apply once an LLR is referenced, and to all LLRs under `--release`. As first written they failed CI for every LLR not yet implemented, which made a green build impossible until the last group and contradicted the rule that no commit has a failing build. |
 | 1.4 | 2026-09-25 | Section 3, after independent review of the checker: scan CI workflows, git hooks, and `.gitignore` so LLR-DP-010 and 011 have a findable source; define test-file classification; count INSPECTIONS and evidence mentions as references; require a `Pass` inspection result; treat malformed IDs as nonexistent; accept `Awaiting walkthrough` at release (LLR-VV-009 v1.4). |
 | 1.5 | 2026-09-25 | Section 3, after the second independent review: scan `tools/`; state that evidence means `.md` and `.json` files under `docs/evidence/` other than the test-first log; test-file names match `.test.` or `.spec.` with any extension. |
+| 1.6 | 2026-09-27 | Section 5 describes the hostile mock that LLR-SC-003 needs, to match LLR v1.7. |
+| 1.7 | 2026-09-27 | Section 5: the hostile mock can also take an account's balance during a transfer, to match LLR v1.9. |

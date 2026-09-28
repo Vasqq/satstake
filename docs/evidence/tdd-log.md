@@ -465,3 +465,351 @@ Applied and run as before. Every mutation is killed.
 | 24 | Added a deployer-only `allowToken(address)` | `everyFunctionLeavesAllowlistUnchanged` |
 
 Final run: `forge fmt --check` clean; `forge test` 37 passed, 0 failed; `forge coverage --report summary`: `src/SatStake.sol | 100.00% (14/14) | 100.00% (18/18) | 100.00% (4/4) | 100.00% (3/3)`; `node tools/trace-check.mjs`: `trace-check: OK. 13/112 LLRs referenced, 0/55 journeys passing.`
+
+## Group: SC create (LLR-SC-003, 010 storage half, 012, 020 to 029, LLR-VV-007 third mock)
+
+Tests written from the requirement rows, the "Creation" order note above LLR-SC-020, and 06
+sections 4 and 5, before any `createPledge` body, bookkeeping storage, or hostile-mock behaviour
+existed:
+
+| Test | Verifies |
+|---|---|
+| `test_SC020_createsActivePledgeForTheCaller` | LLR-SC-020 |
+| `test_SC020_createdAtIsTheBlockTimestampOfTheCall` | LLR-SC-020 |
+| `test_SC010_storedRecordHoldsEveryFieldOfTheInterface` | LLR-SC-010, LLR-SC-020 |
+| `test_SC010_storedRecordKeepsEachPledgeApart` | LLR-SC-010 |
+| `test_SC010_storedPromiseTextSurvivesEveryLength` | LLR-SC-010 |
+| `test_SC012_identifiersStartAtOneAndIncrementByOne` | LLR-SC-012 |
+| `test_SC012_noIdentifierIsAssignedBeforeTheFirstPledge` | LLR-SC-012 |
+| `test_SC012_aRevertedCreateConsumesNoIdentifier` | LLR-SC-012 |
+| `test_SC021_revertsWhenTheTokenIsNotAllowed` | LLR-SC-021 |
+| `test_SC022_revertsWhenTheAmountIsZero` | LLR-SC-022 |
+| `test_SC023_revertsWhenTheRefereeOrTheBeneficiaryIsZero` | LLR-SC-023 |
+| `test_SC023_revertsWhenTheRefereeOrTheBeneficiaryIsTheContract` | LLR-SC-023 |
+| `test_SC023_revertsWhenTheRefereeOrTheBeneficiaryIsTheStaker` | LLR-SC-023 |
+| `test_SC023_appliesZeroThenContractThenStakerToBothParties` | LLR-SC-023 |
+| `test_SC024_revertsWhenTheRefereeIsTheBeneficiary` | LLR-SC-024 |
+| `test_SC025_acceptsADeadlineExactlyAtTheMinimum` | LLR-SC-025 |
+| `test_SC025_revertsOneSecondBeforeTheMinimum` | LLR-SC-025 |
+| `test_SC025_acceptsADeadlineExactlyAtTheMaximum` | LLR-SC-025 |
+| `test_SC025_revertsOneSecondAfterTheMaximum` | LLR-SC-025 |
+| `test_SC025_boundsMoveWithTheBlockTimestamp` | LLR-SC-025 |
+| `test_SC026_revertsWhenThePromiseIsEmpty` | LLR-SC-026 |
+| `test_SC026_acceptsAPromiseOfExactly280Bytes` | LLR-SC-026 |
+| `test_SC026_revertsForAPromiseOf281Bytes` | LLR-SC-026 |
+| `test_SC026_measuresThePromiseInBytesNotCharacters` | LLR-SC-026 |
+| `test_SC020_checksRunInTheOrderOfTheRequirements` | LLR-SC-021 to 026 (the order note) |
+| `test_SC026_everyCheckRunsBeforeTheTransfer` | LLR-SC-026, LLR-SC-027 |
+| `test_SC020_revertsUnlessEveryCheckPasses` (fuzz) | LLR-SC-020 to 026 |
+| `test_SC027_movesTheStakeFromTheStakerToTheContract` | LLR-SC-027 |
+| `test_SC027_revertsWhenLessThanTheAmountArrives` | LLR-SC-027 |
+| `test_SC027_measuresTheContractsOwnBalanceChange` | LLR-SC-027 |
+| `test_SC003_revertsWhenTheTokenReportsFailure` | LLR-SC-003 |
+| `test_SC003_acceptsATokenThatReturnsNoValue` | LLR-SC-003 |
+| `test_SC003_revertsWhenTheTokenReentersCreatePledge` | LLR-SC-003 |
+| `test_SC003_allowsANonReentrantCallFromTheToken` | LLR-SC-003 |
+| `test_SC028_increasesTotalLockedForThatTokenOnly` | LLR-SC-028 |
+| `test_SC028_appendsTheIdentifierToEachPartysIndex` | LLR-SC-028 |
+| `test_SC028_indexKeepsCreationOrderPerAccount` | LLR-SC-028 |
+| `test_SC029_emitsPledgeCreatedWithTheNewPledgesFields` | LLR-SC-029 |
+| `test_SC029_emitsOncePerPledgeWithItsOwnIdentifier` | LLR-SC-029 |
+| `test_VV007_hostileTokenReturnsTrueByDefault` | LLR-VV-007 |
+| `test_VV007_hostileTokenCanReturnFalseAndMoveNothing` | LLR-VV-007 |
+| `test_VV007_hostileTokenCanReturnNoValueAtAll` | LLR-VV-007 |
+| `test_VV007_hostileTokenReentersFromTransfer` | LLR-VV-007 |
+| `test_VV007_hostileTokenReentersFromTransferFrom` | LLR-VV-007 |
+| `test_VV007_hostileTokenBubblesTheReentrantCallsRevert` | LLR-VV-007 |
+| `test_VV007_hostileTokenDoesNotReenterUnlessAsked` | LLR-VV-007 |
+
+The views that report the bookkeeping of LLR-SC-028 (`totalLocked`, `pledgeCountOf`,
+`pledgeIdsOf`) and the stored record of LLR-SC-010 (`getPledge`) belong to the later "SC views"
+group, so these tests read the storage directly with `vm.load`. Each variable's own slot comes
+from the compiler's storage layout by name (`extra_output = ["storageLayout"]` in `foundry.toml`),
+and the offsets inside a record follow the standard layout of the declarations in 05 section 1.1.
+Carry forward: the "SC views" group must verify LLR-SC-028 again through `totalLocked`,
+`pledgeCountOf`, and `pledgeIdsOf`, and LLR-SC-010 again through `getPledge`, once those exist.
+
+### Red, 2026-09-27
+
+Observed in two steps. Command: `forge test`
+
+Step 1, tests only. The expected compile error names the missing third mock:
+
+```
+Error (6275): Source "test/mocks/MockHostileToken.sol" not found: File not found. Searched the following locations: "<repo>".
+ --> test/MockTokens.t.sol:8:1:
+ --> test/SatStake.Create.t.sol:10:1:
+Error: Compilation failed
+```
+
+With a mock stub (signatures only, no behaviour) the next compile error is the missing function:
+
+```
+Error (9582): Member "createPledge" not found or not visible after argument-dependent lookup in contract SatStake.
+   --> test/SatStake.Create.t.sol:200:14:
+Error: Compilation failed
+```
+
+Step 2, so that each test's own failure is visible: `createPledge` declared with the section 1.1
+signature and an empty body, and the hostile mock still a stub. Every new test failed for the
+reason its requirement predicts (fuzz counterexample trimmed):
+
+| Test | Observed failure |
+|---|---|
+| `test_SC020_createsActivePledgeForTheCaller` | `assertion failed: 0 != 1` |
+| `test_SC020_createdAtIsTheBlockTimestampOfTheCall` | `revert: storage variable not found: _pledges` |
+| `test_SC010_storedRecordHoldsEveryFieldOfTheInterface` | `revert: storage variable not found: _pledges` |
+| `test_SC010_storedRecordKeepsEachPledgeApart` | `revert: storage variable not found: _pledges` |
+| `test_SC010_storedPromiseTextSurvivesEveryLength` | `revert: storage variable not found: _pledges` |
+| `test_SC012_identifiersStartAtOneAndIncrementByOne` | `assertion failed: 0 != 1` |
+| `test_SC012_noIdentifierIsAssignedBeforeTheFirstPledge` | `revert: storage variable not found: _pledges` |
+| `test_SC012_aRevertedCreateConsumesNoIdentifier` | `assertion failed: 0 != 1` |
+| `test_SC021_revertsWhenTheTokenIsNotAllowed` | `next call did not revert as expected` |
+| `test_SC022_revertsWhenTheAmountIsZero` | `next call did not revert as expected` |
+| `test_SC023_revertsWhenTheRefereeOrTheBeneficiaryIsZero` | `next call did not revert as expected` |
+| `test_SC023_revertsWhenTheRefereeOrTheBeneficiaryIsTheContract` | `next call did not revert as expected` |
+| `test_SC023_revertsWhenTheRefereeOrTheBeneficiaryIsTheStaker` | `next call did not revert as expected` |
+| `test_SC023_appliesZeroThenContractThenStakerToBothParties` | `next call did not revert as expected` |
+| `test_SC024_revertsWhenTheRefereeIsTheBeneficiary` | `next call did not revert as expected` |
+| `test_SC025_acceptsADeadlineExactlyAtTheMinimum` | `revert: storage variable not found: _pledges` |
+| `test_SC025_revertsOneSecondBeforeTheMinimum` | `next call did not revert as expected` |
+| `test_SC025_acceptsADeadlineExactlyAtTheMaximum` | `revert: storage variable not found: _pledges` |
+| `test_SC025_revertsOneSecondAfterTheMaximum` | `next call did not revert as expected` |
+| `test_SC025_boundsMoveWithTheBlockTimestamp` | `next call did not revert as expected` |
+| `test_SC026_revertsWhenThePromiseIsEmpty` | `next call did not revert as expected` |
+| `test_SC026_acceptsAPromiseOfExactly280Bytes` | `revert: storage variable not found: _pledges` |
+| `test_SC026_revertsForAPromiseOf281Bytes` | `next call did not revert as expected` |
+| `test_SC026_measuresThePromiseInBytesNotCharacters` | `next call did not revert as expected` |
+| `test_SC020_checksRunInTheOrderOfTheRequirements` | `next call did not revert as expected` |
+| `test_SC026_everyCheckRunsBeforeTheTransfer` | `next call did not revert as expected` |
+| `test_SC020_revertsUnlessEveryCheckPasses` | `next call did not revert as expected; counterexample: ...` |
+| `test_SC027_movesTheStakeFromTheStakerToTheContract` | `assertion failed: 1000000000000000000000000 != 999999999999999999999000` |
+| `test_SC027_revertsWhenLessThanTheAmountArrives` | `next call did not revert as expected` |
+| `test_SC027_measuresTheContractsOwnBalanceChange` | `revert: storage variable not found: _pledges` |
+| `test_SC003_revertsWhenTheTokenReportsFailure` | `next call did not revert as expected` |
+| `test_SC003_acceptsATokenThatReturnsNoValue` | `assertion failed: 0 != 1` |
+| `test_SC003_revertsWhenTheTokenReentersCreatePledge` | `next call did not revert as expected` |
+| `test_SC003_allowsANonReentrantCallFromTheToken` | `assertion failed: 0 != 1` |
+| `test_SC028_increasesTotalLockedForThatTokenOnly` | `revert: storage variable not found: _pledges` |
+| `test_SC028_appendsTheIdentifierToEachPartysIndex` | `revert: storage variable not found: _pledges` |
+| `test_SC028_indexKeepsCreationOrderPerAccount` | `revert: storage variable not found: _pledges` |
+| `test_SC029_emitsPledgeCreatedWithTheNewPledgesFields` | `assertion failed: 0 != 1` |
+| `test_SC029_emitsOncePerPledgeWithItsOwnIdentifier` | `log != expected log` |
+| `test_VV007_hostileTokenReturnsTrueByDefault` | `assertion failed` |
+| `test_VV007_hostileTokenCanReturnFalseAndMoveNothing` | `assertion failed: 0 != 1000` |
+| `test_VV007_hostileTokenCanReturnNoValueAtAll` | `assertion failed: 32 != 0` |
+| `test_VV007_hostileTokenReentersFromTransfer` | `assertion failed: 0 != 1` |
+| `test_VV007_hostileTokenReentersFromTransferFrom` | `assertion failed: 0 != 1` |
+| `test_VV007_hostileTokenBubblesTheReentrantCallsRevert` | `next call did not revert as expected` |
+| `test_VV007_hostileTokenDoesNotReenterUnlessAsked` | `assertion failed: 0 != 200` |
+
+```
+Ran 4 test suites: 37 tests passed, 46 failed, 0 skipped (83 total tests)
+```
+
+The 37 passing tests are the unchanged earlier groups. A test that reads any bookkeeping slot
+fails on `_pledges`, the first name it resolves, because the helper resolves all three at once.
+
+### Green, 2026-09-27
+
+`createPledge` with the six checks in the requirement order, the safe transfer and its
+received-amount check, the pledge record, the identifier counter, the per-token locked total, the
+three index appends, and the event; `@custom:trace` on the function and on `PledgeCreated`;
+`ReentrancyGuard` and `SafeERC20` from the pinned OpenZeppelin submodule. `MockHostileToken`
+gained its three return modes, its one-shot callback, and the bubbling of the callback's revert.
+Same command:
+
+```
+Ran 4 test suites: 83 tests passed, 0 failed, 0 skipped (83 total tests)
+```
+
+Two changes belong to this step rather than to the requirements. `foundry.toml` gained
+`extra_output = ["storageLayout"]`, so the tests can find a private variable's slot by name; it
+adds compiler output only and changes no bytecode. And six tests failed at first against a correct
+contract because the test helper assumed each `Pledge` field had its own slot: the declaration in
+05 section 1.1 packs `beneficiary` with `deadline` and `createdAt` with `status`. The helper, not
+the contract, was wrong, and the corrected offsets are what pins the layout.
+
+### Refactor, 2026-09-27
+
+The transfer and its received-amount check moved into a private `_receiveStake`, because
+`createPledge` ran out of stack with them inline. `forge fmt` applied.
+
+Coverage of the new mock was 94.59% of statements, the two paths that refuse a transfer beyond the
+sender's balance or the caller's approval, so `test_VV007_hostileTokenRefusesATransferItCannotCover`
+was added after green and the suite became 84 tests. Its red is mutations 73 and 74.
+
+A later group owes two checks. The views that report the bookkeeping of LLR-SC-028 and the record
+of LLR-SC-010 do not exist yet, so "SC views" must verify LLR-SC-028 again through `totalLocked`,
+`pledgeCountOf`, and `pledgeIdsOf`, and LLR-SC-010 again through `getPledge`.
+
+### Mutation evidence, 2026-09-27
+
+Each mutation removes or weakens exactly one check, one stored field, one bookkeeping write, or
+one piece of mock behaviour. Each was applied to a scratch copy of the repository and run with the
+unchanged tests (`forge test --no-match-contract Allowlist`, the allowlist group being untouched
+by this work). Every mutation is killed; the first three killing tests are named, with the `test_`
+prefix and the scope number trimmed.
+
+| # | Mutation | Failing tests |
+|---|---|---|
+| 25 | `createPledge` without `nonReentrant` | `revertsWhenTheTokenReentersCreatePledge` |
+| 26 | raw `transferFrom` instead of `safeTransferFrom` | `acceptsATokenThatReturnsNoValue`, `revertsWhenTheTokenReportsFailure` |
+| 27 | no allowlist check | `checksRunInTheOrderOfTheRequirements`, `revertsUnlessEveryCheckPasses`, `revertsWhenTheTokenIsNotAllowed` |
+| 28 | no zero-amount check | `aRevertedCreateConsumesNoIdentifier`, `checksRunInTheOrderOfTheRequirements`, `revertsUnlessEveryCheckPasses`, and 1 more |
+| 29 | zero-address check on the referee only | `revertsUnlessEveryCheckPasses`, `appliesZeroThenContractThenStakerToBothParties`, `revertsWhenTheRefereeOrTheBeneficiaryIsZero` |
+| 30 | zero-address check on the beneficiary only | `revertsUnlessEveryCheckPasses`, `appliesZeroThenContractThenStakerToBothParties`, `revertsWhenTheRefereeOrTheBeneficiaryIsZero` |
+| 31 | no `PartyIsContract` check | `checksRunInTheOrderOfTheRequirements`, `revertsUnlessEveryCheckPasses`, `appliesZeroThenContractThenStakerToBothParties`, and 1 more |
+| 32 | `PartyIsContract` check on the referee only | `revertsUnlessEveryCheckPasses`, `appliesZeroThenContractThenStakerToBothParties`, `revertsWhenTheRefereeOrTheBeneficiaryIsTheContract` |
+| 33 | no `PartyIsStaker` check | `checksRunInTheOrderOfTheRequirements`, `revertsUnlessEveryCheckPasses`, `revertsWhenTheRefereeOrTheBeneficiaryIsTheStaker` |
+| 34 | `PartyIsStaker` check on the beneficiary only | `revertsUnlessEveryCheckPasses`, `revertsWhenTheRefereeOrTheBeneficiaryIsTheStaker` |
+| 35 | no `RefereeIsBeneficiary` check | `checksRunInTheOrderOfTheRequirements`, `revertsUnlessEveryCheckPasses`, `revertsWhenTheRefereeIsTheBeneficiary` |
+| 36 | no `DeadlineTooSoon` check | `checksRunInTheOrderOfTheRequirements`, `revertsUnlessEveryCheckPasses`, `boundsMoveWithTheBlockTimestamp`, and 1 more |
+| 37 | `DeadlineTooSoon` at the minimum itself (`<=`) | `revertsUnlessEveryCheckPasses`, `acceptsADeadlineExactlyAtTheMinimum`, `boundsMoveWithTheBlockTimestamp` |
+| 38 | no `DeadlineTooFar` check | `checksRunInTheOrderOfTheRequirements`, `revertsUnlessEveryCheckPasses`, `boundsMoveWithTheBlockTimestamp`, and 1 more |
+| 39 | `DeadlineTooFar` at the maximum itself (`>=`) | `checksRunInTheOrderOfTheRequirements`, `revertsUnlessEveryCheckPasses`, `acceptsADeadlineExactlyAtTheMaximum`, and 1 more |
+| 40 | `MAX_DURATION` bound measured from zero, not from now | `acceptsATokenThatReturnsNoValue`, `allowsANonReentrantCallFromTheToken`, `revertsWhenTheTokenReentersCreatePledge`, and 30 more |
+| 41 | no `PromiseEmpty` check | `checksRunInTheOrderOfTheRequirements`, `everyCheckRunsBeforeTheTransfer`, `revertsWhenThePromiseIsEmpty` |
+| 42 | no `PromiseTooLong` check | `checksRunInTheOrderOfTheRequirements`, `measuresThePromiseInBytesNotCharacters`, `revertsForAPromiseOf281Bytes` |
+| 43 | `PromiseTooLong` at 280 bytes itself (`>=`) | `storedPromiseTextSurvivesEveryLength`, `acceptsAPromiseOfExactly280Bytes`, `measuresThePromiseInBytesNotCharacters` |
+| 44 | no received-amount check | `revertsWhenLessThanTheAmountArrives` |
+| 45 | received amount taken from the argument, not the balance change | `revertsWhenLessThanTheAmountArrives` |
+| 46 | checks run after the transfer | `acceptsATokenThatReturnsNoValue`, `revertsWhenTheTokenIsNotAllowed`, `everyCheckRunsBeforeTheTransfer`, and 2 more |
+| 47 | zero-amount check before the allowlist check | `checksRunInTheOrderOfTheRequirements`, `revertsUnlessEveryCheckPasses` |
+| 48 | `PartyIsStaker` checked before `ZeroAddress` | `revertsUnlessEveryCheckPasses`, `appliesZeroThenContractThenStakerToBothParties` |
+| 49 | `PartyIsStaker` checked before `PartyIsContract` | `revertsUnlessEveryCheckPasses`, `appliesZeroThenContractThenStakerToBothParties` |
+| 50 | `RefereeIsBeneficiary` checked before `ZeroAddress` | `checksRunInTheOrderOfTheRequirements`, `revertsUnlessEveryCheckPasses` |
+| 51 | promise checks before the deadline checks | `checksRunInTheOrderOfTheRequirements`, `revertsUnlessEveryCheckPasses` |
+| 52 | identifiers start at 0 | `acceptsATokenThatReturnsNoValue`, `allowsANonReentrantCallFromTheToken`, `aRevertedCreateConsumesNoIdentifier`, and 5 more |
+| 53 | every pledge takes identifier 1 | `storedRecordKeepsEachPledgeApart`, `aRevertedCreateConsumesNoIdentifier`, `identifiersStartAtOneAndIncrementByOne`, and 1 more |
+| 54 | `staker` stored as the referee | `storedRecordHoldsEveryFieldOfTheInterface`, `storedRecordKeepsEachPledgeApart`, `identifiersStartAtOneAndIncrementByOne`, and 1 more |
+| 55 | `token` not stored | `storedRecordHoldsEveryFieldOfTheInterface`, `storedRecordKeepsEachPledgeApart` |
+| 56 | `amount` not stored | `storedRecordHoldsEveryFieldOfTheInterface`, `storedRecordKeepsEachPledgeApart`, `measuresTheContractsOwnBalanceChange` |
+| 57 | `referee` and `beneficiary` stored the other way round | `storedRecordHoldsEveryFieldOfTheInterface`, `storedRecordKeepsEachPledgeApart` |
+| 58 | `deadline` stored as `createdAt` | `storedRecordHoldsEveryFieldOfTheInterface`, `storedRecordKeepsEachPledgeApart`, `acceptsADeadlineExactlyAtTheMaximum`, and 1 more |
+| 59 | `createdAt` stored as the deadline | `storedRecordHoldsEveryFieldOfTheInterface`, `storedRecordKeepsEachPledgeApart`, `createdAtIsTheBlockTimestampOfTheCall`, and 1 more |
+| 60 | status left at `None` | `storedRecordHoldsEveryFieldOfTheInterface`, `createsActivePledgeForTheCaller` |
+| 61 | `promiseText` not stored | `storedPromiseTextSurvivesEveryLength`, `storedRecordHoldsEveryFieldOfTheInterface`, `storedRecordKeepsEachPledgeApart`, and 1 more |
+| 62 | `totalLocked` not increased | `increasesTotalLockedForThatTokenOnly` |
+| 63 | `totalLocked` set to the amount instead of increased | `increasesTotalLockedForThatTokenOnly` |
+| 64 | identifier not appended to the staker's index | `appendsTheIdentifierToEachPartysIndex`, `indexKeepsCreationOrderPerAccount` |
+| 65 | identifier not appended to the referee's index | `appendsTheIdentifierToEachPartysIndex`, `indexKeepsCreationOrderPerAccount` |
+| 66 | identifier not appended to the beneficiary's index | `appendsTheIdentifierToEachPartysIndex` |
+| 67 | no `PledgeCreated` event | `emitsOncePerPledgeWithItsOwnIdentifier`, `emitsPledgeCreatedWithTheNewPledgesFields` |
+| 68 | `PledgeCreated` with referee and beneficiary swapped | `emitsOncePerPledgeWithItsOwnIdentifier`, `emitsPledgeCreatedWithTheNewPledgesFields` |
+| 69 | `MockHostileToken` always returns true | `revertsWhenTheTokenReportsFailure`, `hostileTokenCanReturnFalseAndMoveNothing` |
+| 70 | `MockHostileToken` never calls back | `allowsANonReentrantCallFromTheToken`, `revertsWhenTheTokenReentersCreatePledge`, `hostileTokenBubblesTheReentrantCallsRevert`, and 2 more |
+| 71 | `MockHostileToken` swallows the reentrant call's revert | `revertsWhenTheTokenReentersCreatePledge`, `hostileTokenBubblesTheReentrantCallsRevert` |
+| 72 | `MockHostileToken` moves balances even when it returns false | `hostileTokenCanReturnFalseAndMoveNothing` |
+| 73 | `MockHostileToken` without its balance check | `hostileTokenRefusesATransferItCannotCover` |
+| 74 | `MockHostileToken` without its allowance check | `hostileTokenRefusesATransferItCannotCover` |
+
+Mutation 40 shows why the `MAX_DURATION` bound is measured from `block.timestamp`: a bound that
+ignores the current time rejects every realistic deadline, and 33 tests say so.
+
+Final run: `forge fmt --check` clean; `forge test` 84 passed, 0 failed; `forge coverage --report
+summary`: `src/SatStake.sol | 100.00% (50/50) | 100.00% (74/74) | 100.00% (15/15) | 100.00% (5/5)`;
+`node tools/trace-check.mjs`: `trace-check: OK. 25/112 LLRs referenced, 0/55 journeys passing.`
+
+### Requirement follow-up, 2026-09-27
+
+Two of the three defects reported at the end of the group were resolved in the requirements after
+the mutation run above, so their work follows it here rather than in the earlier steps.
+
+**LLR-SC-020 (05 v1.8) now names the six fields taken from the arguments**, which were until then
+an inference from LLR-SC-010. Each of the six assignments gained its `// LLR-SC-020` comment, and
+`test_SC010_storedRecordKeepsEachPledgeApart` and `test_SC010_storedPromiseTextSurvivesEveryLength`
+now carry `LLR-SC-020` beside `LLR-SC-010`. No behaviour changed, so the red for the six fields is
+mutations 75 to 78, each one a value a weak test would not notice.
+
+**LLR-SC-027 was violated when the contract's balance fell.** The requirement calls for
+`UnexpectedTransferAmount(amount, received)` whenever the balance "did not increase by exactly
+`amount`", and a decrease is such a case, but the plain subtraction panicked instead. `received` is
+now a saturating difference, zero when the balance did not rise. `MockHostileToken` gained
+`setDrain(account)`, which takes an account's whole balance for the token during the next transfer,
+so the case can be reached at all.
+
+Red, with the mock able to drain but the contract unchanged. Command:
+`forge test --no-match-contract Allowlist`
+
+```
+[FAIL: Error != expected error: panic: arithmetic underflow or overflow (0x11) != UnexpectedTransferAmount(500, 0)] test_SC027_revertsWhenTheContractsBalanceFalls()
+Ran 3 test suites: 68 tests passed, 1 failed, 0 skipped (69 total tests)
+```
+
+The setup is a real earlier pledge of 1000, so the balance the token takes is a stake the contract
+already held, not a mint. `test_VV007_hostileTokenCanTakeAnAccountsBalanceDuringATransfer` covers
+the mock's own new behaviour.
+
+Green: `forge test` 86 passed, 0 failed, 0 skipped.
+
+| # | Mutation | Failing tests |
+|---|---|---|
+| 75 | `amount` stored as a fixed number | `storedRecordHoldsEveryFieldOfTheInterface`, `storedRecordKeepsEachPledgeApart` |
+| 76 | `referee` and `beneficiary` swapped on the way into the record | `storedRecordHoldsEveryFieldOfTheInterface`, `storedRecordKeepsEachPledgeApart` |
+| 77 | `deadline` stored as `createdAt` | `storedRecordHoldsEveryFieldOfTheInterface`, `storedRecordKeepsEachPledgeApart`, `acceptsADeadlineExactlyAtTheMaximum`, and 1 more |
+| 78 | `promiseText` not stored | `storedPromiseTextSurvivesEveryLength`, `storedRecordHoldsEveryFieldOfTheInterface`, `storedRecordKeepsEachPledgeApart`, and 1 more |
+| 79 | plain subtraction instead of the saturating one | `revertsWhenTheContractsBalanceFalls` |
+| 80 | `received` saturates to the amount instead of to zero | `revertsWhenLessThanTheAmountArrives`, `revertsWhenTheContractsBalanceFalls` |
+| 81 | `MockHostileToken` never takes a balance | `revertsWhenTheContractsBalanceFalls`, `hostileTokenCanTakeAnAccountsBalanceDuringATransfer` |
+
+Mutations 76 to 78 repeat 57, 58, and 61, which were run when those fields answered to LLR-SC-010
+alone; they are rerun here because LLR-SC-020 now requires the same values directly. Every
+mutation is killed.
+
+Run after the follow-up: `forge fmt --check` clean; `forge test` 86 passed, 0 failed; `forge
+coverage --report summary`: `src/SatStake.sol | 100.00% (51/51) | 100.00% (75/75) | 100.00%
+(15/15) | 100.00% (5/5)`; `node tools/trace-check.mjs`: `trace-check: OK. 25/112 LLRs referenced,
+0/55 journeys passing.`
+
+### Review follow-up, 2026-09-27
+
+The independent review of the group found two tests that did not prove what they claimed. The
+contract was already correct in both cases; the evidence was not.
+
+**A surviving mutant: the transfer could be placed between the two LLR-SC-026 checks.**
+`test_SC026_everyCheckRunsBeforeTheTransfer` used only the empty-promise case, and the 281-byte
+test used a funded staker, so nothing covered the gap between the two. With `_receiveStake` moved
+to sit between them the whole suite passed. The observably wrong behaviour is that a staker who
+cannot pay, submitting a 281-byte promise, receives the token's error rather than
+`PromiseTooLong(281)`. The test now repeats its unfunded caller with a 281-byte promise, which is
+the last check of all, so a transfer placed anywhere before it is caught. Mutation 82.
+
+**The reentrancy test killed its mutant through error data rather than through the attack.**
+With `nonReentrant` removed, `test_SC003_revertsWhenTheTokenReentersCreatePledge` failed with
+`ERC20InsufficientAllowance`, because the hostile token held no USDC and had approved nothing, so
+the reentrant call would have failed with or without the guard. The token is now funded and
+approved, and the test asserts both before acting, so without the guard the reentrant call really
+does create a second pledge. Mutation 83, with the failure that shows the difference:
+
+```
+[FAIL: next call did not revert as expected] test_SC003_revertsWhenTheTokenReentersCreatePledge()
+```
+
+| # | Mutation | Failing tests |
+|---|---|---|
+| 82 | `_receiveStake` moved between the two LLR-SC-026 checks | `everyCheckRunsBeforeTheTransfer` |
+| 83 | `nonReentrant` removed from `createPledge` | `revertsWhenTheTokenReentersCreatePledge` |
+
+Two labels corrected in this log and one test renamed:
+
+- `test_VV007_hostileTokenCanTakeAnAccountsBalanceDuringATransfer` had no observed red of its own:
+  the follow-up red run above shows 68 passed and 1 failed, so the drain behaviour already existed
+  when that test first ran. Its red is mutation 81.
+- `test_SC012_aRevertedCreateConsumesNoIdentifier` asserts a property of the EVM rather than of
+  this contract: no implementation here could consume an identifier on revert, since there is no
+  `try`/`catch` and reentrancy is blocked. It is kept because it kills mutations 28, 52, and 53,
+  which is what it actually pins; it is not evidence for the sentence of LLR-SC-012 it cites.
+- `test_SC020_checksRunInTheOrderOfTheRequirements` is renamed `test_SC021_...`, so its name and
+  its `@custom:verifies` tag, which lists LLR-SC-021 to LLR-SC-026, agree.
+
+Carry-forward for later groups, beyond LLR-SC-028 and LLR-SC-010 above: **LLR-SC-003 is now
+referenced, so the trace checker is satisfied for it from here on**, although it also requires
+`nonReentrant` on `markKept`, `markBroken`, and `settle`, and `safeTransfer` in `settle`, none of
+which exist yet. The verdict and settle groups must add those and their tests without any tooling
+prompt, and the LLR-SC-003 inspection row is scoped to `createPledge` until they do.
+
+Run after this follow-up: `forge fmt --check` clean; `forge test` 86 passed, 0 failed; `forge
+coverage --report summary`: `src/SatStake.sol | 100.00% (51/51) | 100.00% (75/75) | 100.00%
+(15/15) | 100.00% (5/5)`; `node tools/trace-check.mjs`: `trace-check: OK. 25/112 LLRs referenced,
+0/55 journeys passing.`

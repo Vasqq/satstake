@@ -1,6 +1,6 @@
 # 05 Low-Level Requirements
 
-Version 1.6, 2026-09-26. Status: baselined. Low-level requirements are precise enough to be implemented and tested without further design decisions. Conventions follow 04_HLR.md. The "Derived" column marks requirements that arise from design or platform constraints rather than directly from a user journey; each carries its reason.
+Version 1.9, 2026-09-27. Status: baselined. Low-level requirements are precise enough to be implemented and tested without further design decisions. Conventions follow 04_HLR.md. The "Derived" column marks requirements that arise from design or platform constraints rather than directly from a user journey; each carries its reason.
 
 Scopes: **SC** smart contract, **FE** frontend application, **DP** deployment, **SB** submission, **VV** verification process.
 
@@ -74,6 +74,13 @@ error NotSettleable(uint64 deadline);
 error AlreadySettled();
 ```
 
+The OpenZeppelin units that LLR-SC-003 requires raise two further errors, which the contract does not declare but its ABI carries:
+
+```solidity
+error SafeERC20FailedOperation(address token);   // from SafeERC20
+error ReentrancyGuardReentrantCall();            // from ReentrancyGuard
+```
+
 ### 1.2 State machine
 
 ```mermaid
@@ -99,7 +106,7 @@ stateDiagram-v2
 | LLR-SC-001 | The contract shall compile with Solidity 0.8.28 exactly, optimizer enabled at 200 runs, and `evm_version` set to the value confirmed in Phase 0 (default `cancun`). | HLR-018 | I | Yes: V-13 |
 | LLR-SC-002 | The contract shall declare no `payable` function, no `receive`, and no `fallback`. | HLR-010 | T | Yes: D-01 removes native value handling |
 | LLR-SC-003 | The contract shall use OpenZeppelin `SafeERC20` for every token transfer and shall apply OpenZeppelin `ReentrancyGuard.nonReentrant` to `createPledge`, `markKept`, `markBroken`, and `settle`. | HLR-015 | T, I | Yes: defense in depth; allowlisted tokens have no callbacks |
-| LLR-SC-004 | Every revert in the contract shall use a custom error from section 1.1; no revert strings shall be used. | HLR-018 | I | Yes: gas and decodability |
+| LLR-SC-004 | Every revert the contract itself raises shall use a custom error declared in section 1.1; no revert strings shall be used. The two errors section 1.1 attributes to the OpenZeppelin units required by LLR-SC-003 may also reach a caller. | HLR-018 | I | Yes: gas and decodability |
 | LLR-SC-005 | The contract shall declare `MIN_DURATION = 60`, `MAX_DURATION = 365 days`, `MAX_PROMISE_BYTES = 280`, and `MAX_PAGE = 100` as public constants. | HLR-018 | T | No |
 
 **Data**
@@ -121,14 +128,14 @@ stateDiagram-v2
 
 | ID | Requirement | Parents | Method | Derived |
 |---|---|---|---|---|
-| LLR-SC-020 | `createPledge` shall, when all checks pass, create one pledge with `staker = msg.sender`, `createdAt = block.timestamp`, and `status = Active`, and shall return its identifier. | HLR-001 | T | No |
+| LLR-SC-020 | `createPledge` shall, when all checks pass, create one pledge with `staker = msg.sender`, `createdAt = block.timestamp`, `status = Active`, and `token`, `amount`, `referee`, `beneficiary`, `deadline`, and `promiseText` taken unchanged from the arguments of the same name, and shall return its identifier. | HLR-001 | T | No |
 | LLR-SC-021 | `createPledge` shall revert with `TokenNotAllowed(token)` if `token` is not allowed. | HLR-009 | T | No |
 | LLR-SC-022 | `createPledge` shall revert with `ZeroAmount` if `amount` is 0. | HLR-001 | T | No |
 | LLR-SC-023 | `createPledge` shall revert with `ZeroAddress` if `referee` or `beneficiary` is the zero address; then with `PartyIsContract` if either equals `address(this)`; then with `PartyIsStaker` if either equals `msg.sender`. | HLR-008 | T | No |
 | LLR-SC-024 | `createPledge` shall revert with `RefereeIsBeneficiary` if `referee` equals `beneficiary`. | HLR-008 | T | No |
 | LLR-SC-025 | `createPledge` shall revert with `DeadlineTooSoon(block.timestamp + MIN_DURATION)` if `deadline < block.timestamp + MIN_DURATION`, and with `DeadlineTooFar(block.timestamp + MAX_DURATION)` if `deadline > block.timestamp + MAX_DURATION`. | HLR-001 | T | No |
 | LLR-SC-026 | `createPledge` shall revert with `PromiseEmpty` if `bytes(promiseText).length` is 0, and with `PromiseTooLong(length)` if it exceeds `MAX_PROMISE_BYTES`. | HLR-001 | T | No |
-| LLR-SC-027 | `createPledge` shall transfer `amount` of `token` from `msg.sender` to the contract with `safeTransferFrom`, and shall revert with `UnexpectedTransferAmount(amount, received)` if the contract's balance of `token` did not increase by exactly `amount`. | HLR-001, HLR-002, HLR-012, HLR-015 | T | Yes: guards against fee-on-transfer behaviour a FiatToken upgrade could introduce |
+| LLR-SC-027 | `createPledge` shall transfer `amount` of `token` from `msg.sender` to the contract with `safeTransferFrom`, and shall revert with `UnexpectedTransferAmount(amount, received)` if the contract's balance of `token` did not increase by exactly `amount`, where `received` is the increase in that balance, or 0 if it did not rise. | HLR-001, HLR-002, HLR-012, HLR-015 | T | Yes: guards against fee-on-transfer behaviour a FiatToken upgrade could introduce |
 | LLR-SC-028 | On success, `createPledge` shall increase `totalLocked(token)` by `amount` and append the new identifier to the pledge index of the staker, the referee, and the beneficiary. | HLR-001, HLR-002, HLR-015 | T | No |
 | LLR-SC-029 | On success, `createPledge` shall emit `PledgeCreated` with the new pledge's identifier and fields. | HLR-001, HLR-016 | T | No |
 
@@ -224,6 +231,8 @@ stateDiagram-v2
 | VerdictWindowClosed | The deadline has passed, so a verdict can no longer be recorded. The stake now goes to the beneficiary. |
 | NotSettleable | This pledge cannot be settled until the referee rules or the deadline passes. |
 | AlreadySettled | This pledge has already been settled. |
+| SafeERC20FailedOperation | The token refused the transfer, so nothing was locked. You can try again later. |
+| ReentrancyGuardReentrantCall | This request called SatStake again before the first call finished. Nothing changed. |
 | Token revert on transfer | The token issuer blocked this transfer. Nothing changed. You can try again later. |
 | Wallet rejection (4001) | You cancelled the request in your wallet. Nothing was sent. |
 
@@ -346,7 +355,7 @@ stateDiagram-v2
 | LLR-VV-004 | Invariant tests for LLR-SC-070 to LLR-SC-075 shall run with at least 512 runs and depth 128. | HLR-041 | T | No |
 | LLR-VV-005 | An end-to-end script shall execute UJ-10, UJ-11, UJ-30, UJ-31, UJ-32, UJ-40 to UJ-45 on Arc testnet with real tokens and record transaction hashes in `docs/evidence/`. | HLR-041 | T | Yes: V-08, anvil cannot reproduce Arc semantics |
 | LLR-VV-006 | Frontend unit tests shall cover LLR-FE-012, 030, 031, 032, 042, 045, 060, and 071. | HLR-041 | T | No |
-| LLR-VV-007 | Unit tests shall use a mock token that implements FiatToken-style blocklisting and pausing to verify LLR-SC-045 and LLR-SC-075, and a second mock token that charges a fee on transfer to verify LLR-SC-027. | HLR-041 | T | Yes: issuer controls cannot be triggered on real tokens |
+| LLR-VV-007 | Unit tests shall use a mock token that implements FiatToken-style blocklisting and pausing to verify LLR-SC-045 and LLR-SC-075, a second mock token that charges a fee on transfer to verify LLR-SC-027, and a third mock token that reenters the contract from a transfer, that can return `false` or no value, and that can take an account's balance during a transfer, to verify LLR-SC-003 and the falling-balance case of LLR-SC-027. | HLR-041 | T | Yes: issuer controls cannot be triggered on real tokens |
 | LLR-VV-008 | Slither shall run on the contract; every finding shall be fixed or justified in `docs/evidence/slither.md`, with no unresolved high or medium finding. | HLR-041 | A | Yes: static analysis as independent check |
 | LLR-VV-009 | `docs/ACCEPTANCE.md` shall list every journey in 03_USER_JOURNEYS.md with its expected outcome, its verification (test names, evidence file, or walkthrough step), and its result; `tools/trace-check.mjs` shall fail if any journey is missing or, with `--release`, has a result other than `Pass`, except that a journey whose verification includes a walkthrough step may have the result `Awaiting walkthrough`. | HLR-042 | T | No |
 | LLR-VV-010 | `docs/WALKTHROUGH.md` shall give Liam a numbered end-user script on the mainnet site covering every journey marked for manual verification in ACCEPTANCE.md, with the expected result of each step. | HLR-042 | D | No |
@@ -363,3 +372,6 @@ stateDiagram-v2
 | 1.4 | 2026-09-25 | LLR-VV-009 accepts `Awaiting walkthrough` at release for journeys with a walkthrough step. Found by independent review: 06 section 11 runs `trace-check --release` before Liam's walkthrough, so requiring `Pass` for every journey made the gate impossible to open. |
 | 1.5 | 2026-09-25 | Section 1.1 and LLR-SC-026: the field and parameter `promise` renamed `promiseText`, because `promise` is a reserved keyword in Solidity 0.8.28 (error 2314) and the interface could not compile. LLR-SC-011 now also covers the `PledgeState` enum, which section 1.1 declares but no requirement other than LLR-SC-051 named. Both found by the implementer of the first contract group. |
 | 1.6 | 2026-09-26 | LLR-VV-007 names the fee-charging mock that 06 section 5 already required for LLR-SC-027, so the mock traces to a requirement and not only to the plan. |
+| 1.7 | 2026-09-27 | LLR-VV-007 names a third mock, hostile on transfer. LLR-SC-003 has method T, but the guard it requires cannot be shown to be applied without a token that reenters, and the `SafeERC20` half cannot be shown without a token that returns `false` or no value. Found when scoping the create group. 06 section 5 changed to match. |
+| 1.8 | 2026-09-27 | LLR-SC-020 now states that `token`, `amount`, `referee`, `beneficiary`, `deadline`, and `promiseText` are stored unchanged from the arguments. It named only the three fields the contract derives, so nothing required the stake to record what the staker actually asked for; LLR-SC-010 gives the record its shape, not its values. Found by the implementer of the create group. |
+| 1.9 | 2026-09-27 | Three changes from the independent review of the create group. Section 1.1, LLR-SC-004, and section 2.2: `SafeERC20` and `ReentrancyGuard`, which LLR-SC-003 requires, put `SafeERC20FailedOperation` and `ReentrancyGuardReentrantCall` in the ABI, so LLR-SC-004 as written was false the moment LLR-SC-003 was met, and LLR-FE-060 would have failed on two unmapped errors. Both are now declared and given messages. LLR-SC-027 defines `received` as 0 when the balance does not rise, which the code had decided on its own. LLR-VV-007 covers the mock taking a balance during a transfer, which is what reaches that case. |

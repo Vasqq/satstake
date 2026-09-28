@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
 /// @title SatStake
 /// @notice Locks an allowlisted ERC-20 stake against a written promise. A named referee judges
 /// the promise before its deadline; a kept promise returns the stake to the staker, and a broken
 /// or unjudged one sends it to the named beneficiary.
 /// @custom:trace LLR-SC-001 LLR-SC-004 LLR-SC-014
-contract SatStake {
+contract SatStake is ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
     /// @notice Stored lifecycle of a pledge. `None` is the zero value, so an identifier that was
     /// never assigned reads as `None` and denotes a nonexistent pledge.
     /// @custom:trace LLR-SC-011
@@ -67,6 +73,7 @@ contract SatStake {
     event TokenAllowed(address indexed token);
 
     /// @notice A pledge was created and its stake transferred into the contract.
+    /// @custom:trace LLR-SC-029
     event PledgeCreated(
         uint256 indexed id,
         address indexed staker,
@@ -161,6 +168,16 @@ contract SatStake {
     address[] private _allowedTokens;
     mapping(address => bool) private _isAllowed;
 
+    // The identifier of the last pledge created, so the next one is this plus one.
+    uint256 private _pledgeCount;
+
+    mapping(uint256 => Pledge) private _pledges;
+
+    // Stake held for each token, and the pledges each account takes part in. Both are kept as the
+    // pledges change, so a reader never has to scan the whole history.
+    mapping(address => uint256) private _totalLocked;
+    mapping(address => uint256[]) private _pledgeIds;
+
     /// @param tokens The ERC-20 tokens pledges may use: 1 to 4 distinct contracts.
     /// @custom:trace LLR-SC-013
     constructor(address[] memory tokens) {
@@ -176,6 +193,79 @@ contract SatStake {
             _allowedTokens.push(token); // LLR-SC-054
             emit TokenAllowed(token); // LLR-SC-013
         }
+    }
+
+    /// @notice Locks `amount` of `token` against `promiseText` until `deadline`, for `referee` to
+    /// judge. A kept promise returns the stake to the caller; a broken or unjudged one sends it to
+    /// `beneficiary`.
+    /// @param token An allowlisted ERC-20.
+    /// @param amount Stake, in the token's own units.
+    /// @param referee The account that may record a verdict.
+    /// @param beneficiary The account that receives a forfeited stake.
+    /// @param deadline Unix time at which the verdict window closes.
+    /// @param promiseText The promise, at most `MAX_PROMISE_BYTES` UTF-8 bytes.
+    /// @return id The new pledge's identifier.
+    /// @custom:trace LLR-SC-003 LLR-SC-010 LLR-SC-012 LLR-SC-020 LLR-SC-021 LLR-SC-022
+    /// @custom:trace LLR-SC-023 LLR-SC-024 LLR-SC-025 LLR-SC-026 LLR-SC-027 LLR-SC-028 LLR-SC-029
+    function createPledge(
+        address token,
+        uint256 amount,
+        address referee,
+        address beneficiary,
+        uint64 deadline,
+        string calldata promiseText
+    ) external nonReentrant returns (uint256 id) {
+        if (!_isAllowed[token]) revert TokenNotAllowed(token); // LLR-SC-021
+        if (amount == 0) revert ZeroAmount(); // LLR-SC-022
+        if (referee == address(0) || beneficiary == address(0)) revert ZeroAddress(); // LLR-SC-023
+        if (referee == address(this) || beneficiary == address(this)) revert PartyIsContract(); // LLR-SC-023
+        if (referee == msg.sender || beneficiary == msg.sender) revert PartyIsStaker(); // LLR-SC-023
+        if (referee == beneficiary) revert RefereeIsBeneficiary(); // LLR-SC-024
+
+        // Widened, so that a timestamp near the end of the uint64 range cannot overflow the bound.
+        uint256 earliest = block.timestamp + MIN_DURATION;
+        uint256 latest = block.timestamp + MAX_DURATION;
+        if (deadline < earliest) revert DeadlineTooSoon(uint64(earliest)); // LLR-SC-025
+        if (deadline > latest) revert DeadlineTooFar(uint64(latest)); // LLR-SC-025
+
+        uint256 promiseLength = bytes(promiseText).length;
+        if (promiseLength == 0) revert PromiseEmpty(); // LLR-SC-026
+        if (promiseLength > MAX_PROMISE_BYTES) revert PromiseTooLong(promiseLength); // LLR-SC-026
+
+        _receiveStake(token, amount);
+
+        id = ++_pledgeCount; // LLR-SC-012
+
+        Pledge storage p = _pledges[id]; // LLR-SC-010
+        p.staker = msg.sender; // LLR-SC-020
+        p.token = token; // LLR-SC-020
+        p.amount = amount; // LLR-SC-020
+        p.referee = referee; // LLR-SC-020
+        p.beneficiary = beneficiary; // LLR-SC-020
+        p.deadline = deadline; // LLR-SC-020
+        p.createdAt = uint64(block.timestamp); // LLR-SC-020
+        p.status = Status.Active; // LLR-SC-020
+        p.promiseText = promiseText; // LLR-SC-020
+
+        _totalLocked[token] += amount; // LLR-SC-028
+        _pledgeIds[msg.sender].push(id); // LLR-SC-028
+        _pledgeIds[referee].push(id); // LLR-SC-028
+        _pledgeIds[beneficiary].push(id); // LLR-SC-028
+
+        emit PledgeCreated(id, msg.sender, token, amount, referee, beneficiary, deadline); // LLR-SC-029
+    }
+
+    // Pulls the stake from the caller and confirms that exactly `amount` arrived. The balance is
+    // measured around the transfer, because a token that took a fee would otherwise leave the
+    // pledge promising more than the contract holds.
+    function _receiveStake(address token, uint256 amount) private {
+        uint256 balanceBefore = IERC20(token).balanceOf(address(this));
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount); // LLR-SC-003 LLR-SC-027
+        uint256 balanceAfter = IERC20(token).balanceOf(address(this));
+        // A token that took more than it delivered leaves no increase at all, which is reported as
+        // nothing received so the check below raises the error the requirement names.
+        uint256 received = balanceAfter > balanceBefore ? balanceAfter - balanceBefore : 0; // LLR-SC-027
+        if (received != amount) revert UnexpectedTransferAmount(amount, received); // LLR-SC-027
     }
 
     /// @notice Whether pledges may use `token`.
