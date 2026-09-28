@@ -96,17 +96,28 @@ abstract contract SatStakeTestBase is Test {
         uint256 withBeneficiary = _word(base + 4);
         p.beneficiary = address(uint160(withBeneficiary));
         p.deadline = uint64(withBeneficiary >> 160);
-        uint256 withCreatedAt = _word(base + 5);
+        uint256 withCreatedAt = _word(_statusSlotOf(id));
         p.createdAt = uint64(withCreatedAt);
-        p.status = SatStake.Status(uint8(withCreatedAt >> 64));
+        p.status = _statusInWord(withCreatedAt);
         p.promiseText = _storedString(base + 6);
+    }
+
+    /// The slot holding the stored status of `id`, which it shares with `createdAt`. A test that
+    /// reads SatStake's storage from somewhere other than this contract needs the slot itself.
+    function _statusSlotOf(uint256 id) internal returns (uint256) {
+        _loadSlots();
+        return _mappingSlot(id, pledgesSlot) + 5;
+    }
+
+    /// The status held in a word read from `_statusSlotOf`.
+    function _statusInWord(uint256 word) internal pure returns (SatStake.Status) {
+        return SatStake.Status(uint8(word >> 64));
     }
 
     /// Writes `status` into the stored record of `id`, leaving `createdAt`, which shares the slot,
     /// as it was. Lets a test reach a status no implemented function can yet produce.
     function _setStoredStatus(uint256 id, SatStake.Status status) internal {
-        _loadSlots();
-        uint256 slot = _mappingSlot(id, pledgesSlot) + 5;
+        uint256 slot = _statusSlotOf(id);
         uint256 kept = _word(slot) & ~(uint256(0xff) << 64);
         vm.store(address(satStake), bytes32(slot), bytes32(kept | (uint256(uint8(status)) << 64)));
     }
@@ -134,8 +145,13 @@ abstract contract SatStakeTestBase is Test {
     }
 
     function _storedTotalLocked(address token) internal returns (uint256) {
+        return _word(_totalLockedSlotOf(token));
+    }
+
+    /// The slot holding the locked total of `token`, for a reader outside this contract.
+    function _totalLockedSlotOf(address token) internal returns (uint256) {
         _loadSlots();
-        return _word(_mappingSlot(token, totalLockedSlot));
+        return _mappingSlot(token, totalLockedSlot);
     }
 
     function _storedPledgeIds(address account) internal returns (uint256[] memory ids) {
@@ -147,5 +163,21 @@ abstract contract SatStakeTestBase is Test {
         for (uint256 i = 0; i < length; i++) {
             ids[i] = _word(data + i);
         }
+    }
+
+    /// Every field of the record for `id`, against a snapshot taken earlier. Comparing a status
+    /// alone leaves the fields nothing reads back free to change unnoticed, which is how a call
+    /// that corrupted a neighbouring pledge's promise or creation time went undetected.
+    function _assertSameRecord(uint256 id, SatStake.Pledge memory expected) internal {
+        SatStake.Pledge memory p = _storedPledge(id);
+        assertEq(uint8(p.status), uint8(expected.status));
+        assertEq(p.staker, expected.staker);
+        assertEq(p.token, expected.token);
+        assertEq(p.amount, expected.amount);
+        assertEq(p.referee, expected.referee);
+        assertEq(p.beneficiary, expected.beneficiary);
+        assertEq(p.deadline, expected.deadline);
+        assertEq(p.createdAt, expected.createdAt);
+        assertEq(p.promiseText, expected.promiseText);
     }
 }

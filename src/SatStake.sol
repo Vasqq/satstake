@@ -89,6 +89,7 @@ contract SatStake is ReentrancyGuard {
     event VerdictRecorded(uint256 indexed id, bool kept);
 
     /// @notice A pledge's stake was paid out in full to `recipient`.
+    /// @custom:trace LLR-SC-044
     event PledgeSettled(uint256 indexed id, address indexed recipient, uint256 amount);
 
     /// @notice The constructor's token list is empty, too long, or has a zero, codeless, or
@@ -208,6 +209,7 @@ contract SatStake is ReentrancyGuard {
     /// @return id The new pledge's identifier.
     /// @custom:trace LLR-SC-003 LLR-SC-010 LLR-SC-012 LLR-SC-020 LLR-SC-021 LLR-SC-022
     /// @custom:trace LLR-SC-023 LLR-SC-024 LLR-SC-025 LLR-SC-026 LLR-SC-027 LLR-SC-028 LLR-SC-029
+    /// @custom:trace LLR-SC-045
     function createPledge(
         address token,
         uint256 amount,
@@ -261,7 +263,7 @@ contract SatStake is ReentrancyGuard {
     // pledge promising more than the contract holds.
     function _receiveStake(address token, uint256 amount) private {
         uint256 balanceBefore = IERC20(token).balanceOf(address(this));
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount); // LLR-SC-003 LLR-SC-027
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount); // LLR-SC-003 LLR-SC-027 LLR-SC-045
         uint256 balanceAfter = IERC20(token).balanceOf(address(this));
         // A token that took more than it delivered leaves no increase at all, which is reported as
         // nothing received so the check below raises the error the requirement names.
@@ -297,6 +299,41 @@ contract SatStake is ReentrancyGuard {
         if (block.timestamp >= p.deadline) revert VerdictWindowClosed(p.deadline); // LLR-SC-032
         p.status = kept ? Status.Kept : Status.Broken; // LLR-SC-033
         emit VerdictRecorded(id, kept); // LLR-SC-033
+    }
+
+    /// @notice Pays out a pledge's stake in full: to the staker if the referee judged the promise
+    /// kept, and to the beneficiary if the referee judged it broken or the deadline passed with no
+    /// verdict. Any account may call it.
+    /// @param id The pledge to settle.
+    /// @custom:trace LLR-SC-003 LLR-SC-040 LLR-SC-041 LLR-SC-042 LLR-SC-043 LLR-SC-044 LLR-SC-045
+    function settle(uint256 id) external nonReentrant {
+        Pledge storage p = _pledges[id];
+        Status status = p.status;
+        if (status == Status.None) revert PledgeNotFound(id); // LLR-SC-040
+        if (status == Status.SettledToStaker || status == Status.SettledToBeneficiary) revert AlreadySettled(); // LLR-SC-042
+
+        address recipient;
+        Status settled;
+        if (status == Status.Kept) {
+            recipient = p.staker; // LLR-SC-041
+            settled = Status.SettledToStaker; // LLR-SC-041
+        } else if (status == Status.Broken) {
+            recipient = p.beneficiary; // LLR-SC-041
+            settled = Status.SettledToBeneficiary; // LLR-SC-041
+        } else {
+            // The only status left is Active, which settles once its deadline has been reached.
+            if (block.timestamp < p.deadline) revert NotSettleable(p.deadline); // LLR-SC-042
+            recipient = p.beneficiary; // LLR-SC-041
+            settled = Status.SettledToBeneficiary; // LLR-SC-041
+        }
+
+        address token = p.token;
+        uint256 amount = p.amount;
+        p.status = settled; // LLR-SC-043
+        _totalLocked[token] -= amount; // LLR-SC-043
+
+        IERC20(token).safeTransfer(recipient, amount); // LLR-SC-003 LLR-SC-044 LLR-SC-045
+        emit PledgeSettled(id, recipient, amount); // LLR-SC-044
     }
 
     /// @notice Whether pledges may use `token`.

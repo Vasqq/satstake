@@ -119,6 +119,7 @@ contract SatStakeVerdictTest is SatStakeTestBase {
         uint256 other = _createActive();
 
         SatStake.Pledge memory before = _storedPledge(id);
+        SatStake.Pledge memory otherBefore = _storedPledge(other);
         uint256 lockedBefore = _storedTotalLocked(address(usdc));
         uint256[] memory stakerIdsBefore = _storedPledgeIds(staker);
         uint256[] memory refereeIdsBefore = _storedPledgeIds(referee);
@@ -143,7 +144,9 @@ contract SatStakeVerdictTest is SatStakeTestBase {
         assertEq(_storedPledgeIds(referee), refereeIdsBefore);
         assertEq(_storedPledgeIds(beneficiary), beneficiaryIdsBefore);
 
-        // The next pledge takes the next identifier, so the verdict consumed none.
+        // The other pledge is untouched in every field, not only in its status, and the next one
+        // takes the next identifier, so the verdict consumed none.
+        _assertSameRecord(other, otherBefore);
         assertEq(_createActive(), other + 1);
     }
 

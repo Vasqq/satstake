@@ -1032,3 +1032,286 @@ Run after this follow-up: `forge fmt --check` clean; `forge test` 102 passed, 0 
 coverage --report summary`: `src/SatStake.sol | 100.00% (63/63) | 100.00% (88/88) | 100.00%
 (19/19) | 100.00% (8/8)`; `node tools/trace-check.mjs`: `trace-check: OK. 29/112 LLRs referenced,
 0/55 journeys passing.`
+
+## Group: SC settle (LLR-SC-040 to 045, LLR-SC-003 for `settle`)
+
+Tests written from the six settlement rows, the state machine in 05 section 1.2, the `LLR-SC-003`
+sentence that names `settle`, and 06 section 4, before `settle` had a body. Every status the
+`Status` enum can hold is reached by a real sequence of calls: no test in this group writes a
+status with `vm.store`, which the verdict group still had to do for the two settled ones.
+
+| Test | Verifies |
+|---|---|
+| `test_SC040_revertsWithPledgeNotFoundForAnIdentifierNeverAssigned` | LLR-SC-040 |
+| `test_SC040_anyAccountMaySettleAndThePayoutIgnoresTheCaller` | LLR-SC-040, LLR-SC-041 |
+| `test_SC040_anUnrelatedCallerMaySettleAndReceivesNothing` (fuzz) | LLR-SC-040, LLR-SC-041 |
+| `test_SC041_aKeptPledgePaysTheStaker` | LLR-SC-041, LLR-SC-044 |
+| `test_SC041_aBrokenPledgePaysTheBeneficiary` | LLR-SC-041, LLR-SC-044 |
+| `test_SC041_anActivePledgeAtTheDeadlinePaysTheBeneficiary` | LLR-SC-041, LLR-SC-042 |
+| `test_SC041_anActivePledgeAfterTheDeadlinePaysTheBeneficiary` | LLR-SC-041 |
+| `test_SC041_everyStoredStatusSettlesAsTheTableSays` | LLR-SC-040, LLR-SC-041, LLR-SC-042 |
+| `test_SC041_settlesOnlyTheNamedPledge` | LLR-SC-041 |
+| `test_SC041_theSettlementChangesTheStatusAndTheLockedTotalAndNothingElse` | LLR-SC-041, LLR-SC-043 |
+| `test_SC042_revertsForAnActivePledgeOneSecondBeforeTheDeadline` | LLR-SC-042 |
+| `test_SC042_revertsForAnActivePledgeLongBeforeTheDeadline` | LLR-SC-042 |
+| `test_SC042_revertsWithAlreadySettledAfterEverySettlement` | LLR-SC-042 |
+| `test_SC042_anActivePledgeBecomesSettleableAtTheDeadlineAndNotBefore` (fuzz) | LLR-SC-041, LLR-SC-042 |
+| `test_SC041_aRecordedVerdictSettlesTheSameWayAfterTheDeadline` | LLR-SC-041 |
+| `test_SC043_writesTheStatusAndReleasesTheStakeBeforeTheTransfer` | LLR-SC-043 |
+| `test_SC044_transfersTheFullAmountToTheRecipient` | LLR-SC-044 |
+| `test_SC044_emitsPledgeSettledOnceWithTheRecipientAndAmount` | LLR-SC-044 |
+| `test_SC003_settleRevertsWhenTheTokenReportsFailure` | LLR-SC-003, LLR-SC-044 |
+| `test_SC003_settleAcceptsATokenThatReturnsNoValue` | LLR-SC-003 |
+| `test_SC003_revertsWhenTheTokenReentersSettle` | LLR-SC-003 |
+| `test_SC045_aBlockedRecipientLeavesTheSettlementUndone` | LLR-SC-045 |
+| `test_SC045_aPausedTokenLeavesTheSettlementUndone` | LLR-SC-045 |
+| `test_SC045_aBlockedStakerLeavesTheCreationUndone` | LLR-SC-045 |
+| `test_SC045_aPausedTokenLeavesTheCreationUndone` | LLR-SC-045 |
+
+The two boundaries 06 section 4 names for this group, settling an Active pledge at `deadline - 1`
+and at `deadline`, are `test_SC042_revertsForAnActivePledgeOneSecondBeforeTheDeadline` and
+`test_SC041_anActivePledgeAtTheDeadlinePaysTheBeneficiary` by name; the fuzz test walks a minute
+either side of the deadline, so the boundary second itself is reached repeatedly.
+
+LLR-SC-043 asks for an order, not an end state, so the state is read while the payout is still
+running. `MockHostileToken` is armed to call a small observer contract from inside its `transfer`,
+and the observer reads SatStake's storage with `vm.load`: cheatcodes answer any contract in the
+test EVM, not only the test contract. The slots come from the helpers in
+`test/base/SatStakeTestBase.sol`, which now expose `_statusSlotOf` and `_totalLockedSlotOf` so that
+knowledge of the layout of 05 section 1.1 stays in the one file that already held it.
+
+LLR-SC-045 names `createPledge` as well as `settle`, so it has four tests: a blocklisted recipient
+and a paused token on the settlement side, and a blocklisted staker and a paused token on the
+creation side. Each compares the whole pledge record, the locked total, the contract's balance, and
+the index of all three parties across the failed call, and then lifts the token's control and shows
+the same call going through, so the refusal is the token's and not the contract's.
+
+### Red, 2026-09-28
+
+Observed in two steps, as in the previous two groups. Command: `forge test`
+
+Step 1, tests only. The expected compile error names the missing function:
+
+```
+Compiler run failed:
+Error (9582): Member "settle" not found or not visible after argument-dependent lookup in contract SatStake.
+   --> test/SatStake.Settle.t.sol:101:9:
+    |
+101 |         satStake.settle(id);
+    |         ^^^^^^^^^^^^^^^
+```
+
+Step 2, so that each test's own failure is visible: `settle(uint256)` declared with the section 1.1
+signature and an empty body, no guard, no checks, no payout. Twenty-two of the twenty-four tests
+failed for the reason their requirement predicts (fuzz counterexamples trimmed):
+
+| Test | Observed failure |
+|---|---|
+| `test_SC040_revertsWithPledgeNotFoundForAnIdentifierNeverAssigned` | `next call did not revert as expected` |
+| `test_SC040_anyAccountMaySettleAndThePayoutIgnoresTheCaller` | `assertion failed: 999999999999999999999000 != 1000000000000000000000000` |
+| `test_SC040_anUnrelatedCallerMaySettleAndReceivesNothing` | `assertion failed: 999999999999999999999000 != 1000000000000000000000000; counterexample: ...` |
+| `test_SC041_aKeptPledgePaysTheStaker` | `assertion failed: 999999999999999999999000 != 1000000000000000000000000` |
+| `test_SC041_aBrokenPledgePaysTheBeneficiary` | `assertion failed: 0 != 1000` |
+| `test_SC041_anActivePledgeAtTheDeadlinePaysTheBeneficiary` | `assertion failed: 0 != 1000` |
+| `test_SC041_anActivePledgeAfterTheDeadlinePaysTheBeneficiary` | `assertion failed: 0 != 1000` |
+| `test_SC041_everyStoredStatusSettlesAsTheTableSays` | `next call did not revert as expected` |
+| `test_SC041_settlesOnlyTheNamedPledge` | `assertion failed: 2 != 4` |
+| `test_SC041_theSettlementChangesTheStatusAndTheLockedTotalAndNothingElse` | `assertion failed: 2 != 4` |
+| `test_SC042_revertsForAnActivePledgeOneSecondBeforeTheDeadline` | `next call did not revert as expected` |
+| `test_SC042_revertsForAnActivePledgeLongBeforeTheDeadline` | `next call did not revert as expected` |
+| `test_SC042_revertsWithAlreadySettledAfterEverySettlement` | `next call did not revert as expected` |
+| `test_SC042_anActivePledgeBecomesSettleableAtTheDeadlineAndNotBefore` | `assertion failed: 1 != 5; counterexample: ...` |
+| `test_SC043_writesTheStatusAndReleasesTheStakeBeforeTheTransfer` | `assertion failed` |
+| `test_SC044_transfersTheFullAmountToTheRecipient` | `assertion failed: 0 != 31337` |
+| `test_SC044_emitsPledgeSettledOnceWithTheRecipientAndAmount` | `assertion failed: 0 != 1` |
+| `test_SC003_settleRevertsWhenTheTokenReportsFailure` | `next call did not revert as expected` |
+| `test_SC003_settleAcceptsATokenThatReturnsNoValue` | `assertion failed: 999999999999999999999000 != 1000000000000000000000000` |
+| `test_SC003_revertsWhenTheTokenReentersSettle` | `next call did not revert as expected` |
+| `test_SC045_aBlockedRecipientLeavesTheSettlementUndone` | `next call did not revert as expected` |
+| `test_SC045_aPausedTokenLeavesTheSettlementUndone` | `next call did not revert as expected` |
+
+```
+Encountered a total of 22 failing tests, 104 tests succeeded
+```
+
+`999999999999999999999000 != 1000000000000000000000000` is a staker whose balance never rose by the
+stake it had locked; `2 != 4` is a status left `Kept` (2) where the table asks for
+`SettledToStaker` (4); `1 != 5` is the same for an expired pledge, left `Active` (1) where
+`SettledToBeneficiary` (5) is required; the bare `assertion failed` of the LLR-SC-043 test is its
+`assertTrue(observer.captured())`, because with no payout the token never ran at all.
+
+The two remaining tests, `test_SC045_aBlockedStakerLeavesTheCreationUndone` and
+`test_SC045_aPausedTokenLeavesTheCreationUndone`, passed at this point. They are the half of
+LLR-SC-045 that names `createPledge`, which the create group had already implemented, so this group
+could not make them fail by leaving something out; the create group's own red is their red for the
+transfer, and the evidence that they are load-bearing is mutation 134 below, which is the only
+mutant either of them exists to catch.
+
+### Green, 2026-09-28
+
+`settle`, `nonReentrant`, with the existence check, the already-settled check, the recipient table
+of LLR-SC-041 with the deadline check on its `Active` branch, then the status write and the release
+of the stake, and only then the `safeTransfer` and the event. `@custom:trace` added to `settle`, to
+`PledgeSettled`, which had none, and to `createPledge` and its stake transfer for the half of
+LLR-SC-045 they carry. Same command:
+
+```
+Ran 6 test suites: 126 tests passed, 0 failed, 0 skipped (126 total tests)
+```
+
+The three arms of the table set a local `recipient` and a local `settled` rather than paying from
+inside each arm, so the payout, the status write, and the release each appear once and cannot drift
+between the three outcomes. The `Active` arm is the `else`: the four statuses that reach it are
+`None`, `SettledToStaker` and `SettledToBeneficiary`, all three refused above, and `Kept` and
+`Broken`, both taken earlier, so `Active` is the only one left.
+
+### Refactor, 2026-09-28
+
+No structure changed after green. `forge fmt` applied. The one change outside the new files is in
+`test/base/SatStakeTestBase.sol`: `_statusSlotOf`, `_statusInWord`, and `_totalLockedSlotOf` are
+lifted out of `_storedPledge`, `_setStoredStatus`, and `_storedTotalLocked`, which now call them.
+The suite stayed at 126 passed, 0 failed across the move.
+
+### Strengthening before the independent review, 2026-09-28
+
+Two gaps found by rereading the group against the verdict group's review, and closed with the
+contract already correct, so their red is the mutation each was written for.
+
+- `test_SC041_theSettlementChangesTheStatusAndTheLockedTotalAndNothingElse` compared the index of
+  the three parties but not of the caller, who is a party to nothing. A settlement that indexed its
+  caller therefore survived, which is the mutant the verdict group found for verdicts (mutation
+  107). The caller's index is now compared there and in the LLR-SC-045 snapshot. Mutation 135.
+- Nothing settled a judged pledge after its deadline, so the table's selection on the stored status
+  alone was not pinned: a deadline rule applied to `Kept` as well as to `Active` would have sent a
+  kept promise's stake to the beneficiary and passed the group.
+  `test_SC041_aRecordedVerdictSettlesTheSameWayAfterTheDeadline` settles a `Kept` and a `Broken`
+  pledge thirty days past their deadline. Mutation 136.
+
+The suite is 25 tests for this group after these two changes, 127 in all.
+
+### Mutation evidence, 2026-09-28
+
+Each mutation removes or weakens exactly one check, one stored value, one event field, or one
+ordering. Each was applied to a copy of the repository outside it and run with the unchanged tests
+(`forge test`, the whole suite). Every mutation is killed; the killing tests are named with the
+`test_` prefix and the scope number trimmed. Failures were matched on lines beginning `[FAIL`,
+taking the test name after the last `]` on the line, because Foundry prints timestamps and fuzz
+counterexamples in brackets inside the reason.
+
+| # | Mutation | Failing tests |
+|---|---|---|
+| 108 | `settle` without `nonReentrant` | `revertsWhenTheTokenReentersSettle` |
+| 109 | no `PledgeNotFound` check | `revertsWithPledgeNotFoundForAnIdentifierNeverAssigned`, `everyStoredStatusSettlesAsTheTableSays` |
+| 110 | `PledgeNotFound` reports a fixed identifier | `revertsWithPledgeNotFoundForAnIdentifierNeverAssigned`, `everyStoredStatusSettlesAsTheTableSays` |
+| 111 | no `AlreadySettled` check | `everyStoredStatusSettlesAsTheTableSays`, `revertsWithAlreadySettledAfterEverySettlement` |
+| 112 | `AlreadySettled` misses `SettledToBeneficiary` | `everyStoredStatusSettlesAsTheTableSays`, `revertsWithAlreadySettledAfterEverySettlement` |
+| 113 | `Kept` pays the beneficiary | `settleAcceptsATokenThatReturnsNoValue`, `anUnrelatedCallerMaySettleAndReceivesNothing`, `anyAccountMaySettleAndThePayoutIgnoresTheCaller`, and 6 more |
+| 114 | `Kept` stores `SettledToBeneficiary` | `revertsWhenTheTokenReentersSettle`, `settleAcceptsATokenThatReturnsNoValue`, `anUnrelatedCallerMaySettleAndReceivesNothing`, and 5 more |
+| 115 | `Broken` pays the staker | `anyAccountMaySettleAndThePayoutIgnoresTheCaller`, `aBrokenPledgePaysTheBeneficiary`, `everyStoredStatusSettlesAsTheTableSays`, and 3 more |
+| 116 | `Broken` stores `SettledToStaker` | `aBrokenPledgePaysTheBeneficiary`, `everyStoredStatusSettlesAsTheTableSays` |
+| 117 | an expired `Active` pledge pays the staker | `anyAccountMaySettleAndThePayoutIgnoresTheCaller`, `anActivePledgeAfterTheDeadlinePaysTheBeneficiary`, `anActivePledgeAtTheDeadlinePaysTheBeneficiary`, and 3 more |
+| 118 | an expired `Active` pledge stores `SettledToStaker` | `anActivePledgeAfterTheDeadlinePaysTheBeneficiary`, `anActivePledgeAtTheDeadlinePaysTheBeneficiary`, `everyStoredStatusSettlesAsTheTableSays`, and 1 more |
+| 119 | no `NotSettleable` check | `everyStoredStatusSettlesAsTheTableSays`, `anActivePledgeBecomesSettleableAtTheDeadlineAndNotBefore`, `revertsForAnActivePledgeLongBeforeTheDeadline`, and 1 more |
+| 120 | `NotSettleable` one second late (`<=`) | `anyAccountMaySettleAndThePayoutIgnoresTheCaller`, `anActivePledgeAtTheDeadlinePaysTheBeneficiary`, `everyStoredStatusSettlesAsTheTableSays`, and 3 more |
+| 121 | `NotSettleable` reports zero instead of the deadline | `everyStoredStatusSettlesAsTheTableSays`, `anActivePledgeBecomesSettleableAtTheDeadlineAndNotBefore`, `revertsForAnActivePledgeLongBeforeTheDeadline`, and 1 more |
+| 122 | the payout goes to the caller | `settleAcceptsATokenThatReturnsNoValue`, `anUnrelatedCallerMaySettleAndReceivesNothing`, `anyAccountMaySettleAndThePayoutIgnoresTheCaller`, and 10 more |
+| 123 | the payout is half the stake | `settleAcceptsATokenThatReturnsNoValue`, `anUnrelatedCallerMaySettleAndReceivesNothing`, `anyAccountMaySettleAndThePayoutIgnoresTheCaller`, and 11 more |
+| 124 | the status is not written | `revertsWhenTheTokenReentersSettle`, `settleAcceptsATokenThatReturnsNoValue`, `anUnrelatedCallerMaySettleAndReceivesNothing`, and 10 more |
+| 125 | the status is written to pledge 1 whatever the identifier | `revertsWhenTheTokenReentersSettle`, `everyStoredStatusSettlesAsTheTableSays`, `settlesOnlyTheNamedPledge`, and 1 more |
+| 126 | `totalLocked` is not decreased | `theSettlementChangesTheStatusAndTheLockedTotalAndNothingElse`, `writesTheStatusAndReleasesTheStakeBeforeTheTransfer` |
+| 127 | `totalLocked` is decreased by one unit | `theSettlementChangesTheStatusAndTheLockedTotalAndNothingElse`, `writesTheStatusAndReleasesTheStakeBeforeTheTransfer` |
+| 128 | the payout runs before the status write and the release | `writesTheStatusAndReleasesTheStakeBeforeTheTransfer` |
+| 129 | no `PledgeSettled` event | `emitsPledgeSettledOnceWithTheRecipientAndAmount` |
+| 130 | `PledgeSettled` names the caller as recipient | `emitsPledgeSettledOnceWithTheRecipientAndAmount` |
+| 131 | `PledgeSettled` reports a zero amount | `emitsPledgeSettledOnceWithTheRecipientAndAmount` |
+| 132 | `PledgeSettled` always reports identifier 1 | `emitsPledgeSettledOnceWithTheRecipientAndAmount` |
+| 133 | `settle` ignores a failed payout | `revertsWhenTheTokenReentersSettle`, `settleAcceptsATokenThatReturnsNoValue`, `settleRevertsWhenTheTokenReportsFailure`, and 2 more |
+| 134 | `createPledge` ignores a failed stake transfer | `aBlockedStakerLeavesTheCreationUndone`, `aPausedTokenLeavesTheCreationUndone`, and others |
+| 135 | the settlement also indexes its caller | `theSettlementChangesTheStatusAndTheLockedTotalAndNothingElse` |
+| 136 | an expired `Kept` pledge pays the beneficiary | `aRecordedVerdictSettlesTheSameWayAfterTheDeadline` |
+
+Mutations 108 to 134 were run against the group's first twenty-four tests and 135 and 136 against
+all twenty-five, so two kill lists below are one test short of what the finished suite would
+report. Strengthening a test can only add failures, never revive a mutant, so every row stands.
+
+Mutation 128 is the one LLR-SC-043 exists for, and it is killed by that requirement's test alone:
+
+```
+[FAIL: assertion failed: 2 != 4] test_SC043_writesTheStatusAndReleasesTheStakeBeforeTheTransfer()
+```
+
+`2 != 4` is the status the observer read from SatStake's storage while the payout was running:
+still `Kept` where `SettledToStaker` is required before the transfer. With the effects in the order
+the requirement gives, the same read returns 4 and the locked total has already fallen. Every other
+test in the suite passes against this mutant, because its end state is identical; only the order
+differs.
+
+Mutation 122, the other one this group was asked to kill, is the contract paying `msg.sender`
+instead of the recipient the table names. It fails thirteen of the twenty-four tests it was run
+against, and fourteen of the finished twenty-five, among them the fuzz test that settles a kept
+pledge from an arbitrary account:
+
+```
+[FAIL: assertion failed: 999999999999999999999000 != 1000000000000000000000000; counterexample: ...] test_SC040_anUnrelatedCallerMaySettleAndReceivesNothing(address)
+```
+
+Mutation 134 is why the two LLR-SC-045 tests on the creation side exist. They are the only tests in
+the suite that no other mutant in this group touches, and the run confirms it: of the twenty-nine
+mutants, 134 is the only one either of them fails on. It removes both halves of what makes a failed
+stake transfer safe, swallowing the token's revert and dropping the balance check, so a pledge is
+created with nothing behind it.
+
+The order of the two status checks in `settle` is not mutated, because it is not observable: a
+pledge whose status is `None` is not settled, and a settled pledge exists, so neither check can
+mask the other. The one order the function has is effects against payout, which is mutation 128.
+
+Run after this group: `forge fmt --check` clean; `forge test` 127 passed, 0 failed; `forge coverage
+--report summary`: `src/SatStake.sol | 100.00% (85/85) | 100.00% (114/114) | 100.00% (26/26) |
+100.00% (9/9)`; `node tools/trace-check.mjs`: `trace-check: OK. 35/112 LLRs referenced, 0/55
+journeys passing.`
+
+Carry-forward: LLR-SC-003 now covers all four functions it names, so its inspection row can be
+closed at full scope, and LLR-SC-004 needs its recheck at this group. The "SC views" group still
+owes the two re-verifications the create group recorded, and one more from this group: the
+LLR-SC-043 release of the stake is read from storage here, and should be re-verified through
+`totalLocked` once that view exists. The invariant group still owes LLR-SC-071 and LLR-SC-074 over
+arbitrary call sequences.
+
+No requirement changed in this group.
+
+### Review follow-up, 2026-09-28
+
+The independent review found that a settlement could corrupt a **neighbouring** pledge's
+`promiseText` or `createdAt` with the whole suite still passing. The "changes nothing else" test
+captured every field of the pledge being settled, but for any other pledge it compared the status
+alone, so the two fields nothing else reads back were free to change. `_pledges[id + 1].deadline`
+and `.amount` were already caught, which is what made the gap easy to miss.
+
+`_assertSameRecord` in the shared test base now compares all nine fields of a record against an
+earlier snapshot, and both the settle and the verdict "nothing else" tests use it on the
+neighbouring pledge. The verdict test had the identical shape and the identical hole, so it is
+fixed here too rather than left for the invariant group.
+
+| # | Mutation | Failing test and message |
+|---|---|---|
+| 137 | `settle` corrupts a neighbour's `promiseText` | `theSettlementChangesTheStatusAndTheLockedTotalAndNothingElse`, `x != Ship the demo` |
+| 138 | `settle` corrupts a neighbour's `createdAt` | `theSettlementChangesTheStatusAndTheLockedTotalAndNothingElse`, `0 != 1700000000` |
+| 139 | a verdict corrupts a neighbour's `promiseText` | `theVerdictChangesTheStatusAndNothingElse`, `x != Ship the demo` |
+| 140 | a verdict corrupts a neighbour's `createdAt` | `theVerdictChangesTheStatusAndNothingElse`, `0 != 1700000000` |
+
+Two corrections to this log, both found by the same review: the group's test table had 24 of its 25
+rows, missing `test_SC041_aRecordedVerdictSettlesTheSameWayAfterTheDeadline`, whose evidence was
+recorded further down but not indexed; and mutation 134's "and 29 more" could not be reproduced,
+the reviewer's reconstruction failing 8 tests rather than 31. The row now names the two tests the
+claim actually rests on and drops the count. The two named tests fail on 134 and on no other
+mutant, which is what the row is used for.
+
+The reviewer also reported one survivor it did not count as a defect, and neither do I:
+`_totalLocked[p.referee] += 1`, a write to the locked mapping at a key that is no token. No
+requirement in scope constrains that mapping at a non-token key; LLR-SC-055 belongs to the views
+group, which must catch it.
+
+Run after this follow-up: `forge fmt --check` clean; `forge test` 127 passed, 0 failed; `forge
+coverage --report summary`: `src/SatStake.sol | 100.00% (85/85) | 100.00% (114/114) | 100.00%
+(26/26) | 100.00% (9/9)`; `node tools/trace-check.mjs`: `trace-check: OK. 35/112 LLRs referenced,
+0/55 journeys passing.`
