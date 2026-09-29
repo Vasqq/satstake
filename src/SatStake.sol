@@ -336,6 +336,77 @@ contract SatStake is ReentrancyGuard {
         emit PledgeSettled(id, recipient, amount); // LLR-SC-044
     }
 
+    /// @notice The stored record of pledge `id`, with the fields in the order declared above.
+    /// @param id The pledge to read, from 1 to `pledgeCount()`.
+    /// @custom:trace LLR-SC-050
+    function getPledge(uint256 id) external view returns (Pledge memory) {
+        if (id == 0 || id > _pledgeCount) revert PledgeNotFound(id); // LLR-SC-050
+        return _pledges[id]; // LLR-SC-050
+    }
+
+    /// @notice The state of pledge `id` as readers see it. An Active pledge whose deadline has been
+    /// reached reads as `Expired`, which no pledge ever stores; every other state is the stored one.
+    /// @param id The pledge to read.
+    /// @custom:trace LLR-SC-011 LLR-SC-051
+    function stateOf(uint256 id) external view returns (PledgeState) {
+        Pledge storage p = _pledges[id];
+        Status status = p.status;
+        if (status == Status.None) revert PledgeNotFound(id); // LLR-SC-051
+        if (status == Status.Active) {
+            if (block.timestamp >= p.deadline) return PledgeState.Expired; // LLR-SC-051
+            return PledgeState.Active; // LLR-SC-051
+        }
+        if (status == Status.Kept) return PledgeState.Kept; // LLR-SC-051
+        if (status == Status.Broken) return PledgeState.Broken; // LLR-SC-051
+        if (status == Status.SettledToStaker) return PledgeState.SettledToStaker; // LLR-SC-051
+        // The one status left is SettledToBeneficiary; the other five are answered above.
+        return PledgeState.SettledToBeneficiary; // LLR-SC-051
+    }
+
+    /// @notice How many pledges have ever been created. The last identifier assigned is this value.
+    /// @custom:trace LLR-SC-052
+    function pledgeCount() external view returns (uint256) {
+        return _pledgeCount; // LLR-SC-052
+    }
+
+    /// @notice How many pledges `account` takes part in, as staker, referee, or beneficiary.
+    /// @custom:trace LLR-SC-053
+    function pledgeCountOf(address account) external view returns (uint256) {
+        return _pledgeIds[account].length; // LLR-SC-053
+    }
+
+    /// @notice One page of the identifiers `account` takes part in, in creation order.
+    /// @param account The account whose index to read.
+    /// @param offset How many identifiers to skip.
+    /// @param limit How many to return at most, itself capped at `MAX_PAGE`.
+    /// @return page The identifiers, fewer than asked for when the index ends first.
+    /// @custom:trace LLR-SC-053
+    function pledgeIdsOf(address account, uint256 offset, uint256 limit)
+        external
+        view
+        returns (uint256[] memory page)
+    {
+        uint256[] storage ids = _pledgeIds[account];
+        uint256 count = ids.length;
+        if (offset >= count) return new uint256[](0); // LLR-SC-053
+
+        uint256 size = limit > MAX_PAGE ? MAX_PAGE : limit; // LLR-SC-053
+        uint256 remaining = count - offset;
+        if (size > remaining) size = remaining; // LLR-SC-053
+
+        page = new uint256[](size);
+        for (uint256 i = 0; i < size; i++) {
+            page[i] = ids[offset + i]; // LLR-SC-053
+        }
+    }
+
+    /// @notice The stake in `token` locked for pledges that have not been settled. The contract's
+    /// balance can exceed this, since anyone may send it tokens outside a pledge.
+    /// @custom:trace LLR-SC-055
+    function totalLocked(address token) external view returns (uint256) {
+        return _totalLocked[token]; // LLR-SC-055
+    }
+
     /// @notice Whether pledges may use `token`.
     /// @custom:trace LLR-SC-054
     function isAllowedToken(address token) external view returns (bool) {

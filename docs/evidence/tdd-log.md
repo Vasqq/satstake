@@ -1315,3 +1315,270 @@ Run after this follow-up: `forge fmt --check` clean; `forge test` 127 passed, 0 
 coverage --report summary`: `src/SatStake.sol | 100.00% (85/85) | 100.00% (114/114) | 100.00%
 (26/26) | 100.00% (9/9)`; `node tools/trace-check.mjs`: `trace-check: OK. 35/112 LLRs referenced,
 0/55 journeys passing.`
+
+## Group: SC views (LLR-SC-050 to 053, 055; LLR-SC-010, 028, 043 re-verified through the views)
+
+Tests written from the five view rows, from 05 section 1.2 for the `Expired` state, and from the
+boundaries 06 section 4 names for this group, before any of the five functions had a body.
+LLR-SC-054 (`isAllowedToken`, `allowedTokens`) was implemented in the allowlist group and is not
+touched here.
+
+The group also settles the three debts the earlier groups recorded, each of which had to read
+SatStake's private storage with `vm.load` because no view existed: the stored record of LLR-SC-010,
+the locked total and the three party indexes of LLR-SC-028, and the release of the stake in
+LLR-SC-043. The storage-slot tests stay where they are. They pin the layout independently of the
+views, which is what makes a view that returns the wrong slot detectable; the new tests pin the
+views to that layout and to the requirement's own values.
+
+| Test | Verifies |
+|---|---|
+| `test_SC050_getPledgeReturnsEveryFieldOfTheStoredRecord` | LLR-SC-010, LLR-SC-050 |
+| `test_SC050_getPledgeKeepsEachPledgeApart` | LLR-SC-010, LLR-SC-050 |
+| `test_SC050_getPledgeReturnsAPromiseOfEveryStoredLength` | LLR-SC-010, LLR-SC-050 |
+| `test_SC050_getPledgeRevertsForIdentifierZero` | LLR-SC-050 |
+| `test_SC050_getPledgeRevertsAboveThePledgeCountAndNotAtIt` | LLR-SC-050, LLR-SC-052 |
+| `test_SC050_getPledgeFollowsTheStoredStatusThroughTheLifecycle` | LLR-SC-050 |
+| `test_SC050_theViewsWriteNoStorage` | LLR-SC-050, LLR-SC-051, LLR-SC-052, LLR-SC-053, LLR-SC-055 |
+| `test_SC051_reportsActiveOneSecondBeforeTheDeadline` | LLR-SC-051 |
+| `test_SC051_reportsExpiredAtTheDeadlineAndAfterIt` | LLR-SC-051 |
+| `test_SC051_expiredIsDerivedAndNeverStored` | LLR-SC-050, LLR-SC-051 |
+| `test_SC051_reportsTheStateMatchingEveryOtherStoredStatus` | LLR-SC-051 |
+| `test_SC051_aPassedDeadlineChangesNoOtherState` | LLR-SC-051 |
+| `test_SC051_revertsOnTheSameIdentifiersAsGetPledge` | LLR-SC-050, LLR-SC-051 |
+| `test_SC051_turnsExpiredExactlyAtTheDeadline` (fuzz) | LLR-SC-051 |
+| `test_SC052_countsEveryPledgeEverCreated` | LLR-SC-052 |
+| `test_SC052_isNotReducedByVerdictsOrSettlements` | LLR-SC-052 |
+| `test_SC053_pledgeCountOfCountsTheAccountsOwnIndex` | LLR-SC-053 |
+| `test_SC053_pledgeIdsOfReturnsCreationOrder` | LLR-SC-053 |
+| `test_SC053_pledgeIdsOfPagesThroughTheIndex` | LLR-SC-053 |
+| `test_SC053_pledgeIdsOfWithOffsetEqualToTheCountReturnsAnEmptyPage` | LLR-SC-053 |
+| `test_SC053_pledgeIdsOfWithOffsetPastTheEndReturnsAnEmptyPage` | LLR-SC-053 |
+| `test_SC053_pledgeIdsOfWithLimitZeroReturnsAnEmptyPage` | LLR-SC-053 |
+| `test_SC053_pledgeIdsOfForAnAccountWithNoPledgesReturnsAnEmptyPage` | LLR-SC-053 |
+| `test_SC053_pledgeIdsOfReturnsTheRemainderWhenThePageRunsOffTheEnd` | LLR-SC-053 |
+| `test_SC053_pledgeIdsOfWithLimitAboveMaxPageReturnsAtMostMaxPage` | LLR-SC-053 |
+| `test_SC053_pledgeIdsOfMatchesTheIndexForAnyOffsetAndLimit` (fuzz) | LLR-SC-053 |
+| `test_SC055_sumsTheTokensActiveKeptAndBrokenPledges` | LLR-SC-055 |
+| `test_SC055_countsAnExpiredPledgeUntilItIsSettled` | LLR-SC-055 |
+| `test_SC055_matchesTheSumOverThePledgesAtEveryStep` | LLR-SC-055 |
+| `test_SC055_keepsTokensApart` | LLR-SC-055 |
+| `test_SC055_isZeroForAnAddressThatIsNotAToken` | LLR-SC-055 |
+| `test_SC028_creationRaisesTheLockedTotalAndIndexesEveryParty` | LLR-SC-028, LLR-SC-053, LLR-SC-055 |
+| `test_SC043_settlementReleasesExactlyTheStakeFromTheLockedTotal` | LLR-SC-043, LLR-SC-055 |
+
+The three boundaries 06 section 4 names for this group appear by name: `offset` equal to
+`pledgeCountOf(account)` is `test_SC053_pledgeIdsOfWithOffsetEqualToTheCountReturnsAnEmptyPage`,
+`limit` 0 is `test_SC053_pledgeIdsOfWithLimitZeroReturnsAnEmptyPage`, and `limit` above `MAX_PAGE`
+is `test_SC053_pledgeIdsOfWithLimitAboveMaxPageReturnsAtMostMaxPage`, which first creates
+`MAX_PAGE + 1` pledges for one account, since the cap is not observable on a shorter index. Offset
+past the end, an account with no pledges at all, and a page running off the end have a test each.
+
+`totalLocked` is a running total the contract keeps, so a test that compares it against itself
+proves nothing. `_lockedFromPledges` walks 1 to `pledgeCount()` with `getPledge` and sums the
+amounts of that token's `Active`, `Kept`, and `Broken` pledges, which is the definition LLR-SC-055
+gives, and `test_SC055_matchesTheSumOverThePledgesAtEveryStep` compares the two after every step of
+a sequence of creations, verdicts, and settlements across two tokens.
+
+`test_SC055_isZeroForAnAddressThatIsNotAToken` exists for the survivor the settle review reported
+and left to this group: `_totalLocked[p.referee] += 1`, a write to the locked mapping at a key that
+is no token. Nothing else reads that mapping at such a key, so nothing else can see it.
+
+### Red, 2026-09-28
+
+Observed in two steps, as in the previous three groups. Command: `forge test`
+
+Step 1, tests only. The expected compile error names the first missing view:
+
+```
+Compiler run failed:
+Error (9582): Member "getPledge" not found or not visible after argument-dependent lookup in contract SatStake.
+  --> test/SatStake.Views.t.sol:96:41:
+   |
+96 |         SatStake.Pledge memory viewed = satStake.getPledge(id);
+   |                                         ^^^^^^^^^^^^^^^^^^
+```
+
+Step 2, so that each test's own failure is visible: the six functions declared with their section
+1.1 signatures and empty bodies, no bound checks, no derivation, no reads. Thirty-two of the
+thirty-three tests failed for the reason their requirement predicts (fuzz counterexamples trimmed):
+
+| Test | Observed failure |
+|---|---|
+| `test_SC050_getPledgeReturnsEveryFieldOfTheStoredRecord` | `assertion failed: 0x0000...0000 != 0x8eDc...6BEb` |
+| `test_SC050_getPledgeKeepsEachPledgeApart` | `assertion failed: 0x0000...0000 != 0x8eDc...6BEb` |
+| `test_SC050_getPledgeReturnsAPromiseOfEveryStoredLength` | `assertion failed:  != x` |
+| `test_SC050_getPledgeRevertsForIdentifierZero` | `next call did not revert as expected` |
+| `test_SC050_getPledgeRevertsAboveThePledgeCountAndNotAtIt` | `next call did not revert as expected` |
+| `test_SC050_getPledgeFollowsTheStoredStatusThroughTheLifecycle` | `assertion failed: 0 != 1` |
+| `test_SC051_reportsActiveOneSecondBeforeTheDeadline` | `panic: arithmetic underflow or overflow (0x11)` |
+| `test_SC051_reportsExpiredAtTheDeadlineAndAfterIt` | `assertion failed: 0 != 1` |
+| `test_SC051_expiredIsDerivedAndNeverStored` | `assertion failed: 0 != 1` |
+| `test_SC051_reportsTheStateMatchingEveryOtherStoredStatus` | `assertion failed: 0 != 2` |
+| `test_SC051_aPassedDeadlineChangesNoOtherState` | `assertion failed: 0 != 2` |
+| `test_SC051_revertsOnTheSameIdentifiersAsGetPledge` | `next call did not revert as expected` |
+| `test_SC051_turnsExpiredExactlyAtTheDeadline` | `panic: arithmetic underflow or overflow (0x11); counterexample: ...` |
+| `test_SC052_countsEveryPledgeEverCreated` | `assertion failed: 0 != 1` |
+| `test_SC052_isNotReducedByVerdictsOrSettlements` | `assertion failed: 0 != 4` |
+| `test_SC053_pledgeCountOfCountsTheAccountsOwnIndex` | `assertion failed: 0 != 2` |
+| `test_SC053_pledgeIdsOfReturnsCreationOrder` | `assertion failed: [] != [1, 2, 3]` |
+| `test_SC053_pledgeIdsOfPagesThroughTheIndex` | `assertion failed: [] != [1, 2]` |
+| `test_SC053_pledgeIdsOfWithOffsetEqualToTheCountReturnsAnEmptyPage` | `assertion failed: 0 != 2` |
+| `test_SC053_pledgeIdsOfWithOffsetPastTheEndReturnsAnEmptyPage` | `assertion failed: [] != [2]` |
+| `test_SC053_pledgeIdsOfWithLimitZeroReturnsAnEmptyPage` | `assertion failed: [] != [1]` |
+| `test_SC053_pledgeIdsOfForAnAccountWithNoPledgesReturnsAnEmptyPage` | `assertion failed: [] != [1]` |
+| `test_SC053_pledgeIdsOfReturnsTheRemainderWhenThePageRunsOffTheEnd` | `assertion failed: [] != [2, 3]` |
+| `test_SC053_pledgeIdsOfWithLimitAboveMaxPageReturnsAtMostMaxPage` | `assertion failed: 0 != 101` |
+| `test_SC053_pledgeIdsOfMatchesTheIndexForAnyOffsetAndLimit` | `assertion failed: [] != [2, 3, 4, 5]; counterexample: ...` |
+| `test_SC055_sumsTheTokensActiveKeptAndBrokenPledges` | `assertion failed: 0 != 1500` |
+| `test_SC055_countsAnExpiredPledgeUntilItIsSettled` | `assertion failed: 0 != 1` |
+| `test_SC055_matchesTheSumOverThePledgesAtEveryStep` | `NotSettleable(1700086400 [1.7e9])` |
+| `test_SC055_keepsTokensApart` | `assertion failed: 0 != 100` |
+| `test_SC055_isZeroForAnAddressThatIsNotAToken` | `assertion failed: 0 != 1000` |
+| `test_SC028_creationRaisesTheLockedTotalAndIndexesEveryParty` | `assertion failed: 0 != 1000` |
+| `test_SC043_settlementReleasesExactlyTheStakeFromTheLockedTotal` | `panic: arithmetic underflow or overflow (0x11)` |
+
+```
+Suite result: FAILED. 1 passed; 32 failed; 0 skipped
+```
+
+The two panics and the `NotSettleable` are the same cause as the assertion failures: the stub
+returns a zero record, so `getPledge(id).deadline` is 0, and warping to one second before it, or
+settling at it, fails before the assertion is reached.
+
+Four tests would have passed against a stub that returns nothing, because what they require is an
+empty page or a zero: the two boundaries with `limit` 0 and `offset` past the end, the account with
+no pledges, and the non-token key. Each therefore also asserts a neighbouring case that is not
+empty, taken from the same state: `limit` 1 returns one identifier, the last offset inside the index
+returns its entry, a party to the same pledge has a page, and the token itself holds the stake. All
+four fail above, so the empty result each requires is the bound doing its work rather than the view
+returning nothing.
+
+`test_SC050_theViewsWriteNoStorage` is the one test that passes at this point, and cannot fail: a
+function with no body writes nothing. It is an absence requirement in the same sense as LLR-SC-014,
+and its red is the mutation below that makes a view write.
+
+### Green, 2026-09-28
+
+The five views implemented, each tagged per 06 section 2. `stateOf` derives `Expired` from a stored
+`Active` pledge at or past its deadline and returns the state matching the stored status otherwise;
+`pledgeIdsOf` returns an empty page when `offset` reaches the count, caps `limit` at `MAX_PAGE`, and
+clamps to the remainder when the page runs off the end. Command: `forge test`
+
+```
+Ran 7 test suites: 160 tests passed, 0 failed, 0 skipped (160 total tests)
+```
+
+The three debts the earlier groups carried forward are cleared here, each through the view rather
+than through a storage slot:
+
+- **LLR-SC-028** by `test_SC028_creationRaisesTheLockedTotalAndIndexesEveryParty`, through
+  `totalLocked`, `pledgeCountOf`, and `pledgeIdsOf`.
+- **LLR-SC-010** by `test_SC050_getPledgeReturnsEveryFieldOfTheStoredRecord` and its two
+  companions, through `getPledge`.
+- **LLR-SC-043**'s release of the stake by
+  `test_SC043_settlementReleasesExactlyTheStakeFromTheLockedTotal`, through `totalLocked`.
+
+The storage-slot tests that carried those requirements before are kept. They pin the layout
+independently of the views, so a view that read the wrong slot would disagree with them rather than
+agree with itself.
+
+`test_SC055_matchesTheSumOverThePledgesAtEveryStep` is the one that makes `totalLocked` more than a
+tautology: it walks every pledge from 1 to `pledgeCount()` with `getPledge`, sums those whose status
+is `Active`, `Kept`, or `Broken` per token, and compares that against the running total after each
+creation, verdict, and settlement.
+
+### Mutation evidence, 2026-09-28
+
+Applied to a copy, full `forge test` each time, restored afterwards. Failures matched on lines
+beginning `[FAIL`.
+
+| # | Mutation | Failing tests |
+|---|---|---|
+| 141 | `getPledge` drops the `id == 0` check | `getPledgeRevertsForIdentifierZero`, `revertsOnTheSameIdentifiersAsGetPledge` |
+| 142 | `getPledge` rejects the last valid identifier | 14 tests |
+| 143 | `getPledge` returns the next pledge | 13 tests |
+| 144 | `stateOf` never derives `Expired` | `expiredIsDerivedAndNeverStored`, `reportsExpiredAtTheDeadlineAndAfterIt`, `turnsExpiredExactlyAtTheDeadline`, and 1 more |
+| 145 | `stateOf` expires one second late | the same 4 |
+| 146 | `stateOf` drops the nonexistent check | `revertsOnTheSameIdentifiersAsGetPledge` |
+| 147 | `pledgeCount` returns one too many | 8 tests |
+| 148 | `pledgeCountOf` always returns zero | 3 tests |
+| 150 | `pledgeIdsOf` ignores the `MAX_PAGE` cap | `pledgeIdsOfWithLimitAboveMaxPageReturnsAtMostMaxPage` |
+| 151 | `pledgeIdsOf` ignores the offset when reading | 6 tests |
+| 152 | `totalLocked` always returns zero | 7 tests |
+| 153 | `settle` also writes the locked mapping at a non-token key | `isZeroForAnAddressThatIsNotAToken` |
+| 154 | `pledgeIdsOf` drops the offset guard entirely | `pledgeIdsOfForAnAccountWithNoPledgesReturnsAnEmptyPage`, `pledgeIdsOfMatchesTheIndexForAnyOffsetAndLimit`, `pledgeIdsOfWithOffsetPastTheEndReturnsAnEmptyPage` |
+| 155 | `pledgeIdsOf` drops the clamp to the remainder | 9 tests |
+
+Mutation 153 is the one the settle group's review reported as a survivor and left to this group: a
+write to the locked mapping at a key that is no token. It now dies.
+
+**Mutation 149, `pledgeIdsOf` widening `offset >= count` to `offset > count`, survives, and no test
+can kill it.** It is an equivalent mutant, not a gap. At `offset == count` the mutant falls through
+instead of returning early, computes `remaining = 0`, and the clamp at the next line drives `size`
+to 0, so it returns the same empty page by a longer route. The guard is still needed for
+`offset > count`, where `count - offset` would underflow, and mutation 154 shows exactly that: with
+the guard gone, three tests fail. The `>=` is therefore correct and the `==` half of it is
+redundant, which is a fact about the code rather than a hole in the tests.
+
+Run after this group: `forge fmt --check` clean; `forge test` 160 passed, 0 failed; `forge coverage
+--report summary`: `src/SatStake.sol | 100.00% (115/115) | 100.00% (147/147) | 100.00% (30/30) |
+100.00% (15/15)`; `node tools/trace-check.mjs`: `trace-check: OK. 40/112 LLRs referenced, 0/55
+journeys passing.`
+
+Carry-forward: the invariant group still owes LLR-SC-071 and LLR-SC-074 over arbitrary call
+sequences. LLR-SC-004 needs its recheck at this group, and LLR-SC-060 and LLR-SC-061, the remaining
+absence requirements, belong to the ABI surface group.
+
+No requirement changed in this group.
+
+### Review follow-up, 2026-09-28
+
+The independent review found three tests weaker than they read, and supplied the mutants to prove
+it. All three survived the whole suite when it ran them; all three now die.
+
+**`test_SC050_theViewsWriteNoStorage` recorded only one path through each view.** A write placed in
+a branch the recording never entered was invisible: the reviewer's mutant wrote to storage inside
+the Expired arm of `stateOf`, which the test never reached, and passed with zero failures. The
+log's claim that the test's red was "the mutation below that makes a view write" was also wrong,
+since no such mutation was in the table. The test now walks every branch of every view under
+`vm.record()`: all six states `stateOf` can report, including both arms of the Active branch, both
+of `pledgeIdsOf`'s returns, an account no pledge names, and the two reverting paths.
+
+**The `totalLocked` walk was independent but its fixtures were not diverse.** Every walk-asserted
+pledge used the same 13-byte promise and a stake under 1500, so two running totals that drifted
+only outside that shape survived: one narrowing the amount through `uint64`, one padding when the
+promise passes the single-slot boundary. Both are inside what LLR-SC-022 and LLR-SC-026 permit.
+`test_SC055_matchesTheSumForStakesAndPromisesOfAnySize` adds a stake above `type(uint64).max` and a
+40-byte promise, carries both through to settlement, and kills both.
+
+**`matchesTheSumOverThePledgesAtEveryStep` did not assert at every step.** Two settlements and a
+warp ran with no comparison between them, so a drift on the Broken path exactly cancelled on the
+expired-Active path would have passed. The missing assertions are in place, including one after the
+warp, since reaching a deadline settles nothing by itself and the totals must already agree.
+
+| # | Mutation | Failing test |
+|---|---|---|
+| 156 | a view writes storage inside the Expired arm of `stateOf` | `theViewsWriteNoStorage` |
+| 157 | `createPledge` narrows the amount into the locked total | `matchesTheSumForStakesAndPromisesOfAnySize` |
+| 158 | the locked total is padded for a promise past one slot | `matchesTheSumForStakesAndPromisesOfAnySize` |
+
+Three smaller findings, all accepted:
+
+- `totalLocked`'s NatSpec said the contract "holds" that much of the token. LLR-SC-070 requires
+  only that the balance is at least the locked total, since anyone may send the contract tokens
+  outside a pledge, so the wording now says what is locked rather than what is held.
+- `getPledge` no longer carries `LLR-SC-010` in its `@custom:trace`. That requirement is about
+  storing the record, which `createPledge` does and still carries; the tests that read it back
+  through the view keep the ID in `@custom:verifies`, which is where it belongs.
+- `test_SC051_expiredIsDerivedAndNeverStored` now also carries `LLR-SC-011`. That requirement names
+  the derived state reported by `stateOf`, so `stateOf` implementing it was right, but no test in
+  this group claimed it.
+
+The reviewer confirmed mutation 149 is equivalent, for the reason given above, and reports that
+widening `limit > MAX_PAGE` to `>=` is equivalent in the same way, both yielding the minimum. It
+also confirmed from the compiled artifact, not the source, that the ABI's only non-view external
+functions are the four LLR-SC-061 names.
+
+Run after this follow-up: `forge fmt --check` clean; `forge test` 161 passed, 0 failed; `forge
+coverage --report summary`: `src/SatStake.sol` 100% on all four measures; `node
+tools/trace-check.mjs`: `trace-check: OK. 40/112 LLRs referenced, 0/55 journeys passing.`
