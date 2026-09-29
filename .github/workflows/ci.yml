@@ -57,6 +57,9 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
         with:
           version: v1.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
       - name: Format
         run: forge fmt --check
       - name: Build
@@ -64,3 +67,12 @@ jobs:
       - name: Test
         if: hashFiles('test/**/*.t.sol') != ''
         run: forge test -vvv
+      # LLR-VV-003: 100% of lines, statements, branches, and functions for src/SatStake.sol.
+      # The summary is kept in a file rather than piped, so a failure of forge coverage itself
+      # fails the step instead of reaching the gate as empty input. The step carries no condition:
+      # a repository with no tests has no coverage, which is the failure this gate exists to catch.
+      - name: Coverage gate
+        run: |
+          forge coverage --report summary > coverage-summary.txt
+          cat coverage-summary.txt
+          node tools/coverage-gate.mjs coverage-summary.txt

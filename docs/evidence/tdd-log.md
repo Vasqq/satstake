@@ -1582,3 +1582,562 @@ functions are the four LLR-SC-061 names.
 Run after this follow-up: `forge fmt --check` clean; `forge test` 161 passed, 0 failed; `forge
 coverage --report summary`: `src/SatStake.sol` 100% on all four measures; `node
 tools/trace-check.mjs`: `trace-check: OK. 40/112 LLRs referenced, 0/55 journeys passing.`
+
+## Group: SC invariants and ABI surface (LLR-SC-002, 060, 061, 070 to 075; LLR-VV-003, 004)
+
+Tests written from the two absence rows, the six invariant rows, and the two verification rows,
+before the contract carried a trace tag for any of them, before `tools/coverage-gate.mjs` existed,
+and before CI ran a coverage gate.
+
+This is the first group whose requirements are about code the earlier groups already wrote. 06
+section 8 puts it last on purpose: LLR-SC-002, 060, and 061 say what the contract must not have, and
+LLR-SC-070 to 075 are properties of sequences of the four functions rather than of any one of them.
+So most of these tests pass the moment they are written, exactly as LLR-SC-014 did in the allowlist
+group, and their red is the mutation evidence below: each one is shown to fail against a contract
+that breaks the requirement it names. The parts of the group that are genuinely new code, the
+coverage gate and the contract's own trace tags, have an ordinary red.
+
+| Test | Verifies |
+|---|---|
+| `test_SC002_theCompiledAbiDeclaresNothingPayableAndNoReceiveOrFallback` | LLR-SC-002 |
+| `test_SC002_aCallCarryingValueRevertsAndMovesNoFunds` | LLR-SC-002 |
+| `test_SC002_aCallWithNoMatchingFunctionRevertsWithNoValueToo` | LLR-SC-002 |
+| `test_SC060_theInstructionWalkSkipsPushDataAndTheMetadataTrailer` | LLR-SC-060 |
+| `test_SC060_theDeployedBytecodeHasNoDelegatecallSelfdestructOrCallcode` | LLR-SC-060 |
+| `test_SC060_theCreationBytecodeHasNoDelegatecallSelfdestructOrCallcode` | LLR-SC-060 |
+| `test_SC060_aVerdictTransfersNoTokens` | LLR-SC-060 |
+| `test_SC061_theCompiledAbiHasExactlyTheFourNonViewFunctions` | LLR-SC-061 |
+| `test_SC061_everyReadFunctionAndConstantIsView` | LLR-SC-061 |
+| `invariant_SC070_theBalanceCoversTheLockedStakeOfEveryToken` | LLR-SC-070 |
+| `invariant_SC071_theLockedStakeIsTheSumOfEveryUnsettledPledge` | LLR-SC-071 |
+| `invariant_SC072_everyStatusChangeFollowsAnEdgeOfTheStateMachine` | LLR-SC-072 |
+| `invariant_SC073_eachPledgeSettlesAtMostOnceToOneOfItsOwnParties` | LLR-SC-073 |
+| `invariant_SC074_noFieldOfAPledgeChangesAfterCreation` | LLR-SC-074 |
+| `invariant_SC075_aRefusedTransferChangesNothing` | LLR-SC-075 |
+| `test_SC072_theLegalEdgeTableIsExactlyTheDiagram` | LLR-SC-072 |
+| `test_SC070_everyInvariantHoldsOverALongSequenceThatReachesEveryAction` | LLR-SC-070 to LLR-SC-075 |
+| `test_SC075_aBlockedBeneficiaryStopsOnlyItsOwnSettlement` | LLR-SC-075 |
+| `test_SC075_aPausedTokenStopsOnlyItsOwnToken` | LLR-SC-075 |
+| `describe("LLR-VV-003 coverage gate")`, 16 cases | LLR-VV-003 |
+| `describe("LLR-VV-004 invariant runs and depth")`, 7 cases | LLR-VV-004 |
+
+Every one of these reads the compiled artifact, the deployed bytecode, the contract, or the build
+configuration. None reads the source of `src/SatStake.sol`, because a requirement about what the
+contract does not declare is met or broken by what the compiler emitted, not by what the source
+appears to say.
+
+**The opcode walk.** LLR-SC-060 forbids `delegatecall`, `selfdestruct`, and `callcode`, so the test
+has to find out whether those opcodes are reachable in the compiled code. A byte search answers a
+different question: the immediate data of a PUSH is never decoded as an instruction, and the CBOR
+metadata solc appends after the code is never reached at all, so a byte search reports opcodes that
+cannot run. `test/base/OpcodeScan.sol` walks instruction by instruction, advancing past each PUSH
+immediate, over the code with its metadata trailer removed, and `test_SC060_theInstructionWalkSkips
+PushDataAndTheMetadataTrailer` checks the walk itself against byte strings built so that the two
+answers differ: the opcode inside a PUSH32 immediate, the same byte as a real instruction, the
+opcode only inside the metadata trailer, and a trailer length too large to be one. Both steps turn
+out to be load-bearing on this very contract, which mutations 167 and 168 below show.
+
+**The action space.** `test/invariant/SatStakeHandler.sol` offers eight actions: create, mark kept,
+mark broken, settle, settle with the recipient blocked, jump forward in time, set a blocklist, set a
+pause. Two `MockFiatToken` instances at 6 and 8 decimals, four actors, every input bounded so that
+creations mostly succeed. The handler owns the tokens, so it is their issuer; it never blocklists
+SatStake itself, which would stop every transfer in the sequence rather than the one transfer
+LLR-SC-075 is about. After every action it sweeps the status of every pledge and appends any change
+to a transition history, and around every settle it records the logs, so the events LLR-SC-073 is
+about are captured as they are emitted.
+
+### Red, 2026-09-28
+
+**LLR-SC-002, 060, 061 and the invariants: the trace checker.** 06 section 3 condition 4 requires a
+source reference for every referenced LLR in scope SC, which for an absence requirement is the
+`@custom:trace` tag on `contract SatStake`. With the tests written and the contract untouched:
+
+```
+$ node tools/trace-check.mjs
+FAIL LLR-SC-002: has no source reference in code or build configuration
+FAIL LLR-SC-060: has no source reference in code or build configuration
+FAIL LLR-SC-061: has no source reference in code or build configuration
+FAIL LLR-SC-070: has no source reference in code or build configuration
+FAIL LLR-SC-071: has no source reference in code or build configuration
+FAIL LLR-SC-072: has no source reference in code or build configuration
+FAIL LLR-SC-073: has no source reference in code or build configuration
+FAIL LLR-SC-074: has no source reference in code or build configuration
+FAIL LLR-SC-075: has no source reference in code or build configuration
+
+trace-check: 9 failure(s)
+```
+
+The nine include the six invariants, which was not expected: condition 4 names LLR-SC-002, 014, 060,
+and 061 as the absence requirements the contract-level tag satisfies, and says nothing about
+LLR-SC-070 to 075. They are emergent properties of code that exists, so the green step tags the
+lines and functions that maintain each one rather than writing anything new.
+
+**LLR-VV-003: the coverage gate.** Ten of the sixteen cases fail with the gate absent, and the CI
+case fails for its own reason:
+
+```
+$ node --test test/tools/coverage-gate.test.mjs
+not ok 1 - passes when the contract is at 100% on all four measures
+not ok 2 - passes although the test files are below 100%
+not ok 3 - fails when lines is 99%
+not ok 5 - fails when statements is 99%
+not ok 7 - fails when branches is 99%
+not ok 9 - fails when functions is 99%
+not ok 11 - fails when the contract has no row at all
+not ok 12 - fails when the output is not a coverage summary
+not ok 13 - fails when a measure is missing from the table
+    not ok 2 - runs forge coverage and feeds it to the gate in that job
+      error: 'the job does not run forge coverage'
+# tests 16
+# pass 6
+# fail 10
+```
+
+The six that pass with no gate at all are the four "one hundredth short" cases, which assert only
+the exit code and are satisfied by a missing script exiting non-zero, and two of the three CI cases,
+which assert that a `forge test` job exists and that nothing in it discards a failure. Each is paired
+with a case that does not pass vacuously: every "is 99%" case asserts the message names the measure,
+and the third CI case asserts the gate is invoked at all.
+
+**LLR-VV-004.** All seven cases pass at once. `foundry.toml` already set `runs = 512` and
+`depth = 128` in the scaffold, before any invariant test existed to use them, so this requirement was
+met before the group started and the test records that rather than driving it. Its red is the
+argument, not a run: a value below either minimum, another profile carrying a smaller one, or a
+`FOUNDRY_PROFILE` or `FOUNDRY_INVARIANT_*` setting in CI each fails one named case, and the four
+assertions are written so that a missing key fails rather than reading as zero.
+
+**The Solidity tests.** All nineteen pass on the first run, for the reason given above. Recorded
+here as observed, not glossed: the red for each is its row in the mutation table.
+
+### Green, 2026-09-28
+
+`src/SatStake.sol` gains trace tags and nothing else. `git diff src/SatStake.sol` is 13 insertions
+and 12 deletions, and every changed line contains an LLR identifier:
+
+- `contract SatStake` carries `LLR-SC-002 LLR-SC-060 LLR-SC-061` beside the LLR-SC-014 it already had.
+- `createPledge` carries `LLR-SC-070 LLR-SC-071 LLR-SC-072 LLR-SC-074`; `settle` carries `LLR-SC-070
+  LLR-SC-071 LLR-SC-072 LLR-SC-073 LLR-SC-075`; `markKept` and `markBroken` carry `LLR-SC-072`.
+- The lines that maintain each invariant carry it: both writes to `_totalLocked` (070, 071), all
+  three writes to a status (072), the record write (074), the `safeTransfer` (075), and the
+  `PledgeSettled` emit (073).
+
+New files: `tools/coverage-gate.mjs`, `test/base/OpcodeScan.sol`, `test/SatStake.AbiSurface.t.sol`,
+`test/SatStake.Isolation.t.sol`, `test/invariant/SatStakeHandler.sol`,
+`test/invariant/SatStake.Invariants.t.sol`, `test/tools/coverage-gate.test.mjs`,
+`test/tools/invariant-config.test.mjs`. `.github/workflows/ci.yml` runs the gate in the contracts
+job, with Node added to that job. `foundry.toml` gains a `@trace LLR-VV-004` comment over the
+`[invariant]` section it configures, and `.gitignore` the summary file the gate step writes.
+
+```
+$ forge test
+Ran 10 test suites in 42.55s: 180 tests passed, 0 failed, 0 skipped (180 total tests)
+
+$ node --test test/tools/*.test.mjs
+# tests 92
+# pass 92
+# fail 0
+
+$ node tools/trace-check.mjs
+trace-check: OK. 51/112 LLRs referenced, 0/55 journeys passing.
+
+$ forge coverage --report summary
+| src/SatStake.sol | 100.00% (115/115) | 100.00% (147/147) | 100.00% (30/30) | 100.00% (15/15) |
+
+$ node tools/coverage-gate.mjs coverage-summary.txt
+coverage-gate: OK. src/SatStake.sol is at 100% on lines, statements, branches, and functions.
+```
+
+One call summary from a fuzz run of 512 sequences of 128 calls, printed by `afterInvariant`:
+
+```
+  actions                       128
+  creates                       9
+  verdicts kept                 3
+  verdicts broken               4
+  settlements to the staker     3
+  settlements of a broken       4
+  settlements of an expired     2
+  transfers refused by a token  9
+  time jumps                    18
+  issuer control changes        34
+  successes while blocked       14
+  calls the contract refused    51
+  status transitions recorded   25
+  settlement events captured    9
+```
+
+And the deterministic 300-call sequence, which checks all six invariants after every call:
+
+```
+  actions                       300
+  creates                       30
+  verdicts kept                 8
+  verdicts broken               8
+  settlements to the staker     8
+  settlements of a broken       5
+  settlements of an expired     7
+  transfers refused by a token  28
+  time jumps                    42
+  issuer control changes        77
+  successes while blocked       32
+  calls the contract refused    115
+  status transitions recorded   66
+  settlement events captured    20
+```
+
+### Decision: where the non-vacuity assertions live, 2026-09-28
+
+`fail_on_revert` is false, so a handler whose every call reverted would satisfy every invariant while
+proving nothing. The guard against that is a counter per action and per settlement path, and the
+question is where they are asserted to be non-zero.
+
+Asserting each counter in `afterInvariant`, which runs once per sequence, is not sound at the
+configured size, and the run above shows why: that sequence reached two settlements of an expired
+pledge and three of a kept one, and other sequences printed zero for one of them. The arithmetic is
+forced. A sequence is 128 calls over 8 actions, so each action is chosen about 16 times; a full
+lifecycle is three calls, so a sequence can complete about 14 of them at best, and the counters for
+the three settlement paths compete for the same pledges. The blocklist and pause states persist
+between the calls that change them, so an unfavourable stretch fails many creations together rather
+than independently, which fattens the tail well past a Poisson estimate. Measured: one campaign of
+512 sequences failed such an assertion. With six campaigns in the file that is a test that fails for
+no reason roughly once a run.
+
+So `afterInvariant` prints the summary and asserts the one thing it can assert soundly, that the
+sequence executed at least one action, and
+`test_SC070_everyInvariantHoldsOverALongSequenceThatReachesEveryAction` carries the full set. That
+test walks a fixed pseudo-random stream of 300 calls over the same eight actions, checks all six
+invariants after every call, and then asserts every counter: 30 creations, both verdicts, all three
+settlement paths, 28 refused transfers, time jumps, issuer control changes, successes while an
+account was blocked, and calls the contract refused. Being deterministic it cannot flake, and
+mutation 179 shows the assertion is live. This is a deliberate departure from the instruction to
+assert each counter in `afterInvariant`, on the ground that the instruction is not satisfiable at 128
+calls of depth; it is recorded here rather than left implicit.
+
+Two consequences worth naming. The deterministic test is one transaction, and 300 steps of reading
+records exhausted memory in a single frame (`EvmError: MemoryOOG`), so each step's action and
+invariant check go through an external call to the test contract, which releases that step's memory
+when it returns. And the verdict actions are called about twice as often as the creation action, so
+without a reservation every pledge would be judged before its deadline and the expired row of the
+LLR-SC-041 table would never be reached; one pledge in three is therefore left for its deadline,
+while the arbitrary branch of the verdict actions can still name a reserved pledge.
+
+### Decision: the coverage run is not narrowed, 2026-09-28
+
+`forge coverage --report summary` takes 78 seconds with the invariant tests present, against 74
+seconds without them, on this machine. Well inside the ten minutes at which narrowing the run would
+have been the alternative, so the coverage run stays whole and the gate reads the summary of the
+entire suite. The invariant campaigns cost almost nothing under coverage because the same
+instrumented build is reused across them.
+
+One incidental finding from that run: `forge coverage` leaves the artifact in `out/` from the
+ordinary build in place while running its own rebuild, so the compiled artifact and the deployed
+instance are two different compilations of the same source. A first version of
+`test_SC060_theCreationBytecodeHasNoDelegatecallSelfdestructOrCallcode` compared the artifact's
+deployed bytecode with the chain's and failed under coverage for that reason. It now walks both, and
+each has to be clean in its own right.
+
+### Mutation evidence, 2026-09-28
+
+Applied to a copy, restored from that copy afterwards rather than with git, because most of these
+files are new in this group and untracked. Invariant mutations ran with `FOUNDRY_INVARIANT_RUNS=64`
+at the configured depth of 128, for speed; the deterministic 300-call test is unaffected by that
+setting. `cache/invariant` is removed before each run, because Foundry replays a cached failure from
+an earlier run and reports it as a replay failure, which reads like a fresh failure and is not one.
+
+| # | Mutation | Failing tests |
+|---|---|---|
+| 159 | a `receive` function is added | `theCompiledAbiDeclaresNothingPayableAndNoReceiveOrFallback`, `aCallCarryingValueRevertsAndMovesNoFunds` ("empty calldata with value was accepted"), `aCallWithNoMatchingFunctionRevertsWithNoValueToo` |
+| 160 | `createPledge` is `payable` | `theCompiledAbiDeclaresNothingPayableAndNoReceiveOrFallback` ("createPledge"), `aCallCarryingValueRevertsAndMovesNoFunds` ("createPledge with value was accepted") |
+| 161 | a `payable fallback` is added | the same three as 159 |
+| 162 | a fifth non-view external function is added | `theCompiledAbiHasExactlyTheFourNonViewFunctions` ("unexpected non-view function: touch") |
+| 163 | `pledgeCount` loses `view` | rejected by the compiler, not run: the invariant functions are `view` and call `pledgeCount`, so `Error (8961)` stops the build. The same holds for `isAllowedToken`, `totalLocked`, `getPledge`, and `allowedTokens`, whose view-ness is pinned at compile time by the suite's own view functions |
+| 164 | test mutation: the expected set names a fifth function | `theCompiledAbiHasExactlyTheFourNonViewFunctions` ("missing non-view function: withdrawAll"), so the removed-a-function direction of the assertion is live |
+| 165 | a `delegatecall` forwarder is added | `theCreationBytecodeHasNoDelegatecallSelfdestructOrCallcode` (offset 1863), `theDeployedBytecode...` (offset 1114), `theCompiledAbiHasExactlyTheFourNonViewFunctions` |
+| 166 | a `selfdestruct` is added | the same three, at offsets 1104 and 355 |
+| 167 | the walk does not skip PUSH immediates | `theInstructionWalkSkipsPushDataAndTheMetadataTrailer` ("reported an opcode inside PUSH data"), and both bytecode tests, which now report a delegatecall at offset 1135 of the unmutated contract. A byte search would therefore fail this requirement on a contract that meets it |
+| 168 | the walk does not strip the metadata trailer | `theInstructionWalkSkipsPushDataAndTheMetadataTrailer` ("reported an opcode inside the metadata"), and both bytecode tests, which report a selfdestruct at offset 6182 of a 6202-byte deployed code, inside the CBOR trailer |
+| 169 | `markKept` moves one token unit to the referee | `aVerdictTransfersNoTokens` ("2998 != 3000") |
+| 170 | creation raises the locked total by one too many | `invariant_SC070` ("1889 < 1890"), `invariant_SC071` ("913451128152 != 913451128151"), the 300-call sequence |
+| 171 | settlement does not release the stake | 3 of the 8 tests in the invariant file, including the 300-call sequence ("477485338237 < 682947827310") |
+| 172 | `settle` drops the `AlreadySettled` check | 4 of the 8, including the sequence, which reports both a second settlement event and the illegal edge `4 to 5` |
+| 173 | a verdict may be recorded over an earlier verdict | 4 of the 8; the sequence reports the illegal edge `pledge 5 moved from status 2 to 3`, Kept to Broken |
+| 174 | a verdict moves the deadline | 2 of the 8; the sequence reports `pledge 1: deadline: 1700040973 != 1700040972` |
+| 175 | settlement zeroes the pledge amount | 3 of the 8; the sequence reports `pledge 2: amount` and the locked total |
+| 176 | `PledgeSettled` names the caller as recipient | 2 of the 8; the sequence reports "settled to a stranger" |
+| 177 | `PledgeSettled` reports one unit less than the stake | 2 of the 8; the sequence reports `205462489072 != 205462489073` |
+| 178 | `settle` swallows a refused transfer | both isolation tests, with "next call did not revert as expected", and the 300-call sequence with `no token ever refused a transfer: 0 <= 0`. The invariant that inspects refused settlements sees nothing, because a swallowed failure is not a refusal, and the locked total falls in step with the status so LLR-SC-070 and LLR-SC-071 still hold. What kills it inside the invariant file is the non-vacuity counter, and what says plainly that the settlement did not happen is the directed pair |
+| 179 | test mutation: the handler never creates a pledge | the 300-call sequence ("no pledge was created: 0 <= 0"), so the non-vacuity guard is live |
+| 180 | test mutation: every status change is treated as legal | `theLegalEdgeTableIsExactlyTheDiagram` ("edge 0 to 2: true != false"), so the edge table is asserted rather than assumed |
+| 181 | `stateOf` loses `view` | `everyReadFunctionAndConstantIsView` ("stateOf: nonpayable != view") and `theCompiledAbiHasExactlyTheFourNonViewFunctions` ("unexpected non-view function: stateOf") |
+
+`src/SatStake.sol` was checked with `git diff` after the runs: only the trace-tag lines differ from
+the committed version.
+
+No requirement changed in this group.
+
+Outstanding for the independent review: LLR-SC-060 has method I as well as T, and its inspection row
+in `docs/INSPECTIONS.md` belongs to the reviewer, as does the LLR-SC-004 recheck the earlier groups
+recorded for every contract group.
+
+### Review follow-up, 2026-09-29
+
+The independent review found ten issues, two of them serious. All ten are fixed below, each with the
+mutant or escape case that now fails and the message it fails with. Mutation numbering continues from
+181. Invariant mutations again ran with `FOUNDRY_INVARIANT_RUNS=64` at the configured depth of 128,
+and `cache/invariant` was removed before each run.
+
+**1. A campaign could be made vacuous, and the guard here did not catch it.** The reviewer replaced
+the creation action in the selector list with a duplicate of `markKept`, so the fuzzer was never given
+creation, and all eight tests passed in 4.6 seconds instead of 30: with no pledge ever created the
+walks in 071, 073 and 074 had no iterations, 072 had no transitions, 075 had no failures, and
+`pledgeCount() == createCount()` read `0 == 0`. The `actionCount > 0` assertion held, because the other
+seven actions still ran.
+
+Two fixes, a guard and a backstop. `test_SC070_theFuzzerIsGivenEveryHandlerActionExactlyOnce` checks
+the registered list itself: eight entries, pairwise distinct, and exactly the eight handler action
+selectors, asserted in both directions. It depends on no random draw. And `afterInvariant` now also
+asserts `createCount > 0`.
+
+That splits the earlier decision rather than reversing it. The creation action is not in the same class
+as the three settlement paths: it succeeds whenever the fuzzer picks it unless a blocklist or a pause
+happens to stand in its way for a whole sequence, and the lowest figure seen across many campaigns was
+9 creations in 128 calls. The settlement-path counters do compete for the same pledges, and
+correct-contract sequences printing zero settlements of a kept pledge were observed here and
+reproduced independently by the reviewer, so those stay in the deterministic sequence test. The earlier
+entry's reasoning was right about them and too broad in its conclusion.
+
+**2. The artifact-reading tests had no tie to the source.** This is the serious one. `forge coverage`
+compiles for itself and leaves the artifact of the last `forge build` in `out/`. The reviewer added a
+fifth non-view function, left the artifact stale, and ran the ABI surface tests under coverage: 9
+passed, `test_SC061_theCompiledAbiHasExactlyTheFourNonViewFunctions` among them, against a contract
+with five non-view functions. CI was safe only by the order of its steps.
+
+Every artifact read now goes through `Artifact.json()` in `test/base/Artifact.sol`, which first
+compares the source hash the artifact records at `.metadata.sources["src/SatStake.sol"].keccak256`
+with `keccak256` of the source on disk and fails naming the staleness. `foundry.toml` gains read
+permission on `./src`. All four artifact readers use it: the ABI surface tests, the AST test of
+LLR-SC-005, the `methodIdentifiers` sweep of LLR-SC-014, and the storage layout the shared test base
+loads, so a future artifact test inherits the check rather than having to remember it.
+
+Reproduced both ways. With the check removed and the fifth function added, under `forge coverage`:
+
+```
+Suite result: ok. 9 passed; 0 failed; 0 skipped
+```
+
+With the check in place, the same build:
+
+```
+[FAIL: stale artifact: out/SatStake.sol/SatStake.json was built from different source than
+src/SatStake.sol: 0x78d177a8... != 0x84634a0d...] test_SC061_theCompiledAbiHasExactlyTheFourNonViewFunctions()
+Suite result: FAILED. 5 passed; 4 failed; 0 skipped
+```
+
+The four that fail are the four that read the artifact. `theDeployedBytecodeHasNoDelegatecall...`
+passes because it reads `address(satStake).code` from the chain and never the artifact, which is why
+it was written that way.
+
+**3. An external `pure` function escaped LLR-SC-061.** The count skipped both `view` and `pure`, and
+the requirement says four functions that are not `view`. The exemption is gone, so the check is now
+literal. Confirmed first from the artifact that this is safe: all twelve entries of the read surface,
+the four constant getters included, carry `stateMutability` `view`, which
+`test_SC061_everyReadFunctionAndConstantIsView` asserts one by one, so dropping the exemption leaves
+the count at four. The file's headline comment claimed to say what the contract does not offer; it now
+says what the three tests check and states plainly that the size of the read surface is not among
+them, since no requirement forbids a thirteenth view function.
+
+**4. LLR-SC-074 was blind to the one thing it owns.** The handler wrote its creation snapshot
+unconditionally, so a creation that wrote over an earlier record refreshed the snapshot in the same
+call and the comparison passed. `_rememberCreation` now writes on first sight only and counts a second
+sighting as `reusedIdentifierCount`, which `invariant_SC074` asserts is zero.
+
+**5. The LLR-SC-075 invariant asserted LLR-SC-045's sentence.** Checking the refused pledge's own
+status, locked total and balance either side of the failed call is the settle group's requirement, and
+`pledgeCount() == createCount()` cannot tell "creation kept working after the refusal" from "no
+creation was attempted after it".
+
+Those assertions are kept and relabelled `invariant_SC045_aRefusedTransferChangesNothing`, which is a
+genuine strengthening: the sentence the settle group proved for single calls now holds over arbitrary
+sequences. The requirement's own sentence is asserted by a probe. Whenever a token refuses a pledge's
+payout, the handler takes another pledge through creation, a verdict, and settlement in that same call,
+while the refusal still stands, and counts it; `invariant_SC075_aRefusedTransferStopsNoOtherPledge`
+asserts no probe step was refused, and the deterministic test asserts probes happened at all. The probe
+picks a token that is not paused and a staker the token has not blocklisted, because a paused token
+refuses every transfer in that token and that is the token's doing, not the contract's; with no such
+combination it skips without counting. Its own work is counted only in `probeCount`, never in the
+counters that show the fuzzer's actions reached each state, so a run whose verdicts and settlements
+were all probes cannot read as a run that judged and settled pledges of its own.
+
+Worth recording plainly: no mutation of the contract can make a probe step fail while the refused
+settle still reverts, because a reverting call leaves no state behind, so for this contract the
+requirement follows from atomicity. A contract that instead swallowed the refusal stops producing
+refusals at all, and is caught by the refusal counter and by the directed tests (mutations 178 and
+190). The probe's value is that it asserts the sentence where it applies instead of inferring it, and
+mutations 186 and 190 show the assertion is live.
+
+**6. The LLR-SC-072 edge table dropped the diagram's guards.** 05 section 1.2 labels its edges with
+conditions, and the table permitted Active to SettledToBeneficiary unconditionally, so a contract that
+settled an Active pledge at any time passed all eight tests. A transition now records the caller of the
+call that named the pledge and whether that pledge's deadline had been reached, both of which the
+handler knows at the point of the call, and the table enforces the labels: Active to Kept or Broken
+only for the referee with the deadline not reached, Active to SettledToBeneficiary only with the
+deadline reached. A transition the handler did not attribute to a caller, which is what a status
+changing as a side effect of another pledge's call looks like, cannot satisfy a condition that names
+the referee. `test_SC072_theLegalEdgeTableIsExactlyTheDiagram` now enumerates all 36 pairs against all
+four combinations of the two conditions, one line per edge of the diagram.
+
+**7. Two things in `OpcodeScan`.** The walk could advance past the end of the body, which ended it
+quietly and reported the truncated tail clean; compiled code never ends inside a PUSH immediate, so it
+now reverts with `TruncatedPushImmediate(offset)` and the self-test covers that shape. And the comment
+about an ill-fitting trailer length claimed more than the helper gives: it now says that the two length
+bytes are trusted, so input that is not compiler output has that many bytes removed from the end
+whether they are metadata or not.
+
+**8. Row 178 understated its own evidence**, and is corrected above: the swallowed-refusal mutant also
+fails the 300-call sequence with `no token ever refused a transfer: 0 <= 0`.
+
+**9. Bare requirement identifiers in the handler became false rows in the trace matrix.** The checker
+counts any identifier in a test file as a test reference, so explanatory comments in the handler had
+the matrix listing it as a test for LLR-SC-023, 024, 030, 041, 045, 070, 071 and 075, which it asserts
+none of. Those comments now name the requirement in words. Checked first that none of the eight loses
+its last reference: five are tested in their own groups, and 070, 071, 074 and 075 are carried by the
+`@custom:verifies` tags in the invariant file. The matrix is regenerated.
+
+**10. The coverage gate step could be skipped by its own condition.** `if: hashFiles('test/**/*.t.sol')
+!= ''` meant a repository with no tests, which is exactly the state where coverage is zero, would skip
+the gate and pass. The condition is gone, and a case asserts the step carries none. The Test step's
+own condition is left as it was, since it predates this group.
+
+| # | Mutation | Failing tests |
+|---|---|---|
+| 182 | test mutation: the selector list loses the creation action | all seven campaigns through `afterInvariant` ("no pledge was created: 0 <= 0") and `theFuzzerIsGivenEveryHandlerActionExactlyOnce` ("action 0 and action 1 are the same selector"). 8 of the 10 tests in the file. The deterministic sequence still passes, because it dispatches by seed rather than through the registered list, which is why the list needs a test of its own |
+| 183 | a fifth non-view function, with the artifact left stale under `forge coverage` | the four artifact-reading tests, each with "stale artifact: out/SatStake.sol/SatStake.json was built from different source than src/SatStake.sol". With the freshness check removed the same build passes all nine, which is the reviewer's finding reproduced |
+| 184 | an external `pure` function is added | `theCompiledAbiHasExactlyTheFourNonViewFunctions` ("unexpected non-view function: doubleIt") |
+| 185 | every seventh creation writes over the previous record | 5 of the 10, including `invariant_SC074` ("one identifier was created twice: 1 != 0"), `invariant_SC072` ("pledge 13 moved from status 1 to 3 by another account, deadline ahead") and `invariant_SC071` |
+| 186 | test mutation: the probe does not avoid a blocklisted staker | `invariant_SC075` and the sequence test, both with "a pledge could not be created, judged, or settled while another pledge's payout was refused: 1 != 0" |
+| 187 | `settle` drops the deadline guard on an Active pledge | `invariant_SC072` ("pledge 1 moved from status 1 to 5 by its referee, deadline ahead"). Before the guards were recorded, this mutant passed all eight tests in the file |
+| 188 | the walk ends quietly on a truncated PUSH immediate | `theInstructionWalkSkipsPushDataAndTheMetadataTrailer` ("next call did not revert as expected") |
+| 189 | the coverage gate step regains a condition | `LLR-VV-003 coverage gate > CI runs the gate > runs the gate unconditionally` ("the coverage gate step can be skipped by its own condition") |
+| 190 | test mutation: the probe never runs after a refusal | the sequence test ("no other pledge was taken through its lifecycle after a refusal: 0 <= 0") |
+
+Runs after the follow-up: `forge fmt --check` clean; `forge build` no warnings; `forge test` 182
+passed, 0 failed, 85s; `node --test test/tools/*.test.mjs` 93 passed; `node tools/trace-check.mjs`
+`OK. 51/112 LLRs referenced`; `forge coverage --report summary` 172s with `src/SatStake.sol` at 100%
+on all four measures and the gate passing. The coverage run grew from 76s to 172s with the seventh
+campaign and the probe, still far inside the ten minutes at which narrowing it would have been
+considered, so it stays whole.
+
+One figure to watch: the deterministic 300-call sequence now costs 648 million gas of the 1073 million
+a test may use, because the probe adds a pledge per refusal and every walk is over every pledge. It
+already had to be split across external calls to keep its memory down; if it grows again, the step
+count is the dial.
+
+One fuzz sequence of 128 calls, printed by `afterInvariant`:
+
+```
+  actions                       128
+  creates                       37
+  verdicts kept                 6
+  verdicts broken               1
+  settlements to the staker     4
+  settlements of a broken       1
+  settlements of an expired     3
+  transfers refused by a token  21
+  probes after a refusal        21
+  time jumps                    17
+  issuer control changes        23
+  successes while blocked       3
+  calls the contract refused    57
+  status transitions recorded   94
+  settlement events captured    29
+```
+
+The deterministic 300-call sequence, which checks all seven invariants after every call:
+
+```
+  actions                       300
+  creates                       57
+  verdicts kept                 7
+  verdicts broken               9
+  settlements to the staker     7
+  settlements of a broken       6
+  settlements of an expired     9
+  transfers refused by a token  27
+  probes after a refusal        27
+  time jumps                    42
+  issuer control changes        77
+  successes while blocked       30
+  calls the contract refused    113
+  status transitions recorded   149
+  settlement events captured    49
+```
+
+The fuzz sequence is why the split in finding 1 was needed: creation reached 37 in it, while the
+three settlement paths sat at 4, 1 and 3, one unlucky draw from zero. The deterministic sequence
+reaches 7, 6 and 9 on the same paths and cannot draw differently.
+
+### Review confirmation and one regression, 2026-09-29
+
+The reviewer confirmed the ten fixes on a second pass and found that one of them was a regression,
+introduced by the fix to its own finding 1. `assertGt(handler.createCount(), 0)` in `afterInvariant`
+fails on the correct contract about one run in three.
+
+Reproduced by the lead before changing anything, over the whole invariant file with no test filter:
+
+```
+FOUNDRY_FUZZ_SEED=2 forge test --match-path 'test/invariant/*'
+  Suite result: FAILED. 9 passed; 1 failed   [FAIL: no pledge was created: 0 <= 0]
+FOUNDRY_FUZZ_SEED=7 forge test --match-path 'test/invariant/*'
+  Suite result: FAILED. 9 passed; 1 failed   [FAIL: no pledge was created: 0 <= 0]
+```
+
+The reviewer's own reproduction command added `--match-test invariant_SC073`, which passes: filtering
+to one test shifts the seed stream, so the sequence that creates nothing is no longer drawn. The
+finding is right and the command was not, which is why it was rerun unfiltered rather than taken on
+report.
+
+The mechanism is the one the implementer gave when it declined the assertion, and the reviewer has
+withdrawn its recommendation: `afterInvariant` runs per sequence, and the pause and blocklist states
+persist between the calls that set them, so a sequence that pauses both tokens or blocklists every
+actor early fails every creation after it. The shrunk counterexample is five calls, all `setPause`
+and `setBlocklist`, creating nothing, which says nothing about the contract. The figure recorded
+earlier as a measurement, "the lowest observed was 9 creations in 128 calls", was not one: it came
+from the per-run summaries forge prints, which are one run per invariant function rather than the
+minimum over 512 x 7 sequences.
+
+The line is deleted. `assertGt(handler.actionCount(), 0)` stays, since every action increments it
+whether its call succeeded or reverted. The fault the deleted line was added for is caught by
+`test_SC070_theFuzzerIsGivenEveryHandlerActionExactlyOnce`, which the lead verified alone: with
+`selectors[0]` replaced by a duplicate of `markKept.selector`, that test fails with `action 0 and
+action 1 are the same selector` in 10974 gas, while all seven campaigns pass. The test file was
+restored from a copy afterwards and compared byte for byte.
+
+| # | Mutation | Failing test |
+|---|---|---|
+| 191 | the creation action is replaced by a duplicate of `markKept` | `theFuzzerIsGivenEveryHandlerActionExactlyOnce`, naming the duplicate |
+
+Seeds 2 and 7 now pass the whole file, 10 of 10 each.
+
+LLR-SC-075's evidence is recorded as four parts rather than one, at the reviewer's judgement and
+confirmed sound. A reverted frame undoes every storage write it and the frames it called made,
+including the mock token's and, under EIP-1153, transient storage; the guard in use is the storage
+variant. So at probe time the contract's storage is what it was before the refused settle, and any
+probe step that failed would have failed without the refusal. **No mutation of `src/SatStake.sol`
+can make a probe step fail while the refusal still surfaces as a revert**, so on the class of
+contracts that satisfy LLR-SC-045, LLR-SC-075 follows by atomicity. The four parts are: the two
+directed tests in `test/SatStake.Isolation.t.sol`, which are the discriminating evidence across
+distinct pledges, tokens, recipients and settlement paths; the refusal and probe counters, which
+close the case of a contract that swallows a refusal instead of reverting, since both fall to zero;
+the argument above; and the probe as a live demonstration at real refusals over arbitrary sequences
+rather than two hand-built fixtures. What the probe is sensitive to is the harness, not the
+contract: mutants 186 and 190 both break the probe's own setup. A reader who took
+`probeFailureCount == 0` for a discriminating check on SatStake would be mistaken, which is why it
+is written down here.
+
+Final run: `forge fmt --check` clean; `forge test` 182 passed, 0 failed; `node --test
+test/tools/*.test.mjs` 93 passed; `node tools/trace-check.mjs`: `OK. 51/112 LLRs referenced, 0/55
+journeys passing.`; `forge coverage --report summary`: `src/SatStake.sol | 100.00% (115/115) |
+100.00% (147/147) | 100.00% (30/30) | 100.00% (15/15)`, and `tools/coverage-gate.mjs` accepts it.
+
+Carry-forward: none for the contract, which is complete. The DP group inherits nothing from here
+beyond the coverage gate already wired into CI.

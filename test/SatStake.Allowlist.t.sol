@@ -3,14 +3,12 @@ pragma solidity 0.8.28;
 
 import {Test, Vm} from "forge-std/Test.sol";
 import {SatStake} from "../src/SatStake.sol";
+import {Artifact} from "./base/Artifact.sol";
 import {MockFiatToken} from "./mocks/MockFiatToken.sol";
 
 /// @notice The token allowlist: constructor validation, the two allowlist views, and the absence
 /// of any way to change the list after deployment.
 contract SatStakeAllowlistTest is Test {
-    // Written by the build that `forge test` runs first.
-    string internal constant ARTIFACT = "out/SatStake.sol/SatStake.json";
-
     // Five deployed tokens, so that a list one entry too long can be built from valid entries.
     address[5] internal tokens;
     address internal eoa;
@@ -77,7 +75,7 @@ contract SatStakeAllowlistTest is Test {
     // Selectors of every external and public function in the compiled contract, so that a
     // function added by a later group is exercised here without editing this test.
     function _allSelectors() internal view returns (bytes4[] memory selectors) {
-        string[] memory signatures = vm.parseJsonKeys(vm.readFile(ARTIFACT), ".methodIdentifiers");
+        string[] memory signatures = vm.parseJsonKeys(Artifact.json(), ".methodIdentifiers");
         selectors = new bytes4[](signatures.length);
         for (uint256 i = 0; i < signatures.length; i++) {
             selectors[i] = bytes4(keccak256(bytes(signatures[i])));

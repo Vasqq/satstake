@@ -3,14 +3,12 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {SatStake} from "../src/SatStake.sol";
+import {Artifact} from "./base/Artifact.sol";
 import {MockFiatToken} from "./mocks/MockFiatToken.sol";
 
 /// @notice Declarations of the normative interface in 05_LLR.md section 1.1: constants, the
 /// `Pledge` record, the `Status` and `PledgeState` enums, and the custom errors.
 contract SatStakeBuildTest is Test {
-    // Written by the build that `forge test` runs first; `ast = true` in foundry.toml adds the AST.
-    string internal constant ARTIFACT = "out/SatStake.sol/SatStake.json";
-
     SatStake internal satStake;
 
     function setUp() public {
@@ -88,7 +86,8 @@ contract SatStakeBuildTest is Test {
     function test_SC005_declaredConstantNotStorageOrImmutable() public view {
         // A storage variable or an immutable has the same getter as a constant, so only the
         // compiler's AST can tell them apart.
-        string memory json = vm.readFile(ARTIFACT);
+        // `ast = true` in foundry.toml adds the AST to the artifact.
+        string memory json = Artifact.json();
         _assertConstant(json, "MIN_DURATION", "uint64");
         _assertConstant(json, "MAX_DURATION", "uint64");
         _assertConstant(json, "MAX_PROMISE_BYTES", "uint256");

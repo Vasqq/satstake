@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {SatStake} from "../../src/SatStake.sol";
+import {Artifact} from "./Artifact.sol";
 
 /// @notice The part of every mock token that a test needs to put a funded, approved account in
 /// front of the contract.
@@ -22,10 +23,6 @@ interface IMintableToken {
 ///
 /// A derived test assigns `satStake` in its own `setUp`.
 abstract contract SatStakeTestBase is Test {
-    // Written by the build that `forge test` runs first; `extra_output` in foundry.toml adds the
-    // storage layout.
-    string internal constant ARTIFACT = "out/SatStake.sol/SatStake.json";
-
     SatStake internal satStake;
 
     address internal staker = makeAddr("staker");
@@ -49,7 +46,8 @@ abstract contract SatStakeTestBase is Test {
     function _loadSlots() internal {
         if (slotsLoaded) return;
         slotsLoaded = true;
-        string memory json = vm.readFile(ARTIFACT);
+        // `extra_output` in foundry.toml adds the storage layout to the artifact.
+        string memory json = Artifact.json();
         pledgesSlot = _slotOf(json, "_pledges");
         totalLockedSlot = _slotOf(json, "_totalLocked");
         pledgeIdsSlot = _slotOf(json, "_pledgeIds");

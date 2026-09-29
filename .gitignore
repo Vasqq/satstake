@@ -21,6 +21,7 @@ out/
 node_modules/
 dist/
 coverage/
+coverage-summary.txt
 lcov.info
 *.log
 

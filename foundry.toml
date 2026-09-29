@@ -27,15 +27,21 @@ extra_output = ["storageLayout"]
 
 # Deploy and seed scripts read their inputs from deployments/config and write records to deployments/.
 # Tests read compiled artifacts from out/.
+# ./src is read so a test can compare the source hash the artifact records with the source on disk,
+# which is what tells an artifact left behind by an earlier build from the current one.
 fs_permissions = [
     { access = "read", path = "./deployments/config" },
     { access = "read-write", path = "./deployments" },
     { access = "read", path = "./out" },
+    { access = "read", path = "./src" },
 ]
 
 [fuzz]
 runs = 1024
 
+# @trace LLR-VV-004
+# A reverting handler call is a call the contract refused, which belongs in the sequences; the
+# handler counts what it reached so a run of refusals cannot pass for a run of work.
 [invariant]
 runs = 512
 depth = 128

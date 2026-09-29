@@ -9,7 +9,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 /// @notice Locks an allowlisted ERC-20 stake against a written promise. A named referee judges
 /// the promise before its deadline; a kept promise returns the stake to the staker, and a broken
 /// or unjudged one sends it to the named beneficiary.
-/// @custom:trace LLR-SC-001 LLR-SC-004 LLR-SC-014
+/// @custom:trace LLR-SC-001 LLR-SC-002 LLR-SC-004 LLR-SC-014 LLR-SC-060 LLR-SC-061
 contract SatStake is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -209,7 +209,7 @@ contract SatStake is ReentrancyGuard {
     /// @return id The new pledge's identifier.
     /// @custom:trace LLR-SC-003 LLR-SC-010 LLR-SC-012 LLR-SC-020 LLR-SC-021 LLR-SC-022
     /// @custom:trace LLR-SC-023 LLR-SC-024 LLR-SC-025 LLR-SC-026 LLR-SC-027 LLR-SC-028 LLR-SC-029
-    /// @custom:trace LLR-SC-045
+    /// @custom:trace LLR-SC-045 LLR-SC-070 LLR-SC-071 LLR-SC-072 LLR-SC-074
     function createPledge(
         address token,
         uint256 amount,
@@ -239,7 +239,7 @@ contract SatStake is ReentrancyGuard {
 
         id = ++_pledgeCount; // LLR-SC-012
 
-        Pledge storage p = _pledges[id]; // LLR-SC-010
+        Pledge storage p = _pledges[id]; // LLR-SC-010 LLR-SC-074
         p.staker = msg.sender; // LLR-SC-020
         p.token = token; // LLR-SC-020
         p.amount = amount; // LLR-SC-020
@@ -247,10 +247,10 @@ contract SatStake is ReentrancyGuard {
         p.beneficiary = beneficiary; // LLR-SC-020
         p.deadline = deadline; // LLR-SC-020
         p.createdAt = uint64(block.timestamp); // LLR-SC-020
-        p.status = Status.Active; // LLR-SC-020
+        p.status = Status.Active; // LLR-SC-020 LLR-SC-072
         p.promiseText = promiseText; // LLR-SC-020
 
-        _totalLocked[token] += amount; // LLR-SC-028
+        _totalLocked[token] += amount; // LLR-SC-028 LLR-SC-070 LLR-SC-071
         _pledgeIds[msg.sender].push(id); // LLR-SC-028
         _pledgeIds[referee].push(id); // LLR-SC-028
         _pledgeIds[beneficiary].push(id); // LLR-SC-028
@@ -275,7 +275,7 @@ contract SatStake is ReentrancyGuard {
     /// to the staker at settlement. Only the pledge's referee may call it, only while the pledge is
     /// Active, and only before its deadline.
     /// @param id The pledge to judge.
-    /// @custom:trace LLR-SC-003 LLR-SC-030 LLR-SC-031 LLR-SC-032 LLR-SC-033
+    /// @custom:trace LLR-SC-003 LLR-SC-030 LLR-SC-031 LLR-SC-032 LLR-SC-033 LLR-SC-072
     function markKept(uint256 id) external nonReentrant {
         _recordVerdict(id, true);
     }
@@ -284,7 +284,7 @@ contract SatStake is ReentrancyGuard {
     /// the beneficiary at settlement. Only the pledge's referee may call it, only while the pledge
     /// is Active, and only before its deadline.
     /// @param id The pledge to judge.
-    /// @custom:trace LLR-SC-003 LLR-SC-030 LLR-SC-031 LLR-SC-032 LLR-SC-033
+    /// @custom:trace LLR-SC-003 LLR-SC-030 LLR-SC-031 LLR-SC-032 LLR-SC-033 LLR-SC-072
     function markBroken(uint256 id) external nonReentrant {
         _recordVerdict(id, false);
     }
@@ -297,7 +297,7 @@ contract SatStake is ReentrancyGuard {
         if (msg.sender != p.referee) revert NotReferee(); // LLR-SC-030
         if (p.status != Status.Active) revert NotActive(p.status); // LLR-SC-031
         if (block.timestamp >= p.deadline) revert VerdictWindowClosed(p.deadline); // LLR-SC-032
-        p.status = kept ? Status.Kept : Status.Broken; // LLR-SC-033
+        p.status = kept ? Status.Kept : Status.Broken; // LLR-SC-033 LLR-SC-072
         emit VerdictRecorded(id, kept); // LLR-SC-033
     }
 
@@ -306,6 +306,7 @@ contract SatStake is ReentrancyGuard {
     /// verdict. Any account may call it.
     /// @param id The pledge to settle.
     /// @custom:trace LLR-SC-003 LLR-SC-040 LLR-SC-041 LLR-SC-042 LLR-SC-043 LLR-SC-044 LLR-SC-045
+    /// @custom:trace LLR-SC-070 LLR-SC-071 LLR-SC-072 LLR-SC-073 LLR-SC-075
     function settle(uint256 id) external nonReentrant {
         Pledge storage p = _pledges[id];
         Status status = p.status;
@@ -329,11 +330,11 @@ contract SatStake is ReentrancyGuard {
 
         address token = p.token;
         uint256 amount = p.amount;
-        p.status = settled; // LLR-SC-043
-        _totalLocked[token] -= amount; // LLR-SC-043
+        p.status = settled; // LLR-SC-043 LLR-SC-072
+        _totalLocked[token] -= amount; // LLR-SC-043 LLR-SC-070 LLR-SC-071
 
-        IERC20(token).safeTransfer(recipient, amount); // LLR-SC-003 LLR-SC-044 LLR-SC-045
-        emit PledgeSettled(id, recipient, amount); // LLR-SC-044
+        IERC20(token).safeTransfer(recipient, amount); // LLR-SC-003 LLR-SC-044 LLR-SC-045 LLR-SC-075
+        emit PledgeSettled(id, recipient, amount); // LLR-SC-044 LLR-SC-073
     }
 
     /// @notice The stored record of pledge `id`, with the fields in the order declared above.

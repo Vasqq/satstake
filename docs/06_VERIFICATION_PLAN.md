@@ -1,6 +1,6 @@
 # 06 Verification and Traceability Plan
 
-Version 1.7, 2026-09-27. Defines how every requirement is shown to be met, how code and tests point back to requirements, and how that linkage is checked by machine. Modelled on DO-178C objectives (requirements-based testing, bidirectional traceability, structural coverage, independence through tooling) and scaled to a single-contract project.
+Version 1.8, 2026-09-29. Defines how every requirement is shown to be met, how code and tests point back to requirements, and how that linkage is checked by machine. Modelled on DO-178C objectives (requirements-based testing, bidirectional traceability, structural coverage, independence through tooling) and scaled to a single-contract project.
 
 ## 1. Document chain
 
@@ -55,7 +55,7 @@ function invariant_SC070_balanceCoversLocked() public { ... }
 1. An HLR lists no children, or lists a child LLR that does not exist.
 2. An LLR lists no parent, or a parent that does not list it back.
 3. An LLR with method T has no test carrying its ID.
-4. An LLR in scope SC, FE, or DP has no source reference. Absence requirements (LLR-SC-002, 014, 060, 061) are satisfied by the contract-level `@custom:trace` tag on `contract SatStake`. Build-setting requirements (LLR-SC-001, LLR-FE-080) are satisfied by a comment tag in `foundry.toml` or the ESLint config, plus an INSPECTIONS.md entry.
+4. An LLR in scope SC, FE, or DP has no source reference. Absence requirements (LLR-SC-002, 014, 060, 061) are satisfied by the contract-level `@custom:trace` tag on `contract SatStake`. Invariant requirements (LLR-SC-070 to 075) describe properties of the whole contract rather than one line, and are satisfied by a `@custom:trace` tag on each function whose calls could break the property, plus a trailing comment on each line that maintains it. Build-setting requirements (LLR-SC-001, LLR-FE-080) are satisfied by a comment tag in `foundry.toml` or the ESLint config, plus an INSPECTIONS.md entry.
 5. At the release gate (`--release` flag), an LLR with method I or A has no INSPECTIONS.md row with result `Pass`, or an LLR with method D has no entry in `docs/evidence/`.
 6. Any text in scanned code or tests that has the shape of a requirement or journey ID, including a malformed one such as a wrong digit count, names an ID that does not exist.
 7. A journey in 03_USER_JOURNEYS.md is missing from docs/ACCEPTANCE.md, or, with `--release`, has a result other than `Pass` (or `Awaiting walkthrough` when its verification includes a walkthrough step).
@@ -128,3 +128,4 @@ The submission is ready when all of the following hold: CI green; `trace-check -
 | 1.5 | 2026-09-25 | Section 3, after the second independent review: scan `tools/`; state that evidence means `.md` and `.json` files under `docs/evidence/` other than the test-first log; test-file names match `.test.` or `.spec.` with any extension. |
 | 1.6 | 2026-09-27 | Section 5 describes the hostile mock that LLR-SC-003 needs, to match LLR v1.7. |
 | 1.7 | 2026-09-27 | Section 5: the hostile mock can also take an account's balance during a transfer, to match LLR v1.9. |
+| 1.8 | 2026-09-29 | Section 3, condition 4: state how LLR-SC-070 to 075 are satisfied. Condition 4 enumerated the absence requirements and was silent on the invariant requirements, which equally have no single implementing line, so the checker demanded a source reference the document did not say how to give. Found by the independent reviewer at the "SC invariants and ABI surface" group; the tagging it describes is what that group did. |
