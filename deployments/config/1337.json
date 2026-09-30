@@ -1,0 +1,20 @@
+{
+  "chainId": 31337,
+  "note": "Test fixture, not a deployment target: the chain ID says 31337 while the file is named 1337, standing in for a config copied for a new chain whose chainId was never updated, so a test can prove the deploy script's own run() refuses it.",
+  "tokens": [
+    {
+      "symbol": "FIXTURE6",
+      "address": "0x00000000000000000000000000000000cafe0006",
+      "decimals": 6,
+      "source": "invented for the fixture; no such token exists",
+      "confirmed": "n/a"
+    },
+    {
+      "symbol": "FIXTURE8",
+      "address": "0x00000000000000000000000000000000cafe0008",
+      "decimals": 8,
+      "source": "invented for the fixture; no such token exists",
+      "confirmed": "n/a"
+    }
+  ]
+}

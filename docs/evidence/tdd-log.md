@@ -2141,3 +2141,535 @@ journeys passing.`; `forge coverage --report summary`: `src/SatStake.sol | 100.0
 
 Carry-forward: none for the contract, which is complete. The DP group inherits nothing from here
 beyond the coverage gate already wired into CI.
+
+## Group: DP testnet (LLR-DP-001, 004, 005, and the testnet half of LLR-DP-006)
+
+Tests written from the three deployment rows alone, before `script/` existed. The group covers the
+deploy script's config reading and chain guard, the post-deploy check, the deployment record, and
+the live testnet deployment the record describes.
+
+| Test | Verifies |
+|---|---|
+| `test_DP001_namesTheConfigFileAfterTheChainItRunsOn` | LLR-DP-001 |
+| `test_DP001_readsTheTokenAllowlistOfTheRunningChain` | LLR-DP-001 |
+| `test_DP001_deploysTheAllowlistTheConfigNames` | LLR-DP-001 |
+| `test_DP001_revertsWhenTheConfigWasWrittenForAnotherChain` | LLR-DP-001 |
+| `test_DP001_revertsOnEveryChainButTheConfigsOwn` (fuzz) | LLR-DP-001 |
+| `test_DP001_aMissingConfigFailsOnTheReadAndNotAsAChainMismatch` (renamed at the review) | LLR-DP-001 |
+| `test_DP001_aConfigThatIsNotJsonFailsOnTheParseAndNotAsAChainMismatch` (renamed at the review) | LLR-DP-001 |
+| `test_DP001_jsonWithNoChainIdFailsOnTheMissingKeyAndNotAsAChainMismatch` (renamed at the review) | LLR-DP-001 |
+| `test_DP004_acceptsAFreshDeploymentThatMatchesTheConfig` | LLR-DP-004 |
+| `test_DP004_expectsTheFourConstantsAFreshDeploymentReports` (renamed at the review) | LLR-DP-004 |
+| `test_DP004_failsWhenMinDurationDiffers` | LLR-DP-004 |
+| `test_DP004_failsWhenMaxDurationDiffers` | LLR-DP-004 |
+| `test_DP004_failsWhenMaxPromiseBytesDiffers` | LLR-DP-004 |
+| `test_DP004_failsWhenMaxPageDiffers` | LLR-DP-004 |
+| `test_DP004_failsWhenTheDeploymentAllowsATokenTheConfigDoesNot` | LLR-DP-004 |
+| `test_DP004_failsWhenTheConfigNamesATokenTheDeploymentDoesNotAllow` | LLR-DP-004 |
+| `test_DP004_failsWhenTheAllowlistIsInAnotherOrder` | LLR-DP-004 |
+| `test_DP004_failsWhenATokenReportsOtherDecimals` | LLR-DP-004 |
+| `test_DP004_failsWhenTheSecondTokenReportsOtherDecimals` | LLR-DP-004 |
+| `test_DP004_failsWhenAPledgeAlreadyExists` | LLR-DP-004 |
+| `test_DP004_acceptsWhatTheDeployScriptProducesForTheConfiguredChain` | LLR-DP-001, LLR-DP-004 |
+| `test_DP004_failsWhenAConfiguredTokenReportsOtherDecimalsOnChain` | LLR-DP-004 |
+| `records the address, the deploy transaction, the block, the commit, the compiler, and the status` | LLR-DP-005 |
+| `reads a block number given as a JSON number as well as one given as hex` (renamed at the review) | LLR-DP-005 |
+| `records a perfect Sourcify match as verified` (renamed at the review) | LLR-DP-005 |
+| `says pending, not verified, while Sourcify has no match` | LLR-DP-005 |
+| `refuses when the tree that produced the contract has uncommitted changes` | LLR-DP-005 |
+| `refuses when the deployment was broadcast at another commit` | LLR-DP-005 |
+| `refuses when the broadcast creation data does not begin with the compiled bytecode` (renamed at the review) | LLR-DP-005 |
+| `refuses when the broadcast holds no creation of the contract` | LLR-DP-005 |
+| `refuses when the creation has no receipt` | LLR-DP-005 |
+| `refuses when the compiled artifact carries no compiler metadata` | LLR-DP-005 |
+| `returns the match Sourcify reports` | LLR-DP-006 |
+| `returns no match when Sourcify has no record of the address` | LLR-DP-006 |
+| `asks Sourcify about the chain and address it was given` | LLR-DP-006 |
+| `fails rather than reporting pending when Sourcify cannot be reached` | LLR-DP-006 |
+
+LLR-DP-001 has two halves and each is tested in the direction that matters. The chain guard is
+driven with `vm.chainId` and never by a file the test writes, since `fs_permissions` grants only read
+on `deployments/config`. At red there was one config on disk and it was the file a deployment reads;
+the review follow-up below adds two committed fixture configs, each saying so in a `note` field.
+Three further tests show the guard's revert is distinguishable from a
+missing file, from a file that is not JSON, and from JSON with no chain ID, since reporting any of
+those as a chain mismatch would send an operator looking for a wrong number inside a file that has
+none. `test_DP001_deploysTheAllowlistTheConfigNames` was written to exclude a script that read the
+config and then deployed a hardcoded list; the review found that it does not, because with one
+config on disk its two expected addresses are the only pair any script could be built around. The
+review follow-up below adds the test that excludes it and records the escape as mutation 192.
+
+LLR-DP-004 says the check "shall fail on any mismatch", so each of the four clauses it names has its
+own failing case: a wrong value for each of the four constants, three shapes of allowlist
+disagreement (a missing token, an extra token, the same pair in the other order), a wrong decimals
+expectation for each of the two tokens, and a deployment that already holds a pledge. Two tests
+drive the whole check with no expectation overrides at all, against what the deploy script produces
+for chain 5042002 with the real config: the two configured token addresses are given mock code whose
+decimals live in an immutable, so the value travels with the code.
+
+`deployments/config/5042002.json` is written before the tests as their input, not as
+implementation: LLR-DP-001 names the file as the script's input, and no test passes because of code
+that reads it.
+
+### Red, 2026-09-29
+
+Observed in two steps, as in the contract groups. Command: `forge test --match-path
+'test/{Deploy,PostDeployCheck}.t.sol'` and `node --test test/tools/record-deployment.test.mjs`.
+
+Step 1, tests only. The expected failure is the missing script and the missing tool, and nothing
+else:
+
+```
+Compiler run failed:
+Error (6275): Source "script/Deploy.s.sol" not found: File not found.
+ --> test/Deploy.t.sol:6:1:
+Error (6275): Source "script/PostDeployCheck.s.sol" not found: File not found.
+ --> test/PostDeployCheck.t.sol:7:1:
+```
+
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module '<repo>/tools/record-deployment.mjs'
+imported from <repo>/test/tools/record-deployment.test.mjs
+```
+
+Step 2, so that each test's own failure is visible: the two scripts declared with the signatures
+the tests call and empty bodies, no file reading, no guard, no checks, no deployment; the tool
+exporting `buildRecord` returning an empty object and `sourcifyStatus` returning nothing. The one
+exception to the empty bodies is `expectationsFrom`, which copies the config's tokens and decimals
+into the expectation struct, because with empty arrays three of the mismatch tests failed on an
+out-of-bounds read of their own fixture instead of on the check they are about. No check is
+implemented in the stub.
+
+```
+Ran 8 tests for test/Deploy.t.sol:DeployScriptTest
+[FAIL: a file that is not JSON was read as a config] test_DP001_aConfigThatIsNotJsonIsNotReportedAsAChainMismatch()
+[FAIL: a missing config was read as a valid one] test_DP001_aMissingConfigIsNotReportedAsAChainMismatch()
+[FAIL: the script deployed nothing] test_DP001_deploysTheAllowlistTheConfigNames()
+[FAIL: JSON with no chain ID was read as a config] test_DP001_jsonWithNoChainIdIsNotReportedAsAChainMismatch()
+[FAIL: assertion failed:  != deployments/config/5042002.json] test_DP001_namesTheConfigFileAfterTheChainItRunsOn()
+[FAIL: assertion failed: 0 != 5042002] test_DP001_readsTheTokenAllowlistOfTheRunningChain()
+[FAIL: next call did not revert as expected; counterexample: ...] test_DP001_revertsOnEveryChainButTheConfigsOwn(uint256)
+[FAIL: next call did not revert as expected] test_DP001_revertsWhenTheConfigWasWrittenForAnotherChain()
+Suite result: FAILED. 0 passed; 8 failed; 0 skipped
+
+Ran 14 tests for test/PostDeployCheck.t.sol:PostDeployCheckTest
+[PASS] test_DP004_acceptsAFreshDeploymentThatMatchesTheConfig()
+[FAIL: the script deployed nothing] test_DP004_acceptsWhatTheDeployScriptProducesForTheConfiguredChain()
+[FAIL: assertion failed: 0 != 60] test_DP004_expectsTheFourConstantsTheContractMustDeclare()
+[FAIL: next call did not revert as expected] test_DP004_failsWhenAConfiguredTokenReportsOtherDecimalsOnChain()
+[FAIL: next call did not revert as expected] test_DP004_failsWhenAPledgeAlreadyExists()
+[FAIL: next call did not revert as expected] test_DP004_failsWhenATokenReportsOtherDecimals()
+[FAIL: next call did not revert as expected] test_DP004_failsWhenMaxDurationDiffers()
+[FAIL: next call did not revert as expected] test_DP004_failsWhenMaxPageDiffers()
+[FAIL: next call did not revert as expected] test_DP004_failsWhenMaxPromiseBytesDiffers()
+[FAIL: next call did not revert as expected] test_DP004_failsWhenMinDurationDiffers()
+[FAIL: next call did not revert as expected] test_DP004_failsWhenTheAllowlistIsInAnotherOrder()
+[FAIL: next call did not revert as expected] test_DP004_failsWhenTheConfigNamesATokenTheDeploymentDoesNotAllow()
+[FAIL: next call did not revert as expected] test_DP004_failsWhenTheDeploymentAllowsATokenTheConfigDoesNot()
+[FAIL: next call did not revert as expected] test_DP004_failsWhenTheSecondTokenReportsOtherDecimals()
+Suite result: FAILED. 1 passed; 13 failed; 0 skipped
+```
+
+```
+# tests 14
+# pass 0
+# fail 14
+    not ok 1 - records the address, the deploy transaction, the block, the commit, the compiler, and the status
+    not ok 2 - reads a decimal block number as well as a hexadecimal one
+    not ok 3 - records the match Sourcify reports once it has one            error: Cannot read properties of undefined (reading 'sourcify')
+    not ok 4 - says pending, not verified, while Sourcify has no match       error: Cannot read properties of undefined (reading 'sourcify')
+    not ok 5 - refuses when the tree that produced the contract has uncommitted changes   error: Missing expected exception.
+    not ok 6 - refuses when the deployment was broadcast at another commit                error: Missing expected exception.
+    not ok 7 - refuses when the deployed code is not the code of the compiled artifact    error: Missing expected exception.
+    not ok 8 - refuses when the broadcast holds no creation of the contract               error: Missing expected exception.
+    not ok 9 - refuses when the creation has no receipt                                   error: Missing expected exception.
+    not ok 10 - refuses when the compiled artifact carries no compiler metadata           error: Missing expected exception.
+    not ok 1 - returns the match Sourcify reports
+    not ok 2 - returns no match when Sourcify has no record of the address
+    not ok 3 - asks Sourcify about the chain and address it was given
+    not ok 4 - fails rather than reporting pending when Sourcify cannot be reached        error: Missing expected exception.
+```
+
+`test_DP004_acceptsAFreshDeploymentThatMatchesTheConfig` is the one test that passes against the
+stub, and it cannot be made to fail by leaving the check out: a check that does nothing accepts
+everything. It is the group's passing case, and its worth rests on the twelve failing cases beside
+it and on the mutations below.
+
+### Green, and a handover, 2026-09-29
+
+The implementer reached its session limit between red and green. The scripts, the tool and the tests
+were already complete on disk; the lead finished the group from there, which is the same division as
+at the "SC create" group. The review that follows was run by the requirements reviewer, so the
+independent party is still not the party that wrote the code, and the lead's own four changes below
+were put to it as unreviewed work.
+
+Command: `forge test --match-path 'test/{Deploy,PostDeployCheck}.t.sol'`
+
+```
+Ran 2 test suites: 22 tests passed, 0 failed, 0 skipped (22 total tests)
+```
+
+Four tests failed against a correct script when the lead picked the group up. All four were defects
+in the tests, and the scripts were not changed to accommodate any of them.
+
+**Three `AllowedTokensMismatch` cases used `vm.expectRevert(Error.selector)`.** In this Foundry
+version that form requires the revert data to equal those four bytes exactly rather than to match as
+a prefix, so an error carrying arguments fails the expectation:
+
+```
+[FAIL: Error != expected error: AllowedTokensMismatch([0x2e23...], [0x2e23..., 0xF628...])
+ != custom error 0x29b49454] test_DP004_failsWhenTheDeploymentAllowsATokenTheConfigDoesNot()
+```
+
+They now assert the whole revert data, both address arrays included, which is what the rest of the
+file already did and is the stronger assertion: the error's arguments are checked and not only that
+something reverted. The expected list is the one the test built and the actual list comes from
+`satStake.allowedTokens()`, so the comparison is between the config's intent and the deployment's
+answer rather than between the script and itself.
+
+**`test_DP004_failsWhenAPledgeAlreadyExists` failed with `next call did not revert as expected`.**
+`_expected()` calls the script, and written inline after `vm.expectRevert` that call became the one
+the expectation watched, which does not revert. The struct is now built before the expectation is
+armed, with a comment saying why, since the shape is easy to reintroduce.
+
+`[rpc_endpoints]` was added to `foundry.toml` for both networks, so a deploy or check command names
+a network instead of repeating a URL. Neither endpoint carries a credential.
+
+Run after green: `forge fmt --check` clean; `forge test` 204 passed, 0 failed; `node --test
+test/tools/*.test.mjs` 107 passed; `node tools/trace-check.mjs`: `OK. 55/112 LLRs referenced, 0/55
+journeys passing.` The contract is untouched by this group, so its coverage is unchanged.
+
+### Review follow-up, 2026-09-30
+
+The independent review raised eleven findings and all were accepted. Two were escapes: a script that
+ignored the config file, and the chain guard on a path no deployment takes. Both passed all 22 tests
+of the group. `src/SatStake.sol` is not touched by any of this.
+
+**A hardcoded allowlist passed all 22 tests (finding 1).** LLR-DP-001's first clause is that the
+script reads the allowlist from `deployments/config/<chainId>.json`, and every assertion about a
+deployed allowlist compared it with the two addresses of the only config on disk, written as literals
+in the test. A `run()` that ignored the file and constructed those two addresses satisfied all of
+them. `fs_permissions` grants only read on `./deployments/config`, so the second config is committed
+rather than written by a test: `deployments/config/31337.json`, with two addresses that appear in no
+other config and a `note` saying in one line that it is a fixture and why it exists, so it cannot be
+read as a deployment target. `test_DP001_deploysTheOtherConfigsAllowlistOnTheOtherChain` etches code
+at them, runs the script under `vm.chainId(31337)`, and asserts the deployed allowlist is that file's
+pair in that file's order. Two configs whose pairs differ cannot both be matched by one built-in
+list, which is mutation 192.
+
+**The chain guard was reached only through an entry point no deployment uses (finding 2).** Both
+guard tests called `loadConfigFrom(path)`, a test seam. A deployment reaches the guard by
+`run()` to `loadConfig()` to `loadForChain()` to `load(pathFor(block.chainid))`, and nothing drove it
+that way, so moving the comparison out of `DeployConfig.load` into `DeployScript.loadConfigFrom` left
+all 22 tests green. The escape is the next group's most likely mistake: copy `5042002.json` to
+`5042.json`, leave `"chainId"` alone, and a mainnet deploy takes testnet token addresses.
+`deployments/config/1337.json` is committed with a recorded chain ID of 31337 and a `note` saying so,
+and `test_DP001_runItselfRefusesAConfigWrittenForAnotherChain` asserts `run()` itself reverts
+`ChainIdMismatch(31337, 1337)`. Mutation 193.
+
+**Bare requirement IDs in prose made three false rows in the trace matrix (finding 4).**
+`script/PostDeployCheck.s.sol` named LLR-SC-005 in a comment about where the four constants come
+from, and was listed as an implementation of it beside the contract; `test/Deploy.t.sol` named
+LLR-SC-013 and `test/PostDeployCheck.t.sol` LLR-SC-054 in comments explaining a fixture, and were
+listed as tests for them. None of those lines proves anything about those requirements. All three now
+name the requirement in words. Each of the three IDs keeps other references, checked before the
+change and after regenerating the matrix, so none lost its last one. This repeats the lesson from the
+allowlist group: a scanned file refers to an ID only when it means it.
+
+**Both guards in `tools/record-deployment.mjs` could produce a false pass (finding 5).** Each is now
+a real guard with a test of its own, and each dies on the mutant that restores the old form:
+
+- The receipt's `status` was never read. A creation that reverted still leaves a receipt with a
+  block number, and the address comes from the transaction rather than the receipt, so the tool
+  would have published a record naming an address that holds no code. A receipt is now accepted only
+  when it reports success, and a receipt with no status is refused rather than assumed (201).
+- `creationCode.length === 0` did not catch `"0x"`, which is a prefix of every creation input, so the
+  bytecode comparison went vacuous for an artifact with empty bytecode. Both sides must now be
+  0x-prefixed hexadecimal with at least one digit (202).
+- `if (broadcast.commit && ...)` skipped the commit guard when the key was absent, and that guard is
+  the only thing that catches an `out/` artifact built at another commit than HEAD. The key is now
+  required (203).
+- `broadcast.chain` was present and unread, so nothing cross-checked the chain ID argument against
+  the broadcast actually read. It is checked (204).
+- `asNumber` read `"42"` as 66, because a decimal string fell into the hexadecimal branch, and the
+  test named "reads a decimal block number as well as a hexadecimal one" passed the JS number 42, so
+  it never exercised its own name. `asNumber` now takes a whole JS number or a `0x`-prefixed
+  hexadecimal string and throws on anything else; the test is renamed to what it does and a second
+  test drives the decimal string (200).
+- The header comment claimed "the deployed creation code must be the code of the artifact", and a
+  test name repeated it, while nothing is read from the chain: the comparison is against the local
+  broadcast file. Both now say that, and name the post-deploy check as what confirms the deployment.
+- `line.slice(3)` mangled a rename entry in the dirty-path list, and the message "commit X would not
+  name the deployed source" was false when the dirty hunk was `[fmt]` or `[rpc_endpoints]`. The
+  parsing moved into an exported `dirtyPathsFrom`, which reads a rename as its destination and has
+  three tests of its own (205), and the message now names the dirty paths and says that these paths
+  decide the deployed bytecode, which is why any change in them blocks a record (207).
+
+Keeping `foundry.toml` in `BYTECODE_PATHS` wholesale stays: a false refusal costs one commit, a false
+pass puts a wrong commit in a published record.
+
+**A partial Sourcify match could have read as verified (finding 6).** LLR-DP-006 asks for a perfect
+match. The reviewer probed the live v2 API: a partially verified contract answers `{"match":"match"}`
+and only a perfect one answers `"exact_match"`, and the tool recorded whatever the field said, so
+`"verification": {"sourcify": "match"}` would have read as verified and satisfied the release gate's
+"both verifications" with nothing separating partial from perfect. The record now carries
+`{"match": <what Sourcify answered>, "perfectMatch": <true only for exact_match>}`, which is
+unmistakable to a reader and to the gate, and the console line says "not a perfect match" when it is
+not one. A test drives `"match"` explicitly as well as `"exact_match"` (206). The `@trace LLR-DP-006`
+tag moved off `sourcifyStatus`, which reads a status and verifies nothing, onto the line that decides
+whether the match Sourcify reported is the perfect one the requirement asks for. No line of code can
+implement "the contract shall be verified on Sourcify with a perfect match", which is an external
+fact; the reason for the tag is that 06 section 3 condition 4 requires a DP-scope requirement to name
+a source line, and this is the line that comes closest to the requirement's own words. The
+demonstration evidence carries the rest of the row.
+
+**The `[rpc_endpoints]` comment cited a source that did not cover it (finding 7).** V-02 is about
+`rpc.mainnet.arc.io` only, and no document in the repository records the testnet RPC URL or its
+anonymous access, so the comment claimed more than the evidence. "So a deploy or check command
+cannot reach the wrong network through a mistyped URL" also overstates what an alias does and is
+gone. The `arc_mainnet` alias is removed outright: it is the one line in this group that shortens the
+path to an unintended mainnet broadcast, the mainnet group can add it when it needs it, and the
+comment now says so.
+
+**Two public entry points no requirement asks for (finding 8).** `DeployScript.loadConfigFrom` keeps
+its signature, since the negative cases need it, but no longer carries a `// LLR-DP-001` tag that
+read as though a requirement asked for a path argument; its comment says it exists so a missing,
+malformed or chain-less config can be driven from a test, and that no deployment reaches the config
+that way. `PostDeployCheckScript.checkAgainst`, `expectationsFrom` and `recordedAddress` are now
+`internal`, leaving `run()` and `check(address)` as the script's public surface, because a public
+`checkAgainst` let `forge script --sig` run the check against hand-supplied expectations, which is
+the one thing LLR-DP-004 exists to prevent. `PostDeployCheckHarness` in the test file inherits the
+script and exposes the three for the negative cases.
+
+**`run()` and `recordedAddress()` had no test, and the key coupling was unproven (finding 9).**
+`recordedAddress()` reads `.address` and the tool writes `address`; renaming either side left the
+suite green and the failure would have surfaced on a live network.
+`test_DP004_checksTheDeploymentRecordedForTheChainItRunsOn` deploys through the deploy script at chain
+31337, writes a record naming it, asserts `recordedAddress()` reads that address back, and runs
+`run()` end to end, then removes the file. The two sides are now pinned separately: mutation 198
+renames the key the script reads and 208 renames the key the tool writes, and each dies. A failing
+run leaves the fixture behind, which is why `deployments/31337.json` is in `.gitignore`; the
+mutation 198 run left one and it was ignored, as intended.
+
+**Four tests weaker than their names (finding 10).**
+
+- `test_DP004_expectsTheFourConstantsTheContractMustDeclare` compared four literals in the script
+  with four literals in the test. Renamed to
+  `test_DP004_expectsTheFourConstantsAFreshDeploymentReports`, it now asserts the script's
+  expectations equal what a freshly deployed SatStake reports. That is not a tautology, because
+  `expectationsFrom` is `pure` and is given no address, so it cannot read them from the deployment.
+  Mutation 199 makes the deployment answer `MIN_DURATION` 61: the old form passes, the new one fails
+  `60 != 61`.
+- The three negative config tests asserted only that the selector was not `ChainIdMismatch`, so a
+  script that reverted with a wrong error for a missing file would have passed, and the log's claim
+  that they make the three cases distinguishable from each other was not what they asserted. Each now
+  asserts the failure itself: the file read for a missing file, the JSON parse for a file that is not
+  JSON, the missing `.chainId` key for JSON without one. The message of the first carries an absolute
+  path on the machine that ran the test, so only the part naming what went wrong is asserted.
+  Mutation 194.
+- The three `AllowedTokensMismatch` tests put `satStake.allowedTokens()` inside `vm.expectRevert`'s
+  argument list. It works, because arguments evaluate first, but it is the shape the comment two
+  tests below warns is easy to reintroduce. All three are hoisted to locals.
+- `asNumber`'s decimal case is in finding 5.
+
+| # | Mutation | Failing test |
+|---|---|---|
+| 192 | `run()` ignores the config and constructs the two testnet addresses | `deploysTheOtherConfigsAllowlistOnTheOtherChain` |
+| 193 | the chain comparison moves from `DeployConfig.load` to `DeployScript.loadConfigFrom` | `runItselfRefusesAConfigWrittenForAnotherChain` |
+| 194 | `load` catches a failing read or parse and reverts `ConfigUnreadable()` | the three negative config tests |
+| 195 | `checkAgainst` reverts `AllowedTokensMismatch` with its two arrays swapped | the three allowlist mismatch tests |
+| 196 | the `pledgeCount() == 0` check is deleted | `failsWhenAPledgeAlreadyExists` |
+| 197 | the `decimals()` loop is deleted | `failsWhenATokenReportsOtherDecimals`, `failsWhenTheSecondTokenReportsOtherDecimals`, `failsWhenAConfiguredTokenReportsOtherDecimalsOnChain` |
+| 198 | `recordedAddress()` reads `.contractAddress` | `checksTheDeploymentRecordedForTheChainItRunsOn` |
+| 199 | the deployment answers `MIN_DURATION` 61 (`vm.mockCall`) | `expectsTheFourConstantsAFreshDeploymentReports` |
+| 200 | `asNumber` back to `typeof value === "number" ? value : parseInt(value, 16)` | `refuses a number that is neither a JSON number nor 0x-prefixed hex` |
+| 201 | the receipt status check is deleted | `refuses when the creation transaction did not succeed`, `refuses when the receipt carries no status` |
+| 202 | the bytecode guard back to `creationCode.length === 0` | `refuses when the compiled artifact carries no bytecode` |
+| 203 | the commit guard back to `if (broadcast.commit && ...)` | `refuses when the broadcast names no commit at all` |
+| 204 | the `broadcast.chain` check is deleted | `refuses when the broadcast is for another chain than the record` |
+| 205 | `dirtyPathsFrom` back to `line.slice(3)` alone | `names the destination of a rename rather than both halves` |
+| 206 | `perfectMatch: sourcify !== null` | `does not record a partial Sourcify match as verified` |
+| 207 | the dirty-path message back to blaming the commit | `refuses when the tree that produced the contract has uncommitted changes` |
+| 208 | the record names the address under `contractAddress` | `records the address, the deploy transaction, the block, the commit, the compiler, and the status` |
+
+Mutations 192 and 193 are recorded as escapes, so each was run twice. With the three new tests
+excluded, the suite is the 22 tests the group had before the review, and both mutants pass it:
+
+```
+--- mutant 192, the pre-review suite (all three new tests excluded) ---
+Ran 2 test suites: 22 tests passed, 0 failed, 0 skipped (22 total tests)
+--- mutant 192, the full suite ---
+[FAIL: InvalidAllowlist()] test_DP001_deploysTheOtherConfigsAllowlistOnTheOtherChain()
+[FAIL: Error != expected error: InvalidAllowlist() != ChainIdMismatch(31337 [3.133e4], 1337)]
+ test_DP001_runItselfRefusesAConfigWrittenForAnotherChain()
+[FAIL: InvalidAllowlist()] test_DP004_checksTheDeploymentRecordedForTheChainItRunsOn()
+```
+
+```
+--- mutant 193, the pre-review suite ---
+Ran 2 test suites: 22 tests passed, 0 failed, 0 skipped (22 total tests)
+--- mutant 193, the full suite ---
+[FAIL: Error != expected error: InvalidAllowlist() != ChainIdMismatch(31337 [3.133e4], 1337)]
+ test_DP001_runItselfRefusesAConfigWrittenForAnotherChain()
+```
+
+Under mutant 193 the guard is never reached on the deploy path, so `run()` carries the fixture
+config's tokens to the constructor and fails there on the missing code that only the test EVM lacks.
+On a real chain with real token addresses it would have deployed.
+
+Mutations 194, 195, 196 and 199 are the four post-hoc fixes the lead made between red and green, and
+each was run against both the pre-review and the current form of its test, since the point is that
+the strengthened assertion is load-bearing:
+
+- 194, the three negative config tests in their pre-review form: `3 passed; 0 failed`. As they now
+  stand: `0 passed; 3 failed`, on `a missing config did not fail on the file read` and the two
+  parse messages.
+- 195, the three allowlist tests checking the selector only through `vm.expectPartialRevert`:
+  `3 passed; 0 failed`. As they now stand all three fail naming both arrays, for example
+  `AllowedTokensMismatch([USDC, cirBTC], [cirBTC, USDC]) != AllowedTokensMismatch([cirBTC, USDC],
+  [USDC, cirBTC])`. The pre-review form as written could not be run at all, since
+  `vm.expectRevert(Error.selector)` demands the revert data equal those four bytes, which is the
+  defect the lead fixed; `expectPartialRevert` is the weak form that would have passed.
+- 196, the pledge-count check deleted: the current test fails `next call did not revert as expected`.
+  In its pre-review shape it fails with the same message under the mutant and, as the green section
+  records, against the correct script too, reproduced here; so that shape could not have
+  distinguished the two and the hoisted `_expected()` is what gives the test its power.
+- 199 is described above.
+
+Mutations 200 to 208 each kill exactly their own test and leave the other 24 in the tool suite
+passing, which is how the count `# pass 24 / # fail 1` appears for all but 201, where the two status
+tests both die. Every mutated file was restored from a copy taken before the run and compared with
+`diff` afterwards, and `git diff --stat src/` is empty.
+
+Red for the tool guards was observed before the code, not by mutation. With the new tests importing
+`asNumber` and `dirtyPathsFrom`, which did not exist, the whole file failed to load:
+
+```
+SyntaxError: The requested module '../../tools/record-deployment.mjs' does not provide an export
+named 'asNumber'
+```
+
+With both exported as the lax existing function and a stub returning `[]`, so each test's own failure
+is visible, `node --test test/tools/record-deployment.test.mjs` gave `# tests 25 / # pass 12 / # fail
+13`, among them:
+
+```
+not ok 3 - refuses a number that is neither a JSON number nor 0x-prefixed hex
+  error: 'Missing expected exception.'
+not ok 5 - does not record a partial Sourcify match as verified
+  error: Expected values to be strictly deep-equal: + 'match' - { match: 'match', ...
+not ok 7 - refuses when the tree that produced the contract has uncommitted changes
+  error: The input did not match the regular expression /bytecode/. Input:
+  'uncommitted changes in src/SatStake.sol: commit fc077c9e... would not name the deployed source'
+not ok 9 - refuses when the broadcast names no commit at all          error: 'Missing expected exception.'
+not ok 10 - refuses when the broadcast is for another chain than the record   error: 'Missing expected exception.'
+not ok 12 - refuses when the compiled artifact carries no bytecode    error: 'Missing expected exception.'
+not ok 13 - refuses when the creation transaction did not succeed     error: 'Missing expected exception.'
+not ok 14 - refuses when the receipt carries no status                error: 'Missing expected exception.'
+not ok 2 - names the destination of a rename rather than both halves   error: + [] - [ 'src/New.sol' ]
+```
+
+Three tests added to the group, eleven to the tool suite, seven renamed (the renames are marked in
+the group's table above):
+
+| Test | Verifies |
+|---|---|
+| `test_DP001_deploysTheOtherConfigsAllowlistOnTheOtherChain` | LLR-DP-001 |
+| `test_DP001_runItselfRefusesAConfigWrittenForAnotherChain` | LLR-DP-001 |
+| `test_DP004_checksTheDeploymentRecordedForTheChainItRunsOn` | LLR-DP-004 |
+| `refuses a number that is neither a JSON number nor 0x-prefixed hex` | LLR-DP-005 |
+| `does not record a partial Sourcify match as verified` | LLR-DP-005, LLR-DP-006 |
+| `refuses when the broadcast names no commit at all` | LLR-DP-005 |
+| `refuses when the broadcast is for another chain than the record` | LLR-DP-005 |
+| `refuses when the compiled artifact carries no bytecode` | LLR-DP-005 |
+| `refuses when the creation transaction did not succeed` | LLR-DP-005 |
+| `refuses when the receipt carries no status` | LLR-DP-005 |
+| `names each path git reports as changed` | LLR-DP-005 |
+| `names the destination of a rename rather than both halves` | LLR-DP-005 |
+| `is empty for a clean tree` | LLR-DP-005 |
+| `returns a partial match as the partial match it is` | LLR-DP-006 |
+
+Run after the follow-up: `forge fmt --check` clean; `forge test` 207 passed, 0 failed; `node --test
+test/tools/*.test.mjs` 118 passed, 0 failed; `node tools/trace-check.mjs`: `OK. 55/112 LLRs
+referenced, 0/55 journeys passing.` `forge coverage --report summary` still reports
+`src/SatStake.sol` at 100% on all four measures, and `node tools/coverage-gate.mjs` passes; both
+script files are at 100% on all four measures too, so the two new internal seams are reached.
+
+### Mutation 209, run by the lead, 2026-09-30
+
+The implementer could not mutate `src/SatStake.sol`, so the strengthened constants test
+(`test_DP004_expectsTheFourConstantsAFreshDeploymentReports`) was shown load-bearing only through
+`vm.mockCall` on the deployment, which mutates the fixture rather than the code under test. The real
+mutant is on record here.
+
+| # | Mutation | Failing test |
+|---|---|---|
+| 209 | `MIN_DURATION` is 61 in `src/SatStake.sol` | `expectsTheFourConstantsAFreshDeploymentReports`, `assertion failed: 60 != 61` |
+
+The message is the point: 60 is the value the check writes out from 05 section 1.1 and 61 is what the
+deployment answered, so the assertion is between the requirement and the contract rather than between
+the contract and itself. `src/SatStake.sol` was restored from a copy and confirmed by checksum and by
+`git diff`.
+
+### Decision: the fixture configs stay readable outside tests, 2026-09-30
+
+The implementer offered a `"fixture": true` key that `DeployConfig.load` would refuse, so the two new
+configs could not be read outside a test, and reported that `forge script DeployScript` against a
+local Anvil would otherwise succeed and deploy with two invented token addresses. It stays as it is,
+and the reviewer showed the reason for keeping it is stronger than the one first recorded here: that
+run cannot succeed. Both fixtures are self-defeating as deployment inputs. `1337.json` reverts
+`ChainIdMismatch` at the guard, and `31337.json` reverts `InvalidAllowlist` in the constructor, since
+`src/SatStake.sol:191` refuses a token with no deployed code and neither invented address has code on
+any chain. A refusal key would guard against something that cannot happen, and it would be behaviour
+no requirement asks for. The `note` field in each file says what it is for, and the two fixtures are
+what make LLR-DP-001's first clause and its guard testable at all.
+
+A statusless receipt is refused by `tools/record-deployment.mjs` as well as one carrying
+`"status": "0x0"`, which is wider than asked for and correct: neither is evidence that a creation
+succeeded, and a false refusal costs one rerun.
+
+### Confirmation pass and the residuals it found, 2026-09-30
+
+The reviewer confirmed all six fixes and reproduced seven of the seven tool-guard mutants. It also
+qualified mutation 209 and found one real gap, closed below.
+
+**A script that sorted its allowlist survived all 207 tests.** Both configs happened to list their
+tokens in ascending address order, so no test told file order from sorted order, and
+`expectationsFrom` preserving file order meant the post-deploy check agreed with a sorting deploy on
+both files. Order is load-bearing: LLR-SC-054 answers in constructor order and LLR-DP-004 checks it.
+`deployments/config/31337.json` now lists the higher address first, so the two orders differ, and its
+`note` says why. The mutant dies twice, with the right message on each side:
+
+| # | Mutation | Failing tests |
+|---|---|---|
+| 210 | `run` sorts the allowlist ascending before deploying | `deploysTheOtherConfigsAllowlistOnTheOtherChain`, `assertion failed: 0x…CAfe0006 != 0x…cafe0008`; `checksTheDeploymentRecordedForTheChainItRunsOn`, `AllowedTokensMismatch` naming both orders |
+
+This matters for the mainnet group: in `5042.json` cirBTC `0x171A4217…` sorts before USDC
+`0x3600…`, so a sorting deploy would reorder the mainnet allowlist while the suite stayed green.
+
+**Mutation 209 shows less than was claimed for it.** `MIN_DURATION = 61` also fails
+`test_DP004_acceptsAFreshDeploymentThatMatchesTheConfig`, because `checkAgainst` compares the same
+literal against the same live call and reverts `ConstantMismatch`. So 209 establishes that the
+requirement's value is checked against the contract's, which was the point at issue, but not that the
+strengthened test is uniquely load-bearing: what that test adds over the passing case is diagnosis,
+naming which of the four constants diverged. The `vm.mockCall` form (199) is what establishes the
+narrower claim, since it perturbs one deployment answer for one test.
+
+**`DeployScript` now matches `PostDeployCheckScript`.** `configPath`, `loadConfig` and
+`loadConfigFrom` are `internal`, with a `DeployHarness` in the test file, so `run` is the whole public
+surface of both scripts and no `--sig` call can make a deployment read a config the running chain does
+not name. The asymmetry was a choice rather than a constraint, and two scripts answering the same
+question differently in one diff is not what the history should show.
+
+Three overstatements corrected above rather than left: the false claim that an Anvil run would
+succeed, the claim that a line of code implements Sourcify verification, and the claim that the guard
+tests read only files a deployment reads. One prose mention of LLR-DP-006 reworded, since it was
+adding a second matrix row two lines from the tagged one, the same mechanism as finding 4.
+
+Known limitation, recorded rather than fixed: `asNumber` refuses a decimal-string block number
+outright, so if a Foundry version ever writes one the tool blocks until it is changed. Refusing is the
+safe direction, since the alternative silently read `"42"` as 66.
+
+Run after the residuals: `forge fmt --check` clean; `forge test` 207 passed, 0 failed; `node --test
+test/tools/*.test.mjs` 118 passed; `node tools/trace-check.mjs`: `OK. 55/112 LLRs referenced, 0/55
+journeys passing.`

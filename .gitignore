@@ -16,6 +16,9 @@ satstake-referee
 cache/
 broadcast/
 out/
+# A deployment record for Foundry's local chain, written and removed by the post-deploy check test.
+# Ignored so a crashed run cannot leave one behind as though a chain 31337 deployment existed.
+deployments/31337.json
 
 # Node
 node_modules/

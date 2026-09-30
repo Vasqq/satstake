@@ -1,0 +1,19 @@
+{
+  "chainId": 5042002,
+  "tokens": [
+    {
+      "symbol": "USDC",
+      "address": "0x3600000000000000000000000000000000000000",
+      "decimals": 6,
+      "source": "docs/evidence/phase0.md check 4",
+      "confirmed": "2026-09-24"
+    },
+    {
+      "symbol": "cirBTC",
+      "address": "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
+      "decimals": 8,
+      "source": "docs/evidence/phase0.md checks 4 and 5",
+      "confirmed": "2026-09-24"
+    }
+  ]
+}
