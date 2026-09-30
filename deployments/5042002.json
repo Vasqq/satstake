@@ -1,0 +1,38 @@
+{
+  "chainId": 5042002,
+  "contract": "SatStake",
+  "address": "0x3ae26b15b9085ddb223ffeb503b4f713e682cac4",
+  "deployTransaction": "0xcee5ec10fd42ceb39a35ec2dd51b7b69ce80c8d1f8e98b32c7749214c442c736",
+  "blockNumber": 64784295,
+  "gitCommit": "61fa8b0173c2484ab65e4f131d520091535d4de9",
+  "compiler": {
+    "version": "0.8.28+commit.7893614a",
+    "settings": {
+      "remappings": [
+        "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+        "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+        "forge-std/=lib/forge-std/src/",
+        "halmos-cheatcodes/=lib/openzeppelin-contracts/lib/halmos-cheatcodes/src/",
+        "openzeppelin-contracts/=lib/openzeppelin-contracts/"
+      ],
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "metadata": {
+        "bytecodeHash": "ipfs"
+      },
+      "compilationTarget": {
+        "src/SatStake.sol": "SatStake"
+      },
+      "evmVersion": "cancun",
+      "libraries": {}
+    }
+  },
+  "verification": {
+    "sourcify": {
+      "match": "exact_match",
+      "perfectMatch": true
+    }
+  }
+}

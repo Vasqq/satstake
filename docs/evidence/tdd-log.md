@@ -2673,3 +2673,122 @@ safe direction, since the alternative silently read `"42"` as 66.
 Run after the residuals: `forge fmt --check` clean; `forge test` 207 passed, 0 failed; `node --test
 test/tools/*.test.mjs` 118 passed; `node tools/trace-check.mjs`: `OK. 55/112 LLRs referenced, 0/55
 journeys passing.`
+
+## Tool: Sourcify verification (LLR-DP-006), 2026-09-30
+
+`forge verify-contract --verifier sourcify` posts to Sourcify's legacy `POST /verify` endpoint, which
+now answers 404 with an HTML body, so Foundry fails after five retries with "error decoding response
+body; expected value at line 1 column 1" against the live server. `tools/verify-sourcify.mjs` drives
+Sourcify's v2 API directly instead, and requires a perfect match (`exact_match` on `match`,
+`creationMatch`, and `runtimeMatch` together), which is what LLR-DP-006 asks for and what
+`tools/record-deployment.mjs`'s existing `sourcifyStatus` reader does not itself demand. That reader
+still writes `deployments/<chainId>.json`; this tool only verifies and never touches that file.
+
+### Red, 2026-09-30
+
+`test/tools/verify-sourcify.test.mjs` written from the tool's specification before
+`tools/verify-sourcify.mjs` existed, covering the deployment lookup, chain support, submission,
+polling, match evaluation, read-back agreement, and end-to-end orchestration.
+
+Command: `node --test test/tools/verify-sourcify.test.mjs`
+
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module '<repo>/tools/verify-sourcify.mjs' imported from
+'<repo>/test/tools/verify-sourcify.test.mjs'
+not ok 1 - test/tools/verify-sourcify.test.mjs
+# tests 1
+# pass 0
+# fail 1
+```
+
+Failure reason, as predicted: the tool does not exist yet, so the whole test file fails to load rather
+than any one assertion failing, the same shape the trace checker's own red took at the start of the
+project.
+
+### Green, 2026-09-30
+
+`tools/verify-sourcify.mjs` written with the exported functions the tests drive:
+`deploymentFor`, `assertChainSupported`, `submitVerification`, `pollUntilComplete`,
+`assertPerfectMatch`, `readBack`, `assertAgreement`, and the end-to-end `verifyOnSourcify`, plus a
+`main` guarded by the `import.meta.url` check that wires them to a live `forge verify-contract
+--show-standard-json-input` call and the compiled artifact's `metadata.compiler.version`, neither
+hand-typed.
+
+First run surfaced a bug in the test's own stub, not the tool: `stubFetch` matched routes by the first
+registered key whose URL the request contained, so the poll URL
+`/v2/verify/{verificationId}` matched the shorter general submit route `/v2/verify/` first and drained
+its queue instead of its own. Fixed by having the stub pick the longest matching key, so a specific
+route is chosen over a shorter one it also happens to contain; this is a fixture defect, not a
+requirement gap, and no production code changed for it.
+
+Command: `node --test test/tools/verify-sourcify.test.mjs`
+
+```
+# tests 23
+# suites 7
+# pass 23
+# fail 0
+```
+
+Full tool suite: `node --test test/tools/*.test.mjs` gives `# tests 141 / # pass 141 / # fail 0` (118
+before this group, 23 added). `node tools/trace-check.mjs`: `OK. 55/112 LLRs referenced, 0/55 journeys
+passing.` The referenced count is unchanged because LLR-DP-006 was already referenced through
+`tools/record-deployment.mjs`'s `sourcifyStatus`; this tool adds a second, independent reference on
+the line that checks `match`, `creationMatch`, and `runtimeMatch` together, which is closer to the
+requirement's own words. LLR-DP-006 is method D, so the row's own evidence is the mainnet
+demonstration once the tool runs against the live server; that is outside this task, which covers no
+network calls at all.
+
+| Test | Verifies |
+|---|---|
+| `reads the address and deployTransaction from the deployment record` | LLR-DP-006 |
+| `fails with its own message when the deployment file cannot be read` | LLR-DP-006 |
+| `fails with its own message when the record carries no address` | LLR-DP-006 |
+| `fails with its own message when the record carries no deployTransaction` | LLR-DP-006 |
+| `passes for a chain Sourcify lists as supported` | LLR-DP-006 |
+| `refuses a chain Sourcify lists but does not support, naming the chain` | LLR-DP-006 |
+| `refuses a chain Sourcify does not list at all` | LLR-DP-006 |
+| `stops before any submission is attempted for an unsupported chain` | LLR-DP-006 |
+| `posts the standard JSON input, compiler version, contract identifier and creation tx hash` | LLR-DP-006 |
+| `polls until the job reports it is completed` | LLR-DP-006 |
+| `fails after a bounded number of attempts rather than hanging` | LLR-DP-006 |
+| `accepts a job whose match, creationMatch and runtimeMatch are all exact_match` | LLR-DP-006 |
+| `refuses a partial match and names the value that came back` | LLR-DP-006 |
+| `refuses when the summary is exact_match but creationMatch is not` | LLR-DP-006 |
+| `refuses when the summary is exact_match but runtimeMatch is not` | LLR-DP-006 |
+| `refuses a job that reports an error, naming it` | LLR-DP-006 |
+| `does not fail an otherwise perfect verification for a failure inside externalVerifications` | LLR-DP-006 |
+| `reads the contract back from the v2 contract endpoint` | LLR-DP-006 |
+| `passes when the job's answer and the read-back agree` | LLR-DP-006 |
+| `fails when the job's answer and the read-back disagree` | LLR-DP-006 |
+| `succeeds and reports the perfect match when everything agrees` | LLR-DP-006 |
+| `succeeds idempotently against an already-verified contract` | LLR-DP-006 |
+| `fails when the read-back disagrees with the job that just completed` | LLR-DP-006 |
+
+### Mutation evidence, continuing from 210
+
+Each mutation was applied by hand to `tools/verify-sourcify.mjs`, run against the one test named, and
+the file restored and checksum-verified before the next. `git diff --stat tools/` is empty afterward.
+
+| # | Mutation | Failing test |
+|---|---|---|
+| 211 | `deploymentFor`'s try/catch around `readJson()` removed, so a read failure propagates unwrapped | `fails with its own message when the deployment file cannot be read`, input does not match `/could not be read/` |
+| 212 | the missing-address check deleted | `fails with its own message when the record carries no address`, `Missing expected exception` |
+| 213 | the missing-deployTransaction check deleted | `fails with its own message when the record carries no deployTransaction`, `Missing expected exception` |
+| 214 | the `assertChainSupported` call deleted from `verifyOnSourcify` | `stops before any submission is attempted for an unsupported chain`, `submitted despite an unsupported chain` |
+| 215 | `assertChainSupported` accepts any listed chain regardless of `supported` | `refuses a chain Sourcify lists but does not support, naming the chain`, `Missing expected rejection` |
+| 216 | `pollUntilComplete` returns an incomplete job instead of throwing once attempts run out | `fails after a bounded number of attempts rather than hanging`, `Missing expected rejection` |
+| 217 | the `job.error` check deleted from `assertPerfectMatch` | `refuses a job that reports an error, naming it`, message names `match "undefined"` instead of the error text |
+| 218 | the `match !== EXACT` check deleted | `refuses a partial match and names the value that came back`, `Missing expected exception` |
+| 219 | the `creationMatch !== EXACT` check deleted | `refuses when the summary is exact_match but creationMatch is not`, `Missing expected exception` |
+| 220 | the `runtimeMatch !== EXACT` check deleted | `refuses when the summary is exact_match but runtimeMatch is not`, `Missing expected exception` |
+| 221 | a check added that fails on any `externalVerifications` entry reporting `"failed"`, the behaviour the requirement says must not happen | `does not fail an otherwise perfect verification for a failure inside externalVerifications`, `Got unwanted exception` |
+| 222 | the `assertAgreement` call deleted from `verifyOnSourcify` | `fails when the read-back disagrees with the job that just completed`, `Missing expected rejection` |
+
+Mutation 221 runs the opposite direction from the rest: it adds behaviour the requirement forbids
+(failing the whole verification for a Blockscout push failure that is not Sourcify's own record)
+rather than removing a guard, since the thing to prove here is that the tool must not check
+`externalVerifications` at all, not that some existing check is load-bearing.
+
+`node --test test/tools/*.test.mjs`: 141 passed, 0 failed. `node tools/trace-check.mjs`: `OK. 55/112
+LLRs referenced, 0/55 journeys passing.`
