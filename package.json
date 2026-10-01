@@ -1,0 +1,13 @@
+{
+  "name": "satstake",
+  "private": true,
+  "type": "module",
+  "description": "Tooling for the SatStake repository: the live testnet end-to-end script.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "viem": "2.57.2"
+  }
+}

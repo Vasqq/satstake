@@ -13,6 +13,7 @@ Every skill, MCP server, and non-trivial package or tool used to build SatStake,
 | GitHub Actions: checkout, setup-node, foundry-toolchain | v7.0.1, v7.0.0, v1.9.1, pinned by commit SHA in `ci.yml` | GitHub, Foundry | CI. SHAs, not tags, so a moved tag cannot change what runs |
 | gitleaks in CI | 8.30.1 release binary, SHA-256 checked | https://github.com/gitleaks/gitleaks/releases/tag/v8.30.1 | Same version as the pre-commit hook, full-history scan. Replaced gitleaks-action, which pinned an older gitleaks, scanned only the pushed range, and skipped checksum verification |
 | `@circle-fin/swap-kit`, `@circle-fin/adapter-viem-v2` | 1.7.0, 1.18.0 | npm, Circle maintainers | One-off testnet swap of USDC for cirBTC in Phase 0; run from a scratch directory, not a project dependency. `toml` overridden to 4.3.0 to clear high advisories |
+| `viem` | 2.57.2, exact pin, `package-lock.json` committed | https://github.com/wevm/viem, npm | The live testnet end-to-end script in `e2e/` (LLR-VV-005) and its logic tests. `npm audit` reports 0 vulnerabilities. Also the planned client library of the frontend |
 
 ## Agent safeguards
 

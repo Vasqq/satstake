@@ -1,0 +1,171 @@
+{
+  "requirement": "LLR-VV-005",
+  "chainId": 5042002,
+  "contract": "0x3Ae26b15B9085ddB223FfEb503B4f713e682Cac4",
+  "accounts": {
+    "staker": "0x18648257045D8c323Cff1E4F80EeD22F157D8767",
+    "referee": "0x8b2397f42B9358eA7F4d90F67070c495308A6C92",
+    "beneficiary": "0xF00DfE7500730d2D1A8d8770AeecBEB7BfF6f320",
+    "settler": "0xFD199E525510Dd14c0D13B2ac6fEb077693C01d6"
+  },
+  "steps": [
+    {
+      "journey": "setup",
+      "description": "fund referee with gas",
+      "tx": "0xaea7c18b507bb22fc8b120cfddd51ec6632dcd45bf3f2731387b1fe380948cd2",
+      "note": "96963750000000000 native units"
+    },
+    {
+      "journey": "setup",
+      "description": "fund beneficiary with gas",
+      "tx": "0x4e38c04e9a83b28b000cd7de6447ae373756f9fbc947a4ea936be8223d3555b6",
+      "note": "77838750000000000 native units"
+    },
+    {
+      "journey": "setup",
+      "description": "fund settler with gas",
+      "tx": "0xac825dc91c954aa825e9c5ca2483a1e0ec6d654ae6f53cde378b07ccd6bd4e7b",
+      "note": "39588750000000000 native units"
+    },
+    {
+      "journey": "UJ-42",
+      "description": "expiring cirBTC pledge: approve exactly 10",
+      "tx": "0x1cd9c0ee666f952d4ea0d0ef34575fa29d3d3969cd6b88c27b38be2d0e40da2a"
+    },
+    {
+      "journey": "UJ-42",
+      "description": "expiring cirBTC pledge: createPledge, pledge 9 Active; one Transfer of 10 from the staker to the contract in its receipt",
+      "tx": "0xe500aacf24a14a4e2ff4e805f41f8e4ec7645d8d592eb39947e2aae143968fdc",
+      "note": "deadline 1790861911"
+    },
+    {
+      "journey": "UJ-10",
+      "description": "cirBTC pledge to be kept: approve exactly 10",
+      "tx": "0x6336f6be388ff0df46382f7f2b33b4d95d726c80d571e0388f2bc9ea476ec84b"
+    },
+    {
+      "journey": "UJ-10",
+      "description": "cirBTC pledge to be kept: createPledge, pledge 10 Active; one Transfer of 10 from the staker to the contract in its receipt",
+      "tx": "0xa70f767d5c379aa47d6305f579fdadf167538283326f330184d1b726091a1e24",
+      "note": "deadline 1790865366"
+    },
+    {
+      "journey": "UJ-11",
+      "description": "USDC pledge to be broken: approve exactly 10000",
+      "tx": "0x880c5cf42446ac8facc9b929ecf0ca3b6184530c3f3744ba914068c037aef26d"
+    },
+    {
+      "journey": "UJ-11",
+      "description": "USDC pledge to be broken: createPledge, pledge 11 Active; one Transfer of 10000 from the staker to the contract in its receipt",
+      "tx": "0xcc86aa4a3119e0e86fe1f4bdd68a22c238a9085a6ce2a9e14f6c72d30ffe1842",
+      "note": "deadline 1790865372"
+    },
+    {
+      "journey": "UJ-10",
+      "description": "cirBTC pledge to be broken: approve exactly 10",
+      "tx": "0x178e7af48043a57d917ea0649d7f5c050466a845d0490d3845895550f90e8e97"
+    },
+    {
+      "journey": "UJ-10",
+      "description": "cirBTC pledge to be broken: createPledge, pledge 12 Active; one Transfer of 10 from the staker to the contract in its receipt",
+      "tx": "0xbb81cd091c56db603736f1e25dbe5f27375c9d0541b0565b4cec35277685d836",
+      "note": "deadline 1790865378"
+    },
+    {
+      "journey": "UJ-44",
+      "description": "settle on active pledge 10 before its deadline refused",
+      "tx": "0x245cf5a9d2123a0801034df22ba34d6a94b321875751aae16aa2fe0b28435677",
+      "note": "reverted in block 64954291 at timestamp 1790861788, deadline 1790865366",
+      "error": "NotSettleable"
+    },
+    {
+      "journey": "UJ-30",
+      "description": "referee marks pledge 10 kept",
+      "tx": "0x539a6c8959979906809facc1d2e4850df79e2288ad946f433ef4e648eea82865"
+    },
+    {
+      "journey": "UJ-31",
+      "description": "referee marks pledge 11 broken",
+      "tx": "0xe5681580cec5dcffd7471ffaf49cb16b33e714dfde924e66d4571e48387545cc"
+    },
+    {
+      "journey": "UJ-31",
+      "description": "referee marks pledge 12 broken",
+      "tx": "0x8eac73f994e056c2cfbaacede95e229a5be7770d73f9ad47c2b815a2f9dcdb79"
+    },
+    {
+      "journey": "UJ-40",
+      "description": "staker settles pledge 10, SettledToStaker",
+      "tx": "0xb98368b738a0badd551e2647653b06b7c509d04ee5b45dc86708ea953a99fe25",
+      "note": "kept stake back to the staker"
+    },
+    {
+      "journey": "UJ-45",
+      "description": "second settle on pledge 10 refused, no balance moved",
+      "tx": "0x52bbf3a3304691a290860e3996c97ea651fd8c629ba251599f4a8925733db071",
+      "note": "reverted in block 64954328 at timestamp 1790861807, deadline 1790865366",
+      "error": "AlreadySettled"
+    },
+    {
+      "journey": "UJ-43",
+      "description": "settler settles pledge 11, SettledToBeneficiary",
+      "tx": "0x4991deb7b3bf6de9d65926901f5a9e6c286cd172f80d618140abb4d56798d5f9",
+      "note": "third party triggers; the beneficiary receives, the settler receives nothing"
+    },
+    {
+      "journey": "UJ-41",
+      "description": "beneficiary settles pledge 12, SettledToBeneficiary",
+      "tx": "0xb3d8adab92aa938242ba57e2983bf0a83b70ec29ac9607cdbf48999bcde7cee2",
+      "note": "beneficiary claims a broken stake"
+    },
+    {
+      "journey": "UJ-42",
+      "description": "pledge 9 reads Expired once chain time reaches the deadline",
+      "note": "signed at chain time 1790861816, deadline 1790861911"
+    },
+    {
+      "journey": "UJ-32",
+      "description": "markKept on pledge 9, signed before the deadline and broadcast after it, refused",
+      "tx": "0x23a9a32481c3e87bd95b647138f5893c0594bd2d49ad2cf6a1a07aa73a4ed3e1",
+      "note": "reverted in block 64954538 at timestamp 1790861913, deadline 1790861911",
+      "error": "VerdictWindowClosed"
+    },
+    {
+      "journey": "UJ-32",
+      "description": "markBroken on pledge 9, signed before the deadline and broadcast after it, refused",
+      "tx": "0x10b50f1d2aeb266d2f04f353c51e26bebeec4bb402949e92816778e4fe393088",
+      "note": "reverted in block 64954547 at timestamp 1790861918, deadline 1790861911",
+      "error": "VerdictWindowClosed"
+    },
+    {
+      "journey": "UJ-42",
+      "description": "beneficiary settles pledge 9, SettledToBeneficiary",
+      "tx": "0x492b94823a85f2979e9db4a8b7b7d20e24a3a8d8ae3a1e9632a663bbf4e90375",
+      "note": "expired stake claimed by the beneficiary"
+    },
+    {
+      "journey": "sweep",
+      "description": "beneficiary returns 20 units of cirBTC to the operator",
+      "tx": "0x2008dec1b72ef50d91802d03fffd402cf47897fa25e561963e63809403076588"
+    },
+    {
+      "journey": "sweep",
+      "description": "referee returns its remaining USDC to the operator",
+      "tx": "0xffc7d71b6fad2d23865ab8a013f40dd9c339b3676763f84a19992c516a741335",
+      "note": "259928760000000 native units left, the unspent margin of the fee cap"
+    },
+    {
+      "journey": "sweep",
+      "description": "beneficiary returns its remaining USDC to the operator",
+      "tx": "0x274ebd64f1304b073574aba123ed8a7459a645d166bdbbdc2742a96255b1215e",
+      "note": "259928760000000 native units left, the unspent margin of the fee cap"
+    },
+    {
+      "journey": "sweep",
+      "description": "settler returns its remaining USDC to the operator",
+      "tx": "0x26a7e341c350950bd9f9801ed6abb59b74c9567ed2013d640c88703ddc2627ad",
+      "note": "259928760000000 native units left, the unspent margin of the fee cap"
+    }
+  ],
+  "result": "pass"
+}

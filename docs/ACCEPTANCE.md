@@ -10,8 +10,8 @@ Verification keys: **Unit** Foundry tests of the contract; **Inv** invariant tes
 | UJ-02 | Staker | Connects a wallet; no wallet keeps read-only mode; a rejected connection returns to the prior state without error styling | FE; WT | Pending | |
 | UJ-03 | Staker | Writes disabled on the wrong chain; switch or add Arc enables them; declining keeps them disabled with a reason | FE; WT | Pending | |
 | UJ-04 | Staker | Zero balance blocks submission with an explanation and no wallet prompt | FE; WT | Pending | |
-| UJ-10 | Staker | cirBTC pledge created Active; staker lands on its share page with a copy-link control | Unit; E2E; FE; WT | Pending | |
-| UJ-11 | Staker | USDC pledge created through the ERC-20 interface, same outcome as UJ-10 | Unit; E2E; FE; WT | Pending | |
+| UJ-10 | Staker | cirBTC pledge created Active; staker lands on its share page with a copy-link control | Unit; E2E; FE; WT (E2E: `docs/evidence/e2e-testnet.md`) | Pending (E2E pass) | 2026-10-01 |
+| UJ-11 | Staker | USDC pledge created through the ERC-20 interface, same outcome as UJ-10 | Unit; E2E; FE; WT (E2E: `docs/evidence/e2e-testnet.md`) | Pending (E2E pass) | 2026-10-01 |
 | UJ-12 | Staker | Each invalid input shows an inline message, submit stays disabled, no wallet prompt | Unit; FE | Pending | |
 | UJ-13 | Staker | Sufficient allowance skips approval; one wallet prompt | FE; WT | Pending | |
 | UJ-14 | Staker | Rejected prompt keeps form values, shows a neutral message, changes nothing beyond a completed approval | FE; WT | Pending | |
@@ -25,17 +25,17 @@ Verification keys: **Unit** Foundry tests of the contract; **Inv** invariant tes
 | UJ-23 | Party | My Pledges lists the account's pledges by role, newest first, paged | Unit; FE; WT | Pending | |
 | UJ-24 | Any person | Page reflects a verdict, expiry, or settlement within one polling interval without reload | FE; WT | Pending | |
 | UJ-25 | Any person | Countdown and button availability follow chain time despite a wrong device clock | FE | Pending | |
-| UJ-30 | Referee | Kept before the deadline sets status Kept | Unit; E2E; WT | Pending | |
-| UJ-31 | Referee | Broken before the deadline, after a confirmation dialog, sets status Broken | Unit; E2E; FE; WT | Pending | |
-| UJ-32 | Referee | Verdict controls hidden at the deadline; a late transaction is rejected and explained | Unit; E2E; FE | Pending | |
+| UJ-30 | Referee | Kept before the deadline sets status Kept | Unit; E2E; WT (E2E: `docs/evidence/e2e-testnet.md`) | Pending (E2E pass) | 2026-10-01 |
+| UJ-31 | Referee | Broken before the deadline, after a confirmation dialog, sets status Broken | Unit; E2E; FE; WT (E2E: `docs/evidence/e2e-testnet.md`) | Pending (E2E pass) | 2026-10-01 |
+| UJ-32 | Referee | Verdict controls hidden at the deadline; a late transaction is rejected and explained | Unit; E2E; FE (E2E: `docs/evidence/e2e-testnet.md`, verdicts signed before the deadline and mined after it, status 0) | Pending (E2E pass) | 2026-10-01 |
 | UJ-33 | Referee | A second verdict is impossible: controls absent, contract rejects | Unit; FE | Pending | |
 | UJ-34 | Staker, referee | Under 10 minutes left with no verdict shows a warning | FE | Pending | |
-| UJ-40 | Staker | Kept stake transferred in full to the staker; status Settled to staker | Unit; E2E; WT | Pending | |
-| UJ-41 | Beneficiary | Broken stake transferred in full to the beneficiary; status Settled to beneficiary | Unit; E2E; Evid | Pending | |
-| UJ-42 | Beneficiary | Expired stake transferred in full to the beneficiary | Unit; E2E; Evid; WT | Pending | |
-| UJ-43 | Anyone | Settlement triggered by a third party pays only the rightful party | Unit; E2E | Pending | |
-| UJ-44 | Anyone | No settle control before the deadline; a direct call is rejected | Unit; E2E; FE | Pending | |
-| UJ-45 | Anyone | Second settlement rejected; no funds move | Unit; E2E | Pending | |
+| UJ-40 | Staker | Kept stake transferred in full to the staker; status Settled to staker | Unit; E2E; WT (E2E: `docs/evidence/e2e-testnet.md`) | Pending (E2E pass) | 2026-10-01 |
+| UJ-41 | Beneficiary | Broken stake transferred in full to the beneficiary; status Settled to beneficiary | Unit; E2E; Evid (E2E: `docs/evidence/e2e-testnet.md`) | Pending (E2E pass) | 2026-10-01 |
+| UJ-42 | Beneficiary | Expired stake transferred in full to the beneficiary | Unit; E2E; Evid; WT (E2E: `docs/evidence/e2e-testnet.md`) | Pending (E2E pass) | 2026-10-01 |
+| UJ-43 | Anyone | Settlement triggered by a third party pays only the rightful party | Unit (`test_SC040_anUnrelatedCallerMaySettleAndReceivesNothing`, `test_SC040_anyAccountMaySettleAndThePayoutIgnoresTheCaller`); E2E (`docs/evidence/e2e-testnet.md`, settler gains nothing) | Pass | 2026-10-01 |
+| UJ-44 | Anyone | No settle control before the deadline; a direct call is rejected | Unit (`test_SC042_revertsForAnActivePledgeOneSecondBeforeTheDeadline`); E2E (`docs/evidence/e2e-testnet.md`, mined with status 0); FE | Pending (E2E pass) | 2026-10-01 |
+| UJ-45 | Anyone | Second settlement rejected; no funds move | Unit (`test_SC042_revertsWithAlreadySettledAfterEverySettlement`); E2E (`docs/evidence/e2e-testnet.md`, mined with status 0, balances unchanged across the block) | Pass | 2026-10-01 |
 | UJ-46 | Issuer | Blocklisted recipient: pledge unchanged and settleable later; other pledges unaffected; page explains | Unit; Inv; FE | Pending | |
 | UJ-47 | Issuer | Paused token: no state change; plain explanation; retry possible after unpause | Unit; FE | Pending | |
 | UJ-50 | Staker | Withdrawal before a verdict rejected | Unit | Pending | |

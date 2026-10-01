@@ -2984,3 +2984,221 @@ failed.
 | 239 | `verificationRequest` passes `record.deployTransaction` (review M13) | `submits the creation transaction the deployment record names` |
 | 240 | a job error object is stringified (233 again, after the fallback was deleted) | `refuses a job that reports an error, naming its code and message` |
 | 241 | the record's `perfectMatch` ignores the summary `match` | `does not record a match as verified when only the summary is partial` |
+
+## Group: VV-005 live run (LLR-VV-005), 2026-10-01
+
+The script is `e2e/run.mjs`; its testable logic and its whole sequence, with every network client injected,
+is `e2e/lib.mjs`; the tests are `test/tools/e2e.test.mjs`: 73 tests in 11 `describe("LLR-VV-005 ...")`
+suites (chain guard 9, guard before any signing 3, arguments and key 8, retry 6, revert decoding 9, mined
+refusal 12, stake transfer 5, gas funding and sweep 4, sweep back to the operator 3, balance assertions 5,
+evidence 9). The group was reviewed once and this section records the second round, which replaced the
+first round's evidence.
+
+### What the review found, and what changed
+
+The first round proved UJ-32, UJ-44 and UJ-45 with `eth_call` simulations. They carried no transaction
+hash, which LLR-VV-005 requires, and the check that no balance moved afterwards could not fail, since a
+simulation moves nothing. Each refusal is now a mined transaction with an explicit gas limit (estimation
+would refuse to send a call that must revert), asserted to be status reverted, replayed with `eth_call` at
+its own block and decoded against the ABI to the exact error and arguments, and checked for an unchanged
+contract balance, staker-side cirBTC, beneficiary cirBTC and `totalLocked` between the block before it and
+its own. UJ-32 is the literal clause: `markKept` and `markBroken` are signed with explicit nonce, gas and
+fees while chain time is before the deadline, held, and broadcast raw after chain time passes it.
+
+### Red
+
+Round-two tests written from the findings before the code that satisfies them. Command and trimmed result
+(`node --test test/tools/e2e.test.mjs`), with `e2e/lib.mjs` still the round-one module:
+
+```
+file://<repo>/test/tools/e2e.test.mjs:14
+  assertStakeTransfer,
+  ^^^^^^^^^^^^^^^^^^^
+SyntaxError: The requested module '../../e2e/lib.mjs' does not provide an export named 'assertStakeTransfer'
+not ok 1 - <repo>/test/tools/e2e.test.mjs
+```
+
+That is the failure the requirement predicts (the mined-refusal check, the stake-transfer check, the
+funding and sweep helpers and the injected sequence did not exist), but a module-level failure cannot
+show each test failing for its own reason. The per-test red is the mutation table below: every test is
+shown failing against a named defect it exists to catch. The "Before this round" column runs the same
+defect against the round-one test file, which is the suite as it stood when the review ran.
+
+### Green
+
+`e2e/lib.mjs` extended, `e2e/run.mjs` reduced to wiring. The count at each stage, in order:
+
+| Stage | `e2e.test.mjs` |
+|---|---|
+| First run of the new file against the extended module | 70 passed, 0 failed (the three sweep tests did not exist yet) |
+| First live run | failed in the sweep, described below |
+| Sweep tests added after that failure | 73 passed, 0 failed |
+| Round three (below) | 77 passed in `e2e.test.mjs` plus 12 in the new `e2e-run.test.mjs`, 89 in all |
+
+The tests use stubs, so the first live run was the real green. It failed, and the failure is a defect the
+stubs could not have found: the first sweep tried to return the beneficiary's USDC as an ERC-20 transfer,
+but on Arc the ERC-20 USDC balance and the native gas balance are one balance, so the transfer tried to
+move the gas along with the token and reverted. The three accounts' keys exist only in the process, so
+the leftover funds of that run are stranded; the amounts as the chain shows them are in the round-three
+notes below. No mainnet funds were at risk. The sweep now moves cirBTC as a token and USDC only through
+native transfers, and continues past a failed step so that one failure cannot strand the rest. The red of
+the two sweep tests, `does not move USDC as a token ...` and `still sweeps the native balances when the
+cirBTC transfer fails ...`, is mutations 277 and 278 run against the fixed code. The "Before this round"
+column does not show it: those tests were written after the live failure, so there was no earlier suite
+for them to fail in.
+
+### Mutations
+
+Applied to copies of `e2e/lib.mjs` under `cache/mutants/` inside the repository (gitignored, removed
+afterwards), each run against the new test file and against the round-one file saved before this round
+began. Command: `node cache/mutants/run.mjs`, which runs
+`node --test --test-reporter=tap cache/mutants/m<id>a/test/tools/e2e.test.mjs` per mutation. The numbers
+continue the global sequence from 242. "Survived" in the before column means the round-one suite did not
+fail; for mutations 256 to 281 the code or the test is new this round, so the round-one suite could not
+have caught them.
+
+| # | Mutation | Before this round | Failing tests now |
+|---|---|---|---|
+| 242 | chain guard denies only 5042 | survived | `refuses chain 1`, `refuses chain 31337`, `refuses chain 5042001`, `refuses chain 5042003` |
+| 243 | chain guard accepts a non-number as the testnet | killed | `refuses an undefined id as not a number` |
+| 244 | isRetryable ignores the message text | killed | `treats the message text as retryable too` |
+| 245 | withRetry allows one attempt too many | killed | `gives up after the attempt limit and rethrows the last error` |
+| 246 | decodeRevert returns a value when nothing decodes | killed | `returns null when the failure carries no revert data`, `returns null for data that matches no error in the ABI`, `expectRevert fails when the failure is not a revert at all` |
+| 247 | decodeRevert returns a value for unmatched data | killed | `returns null for data that matches no error in the ABI` |
+| 248 | parseEnvKey does not check for the missing line | killed | `refuses a missing key without printing anything from the file`, `names the missing key and not a TypeError when the line is absent` |
+| 249 | parseEnvKey prints the file when the key is missing | killed | `refuses a missing key without printing anything from the file` |
+| 250 | parseEnvKey echoes a malformed key | killed | `refuses a malformed key without echoing it` |
+| 251 | parseEnvKey accepts any value | killed | `refuses a malformed key without echoing it`, `refuses a key one byte short` |
+| 252 | parseEnvKey slices one character too many | killed | `reads the testnet key from .env text` |
+| 253 | Evidence.step accepts a malformed hash | killed | `rejects a malformed transaction hash` |
+| 254 | Evidence starts as pass | killed | `states the journeys it covers as passed only when marked so` |
+| 255 | Evidence.finish(false) still records pass | survived | `states the journeys it covers as passed only when marked so` |
+| 256 | refusal accepts a transaction that succeeded | survived | `fails when the transaction was mined with status success` |
+| 257 | refusal drops the expected error arguments | survived | `fails when the error carries the wrong argument` |
+| 258 | refusal replays at the latest block, not the mined one | survived | `records the reverted transaction's hash, the error, and the block timestamp against the deadline` |
+| 259 | refusal skips the before-deadline check | survived | `fails a refusal expected before the deadline that was mined at it` |
+| 260 | refusal skips the at-or-after check | survived | `fails a refusal expected at or after the deadline that was mined before it` |
+| 261 | refusal requires strictly after the deadline | survived | `accepts a refusal mined exactly at the deadline when at or after is expected` |
+| 262 | refusal compares balances within one block | survived | the four `fails when the ... moved across the block` tests |
+| 263 | refusal does not read totalLocked | survived | `fails when the locked total moved across the block` |
+| 264 | refusal does not read the beneficiary | survived | `fails when the beneficiary's token balance moved across the block` |
+| 265 | refusal does not read the staker | survived | `fails when the staker's token balance moved across the block` |
+| 266 | refusal does not read the contract | survived | `fails when the contract's token balance moved across the block` |
+| 267 | refusal records no hash | survived | `records the reverted transaction's hash, the error, and the block timestamp against the deadline` |
+| 268 | stake transfer accepts two Transfers | survived | `fails when the token emitted two Transfers` |
+| 269 | stake transfer counts Transfers from any contract | survived | `ignores a Transfer emitted by another contract`, `fails when the token emitted no Transfer` |
+| 270 | stake transfer ignores the amount | survived | `fails on the wrong amount, sender, or recipient` |
+| 271 | stake transfer ignores the sender | survived | `fails on the wrong amount, sender, or recipient` |
+| 272 | stake transfer ignores the recipient | survived | `fails on the wrong amount, sender, or recipient` |
+| 273 | funding drops the margin | survived | `funds exactly the worst case of the planned calls plus a native transfer, with 25 percent margin` |
+| 274 | funding omits the native transfer | survived | the same test |
+| 275 | sweepValue ignores the sweep's own gas | survived | `sweeps the balance less the gas of the sweep itself`, `sweeps nothing when the balance cannot pay for the sweep`, `returns the beneficiary's cirBTC and every account's USDC to the operator, with a hash for each` |
+| 276 | sweepValue goes negative | survived | `sweeps nothing when the balance cannot pay for the sweep` |
+| 277 | sweep moves USDC as a token | survived | `returns the beneficiary's cirBTC and every account's USDC ...`, `does not move USDC as a token, which would take the gas needed to send it` |
+| 278 | sweep stops at the first failed step | survived | `still sweeps the native balances when the cirBTC transfer fails, then reports the failure` |
+| 279 | run does not check the chain id | survived | `signs and sends nothing, at all, when the chain id is wrong`, `makes its first signing or sending call only after the chain id has resolved` |
+| 280 | Evidence.account stores the whole account | survived | `records an account's address and drops everything else it carries`, `never lets a key reach the evidence of a whole run` |
+| 281 | Evidence does not name the requirement | survived | `names the requirement it evidences in the record and the markdown` |
+
+Red evidence for the specific tests the review named, by mutation: `isRetryable` message match (244),
+gives up after the attempt limit (245), `decodeRevert` returning null, both tests (246, 247),
+`parseEnvKey`, all three tests (248 to 252), rejects a malformed transaction hash (253), states the
+journeys as passed only when marked (254, 255), refuses an undefined id (243, after the test was
+tightened to require the message `not a number`: a bare `assert.throws` is satisfied by the TypeError that
+`BigInt(undefined)` raises whatever the code does). The chain-guard test the review asked for is mutation
+242.
+
+Not covered by the stubs, and therefore verified live only: the order of the create, verdict and settle
+steps and their per-step balance assertions inside `runE2E`, and the assertion that the stake transfer
+helper is called on every creation. The live run below exercised them against the deployed contract.
+
+### Live run
+
+`node e2e/run.mjs --dry-run` (chain id, contract code, balances, nothing sent), then `node e2e/run.mjs`.
+The first real run failed in the sweep as described under Green and wrote no evidence. The second passed:
+27 steps, 26 transactions, every state and balance assertion held. The previous round's 18 hashes are
+dropped from the evidence rather than listed as superseded: that run's UJ-32, UJ-44 and UJ-45 had no
+transaction, it was never committed, and keeping its hashes beside the new ones would imply they
+evidence the same claim. Hashes and explorer links: `docs/evidence/e2e-testnet.md` and `.json`.
+
+| Journey | Refusal | Block timestamp against deadline | Hash | `cast receipt` status |
+|---|---|---|---|---|
+| UJ-44 | `settle` on an Active pledge, `NotSettleable` | 1790861788, deadline 1790865366 | `0x245cf5a9d2123a0801034df22ba34d6a94b321875751aae16aa2fe0b28435677` | 0 (failed) |
+| UJ-45 | second `settle`, `AlreadySettled` | 1790861807, deadline 1790865366 | `0x52bbf3a3304691a290860e3996c97ea651fd8c629ba251599f4a8925733db071` | 0 (failed) |
+| UJ-32 | `markKept` signed before, mined after, `VerdictWindowClosed` | 1790861913, deadline 1790861911 | `0x23a9a32481c3e87bd95b647138f5893c0594bd2d49ad2cf6a1a07aa73a4ed3e1` | 0 (failed) |
+| UJ-32 | `markBroken` signed before, mined after, `VerdictWindowClosed` | 1790861918, deadline 1790861911 | `0x10b50f1d2aeb266d2f04f353c51e26bebeec4bb402949e92816778e4fe393088` | 0 (failed) |
+
+Independent checks with `cast`: all four receipts report status 0; `stateOf(9)` on the contract returns 5
+(`SettledToBeneficiary`); `totalLocked` of USDC is 0. The sweep returned the beneficiary's 20 sats of
+cirBTC and the remaining USDC of the referee, beneficiary and settler to the operator; each of the three
+accounts ended with 0.00026 USDC, the unspent margin of the fee cap used for the sweep itself.
+
+`node tools/trace-check.mjs`: `OK. 56/112 LLRs referenced, 2/55 journeys passing.`
+
+### Round three: confirmation review of the fixes, 2026-10-01
+
+Seven findings. Mutation numbers for this round start at 300, not 282, because the app implementer works
+in the same log and may take numbers from 282; 300 onward is reserved here.
+
+1. **Earlier runs were unrecorded.** Recorded in `docs/evidence/e2e-testnet.md` under "Earlier runs on this
+   contract": round one (pledges 1 to 4), the failed run (5 to 8), the passing run kept beside the new
+   evidence (9 to 12, `e2e-testnet-run3.md`), and the new run (13 to 16). Stranded funds read with `cast`:
+   0.2473 and 0.2563 USDC (round one referee and beneficiary) plus 20 sats of cirBTC in the beneficiary,
+   0.0932, 0.0831 and 0.0374 USDC (failed run referee, beneficiary, settler), about 0.7175 USDC in all, and
+   an unrecorded round-one settler. The failed run alone is 0.2138 USDC, so "about 0.21" was the failed
+   run's figure and not the total. The keys no longer exist, so these are unrecoverable testnet funds.
+2. **The per-step assertions never ran under test.** Every stub world threw at the first signature. A new
+   file, `test/tools/e2e-run.test.mjs`, holds a stub chain with the semantics of the four contract
+   functions, two tokens, receipts with logs, block time and signed transactions, so all of `runE2E`
+   executes. Eight tests: one full pass, two on the UJ-32 record, and five where a single step's receipt or
+   read is wrong (no Transfer in the create receipt, a settlement one unit short, a verdict that leaves the
+   wrong state, a settlement that also pays the settler, an out-of-gas refusal). Mutants 300 to 302 are the
+   three the reviewer named.
+3. **UJ-32 rows** now carry `observed.signedAtChainTime` and `observed.nonce` in the JSON and the same
+   words in the markdown note, stated as the script's own observation. The comment is corrected to
+   "signed in time and broadcast after the deadline".
+4. **The Green section** now states the count at each stage and that the sweep tests' red is mutations
+   277 and 278 against the fixed code.
+5. **Gas check.** The refusal asserts `receipt.gasUsed` is below the explicit limit, so an out-of-gas
+   revert fails. The replay at block N still runs against end-of-block state and cannot say which check
+   fired inside the block; the comment on `refusal` says so and names the three things that stand in for it.
+   Mutants 303 and 304.
+6. **Settler gets nothing, in USDC too.** `assertNoTransferTo` reads the settle receipt's logs and fails on
+   any token Transfer to the settler, for every settlement a third party triggers. Mutants 305 and 306.
+7. **Failed runs** write a partial record to `cache/e2e-failed.json` (gitignored, never evidence) through
+   `recordFailure`. Mutants 307 and 308.
+
+Tests after this round: `e2e.test.mjs` 77, `e2e-run.test.mjs` 12, all of `test/tools` 253 passed, 0 failed.
+Mutations, run as before against copies under `cache/mutants/` (removed afterwards) with
+`node cache/mutants/run2.mjs`. The "Without the stub chain" column runs the mutant against `e2e.test.mjs`
+alone, whose stubs stop at the first signature, as the suite stood for these paths in round two.
+
+| # | Mutation | Without the stub chain | Failing tests now |
+|---|---|---|---|
+| 300 | create no longer checks the stake Transfer in the receipt | survived | `fails when a create receipt has no Transfer of the stake` |
+| 301 | settle no longer asserts the recipient's gain | survived | `fails when a settlement pays the recipient one unit short` |
+| 302 | stateIs checks nothing | survived | `fails when a verdict leaves the pledge in the wrong state`, `writes the hashes sent so far, marked failed, with the error and no key` |
+| 303 | refusal does not check the gas used | killed | the out-of-gas stub run and three direct gas tests in `e2e.test.mjs` |
+| 304 | refusal accepts a revert that used exactly the limit | killed | `fails when a refusal is an out-of-gas that used the whole limit`, `fails when the revert used the whole gas limit, which may be an out-of-gas` |
+| 305 | settle no longer checks the logs for a payment to the settler | survived | `fails when a third-party settlement also pays the settler, in USDC where only logs can show it` |
+| 306 | assertNoTransferTo finds nothing | survived | `fails when any token Transfer goes to the settler, however small` and the stub-chain test above |
+| 307 | recordFailure does not write | survived | `writes the hashes sent so far, marked failed, with the error and no key` |
+| 308 | recordFailure marks the run passed | survived | the same test |
+| 309 | refusal does not put the observation in the record | killed | `records, on both UJ-32 rows, ...`, `records what the script observed when it signed a held transaction` |
+| 310 | UJ-32 rows record the first nonce for both | survived | `records, on both UJ-32 rows, when and with which nonce the script signed` |
+| 311 | Evidence.step drops the observation | killed | the same two as 309 |
+
+Live run three (`node e2e/run.mjs --dry-run`, then `node e2e/run.mjs`), run because the gas check, the log
+check and the signing observation all touch the live path. It passed, 27 steps, 26 transactions, pledges
+13 to 16; the revert gas used was 29004 to 33612 of a 300000 limit. Refusals, all status 0 by
+`cast receipt`: UJ-44 `0xaf328a701d1f30de9ea08b501b493bd7cfd2402f49f79d2138f349b069fa5838`, UJ-45
+`0x97ea042dd541bcc76c42980f0cd3ce1fce28e52a36101906de6396a37dd8ec0d`, UJ-32 `markKept`
+`0x0976f978fabdf242fa688a7b3141ce2fda1875df24049bc823155cd8c328ffcd` (signed at chain time 1790866218,
+nonce 3, mined at 1790866310, deadline 1790866307) and `markBroken`
+`0xf7d3882704da66852341be11b6fd242f2f724ce3ba20330bc883569224968018` (nonce 4, mined at 1790866315).
+`stateOf(13)` returns 5. This run is the primary evidence; the previous run's files stay beside it as
+`e2e-testnet-run3.md` and `.json`.
+
+`node tools/trace-check.mjs` currently fails, on ten `LLR-FE-*` requirements that the app implementer's
+uncommitted tests reference before their implementations exist. None concerns this group; before the app
+work began it read `OK. 56/112 LLRs referenced, 2/55 journeys passing`.

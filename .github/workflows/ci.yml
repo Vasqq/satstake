@@ -41,6 +41,9 @@ jobs:
           echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz" | sha256sum -c -
           tar -xzf gitleaks.tar.gz gitleaks
           sudo mv gitleaks /usr/local/bin/
+      # The end-to-end script's logic tests import viem (LLR-VV-005).
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
       - name: Tool tests
         run: node --test test/tools/*.test.mjs
       - name: Trace check
