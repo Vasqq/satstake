@@ -2792,3 +2792,195 @@ rather than removing a guard, since the thing to prove here is that the tool mus
 
 `node --test test/tools/*.test.mjs`: 141 passed, 0 failed. `node tools/trace-check.mjs`: `OK. 55/112
 LLRs referenced, 0/55 journeys passing.`
+
+### Red from the live server, 2026-09-30
+
+The 23 tests above all passed, and the tool threw on its first run against the live server. Run
+against the already-verified testnet deployment, Sourcify answered the submission with 409 and a body
+whose `customCode` was `already_verified`; the idempotence test had mocked a 202. The raw response
+body was not captured at the time, so this is a description of it, not a quotation. The shape agrees
+with the 409 example in Sourcify's v2 specification. This live failure is
+the red for the read-before-write change: the tool now reads `v2/contract` first and submits only
+when that shows no match or a partial one, and handles a 409 `already_verified` arriving between the
+two as a race, by the same read-back rule.
+
+That change was made and committed with the deployment (`c65c7f4`) without its own red, green, or
+mutation entry, and the test table above was left describing the first version. The independent
+review of 2026-10-01 found this, so the entries below cover the fix and every test the change added,
+renamed, or removed. Two rows above no longer exist under those names:
+`succeeds and reports the perfect match when everything agrees` became
+`succeeds and reports the perfect match when nothing is verified yet`, and
+`succeeds idempotently against an already-verified contract` became
+`reports the existing perfect match without submitting anything, run against an already-verified contract`.
+`refuses a job that reports an error, naming it` became
+`refuses a job that reports an error, naming its code and message` in the review round.
+
+## Review fixes: Sourcify tool and deployment record (LLR-DP-005, LLR-DP-006), 2026-10-01
+
+The independent review of `c65c7f4` found that a record could call a partial Sourcify match perfect.
+`tools/record-deployment.mjs` read only the summary `match`, and Sourcify's own v2 specification gives
+`{"match":"exact_match","creationMatch":"exact_match","runtimeMatch":"match"}` as an example, a summary
+that reads exact over a partial side. It also found ten mutants of `tools/verify-sourcify.mjs` that
+the whole suite let through, and a job-error mock in a shape Sourcify does not send.
+
+### Red
+
+Tests added or changed first, then run against the unchanged tools with
+`node --test test/tools/verify-sourcify.test.mjs test/tools/record-deployment.test.mjs`:
+
+```
+not ok 1 - records the address, the deploy transaction, the block, the commit, the compiler, and the status
+not ok 4 - records a perfect Sourcify match as verified, with all three match fields
+not ok 5 - does not record a partial Sourcify match as verified
+not ok 6 - does not record a perfect summary as verified when only the runtime side matches partially
+    + match: { creationMatch: 'exact_match', match: 'exact_match', runtimeMatch: 'match' }
+not ok 7 - does not record a perfect summary as verified when only the creation side matches partially
+not ok 8 - says pending, not verified, while Sourcify has no match
+not ok 1 - returns all three match fields Sourcify reports
+not ok 2 - returns a partial match as the partial match it is
+not ok 5 - refuses a job that reports an error, naming its code and message
+    The input did not match the regular expression /compiler_error/. Input:
+    'Sourcify reported an error for test: [object Object]'
+# tests 69
+# pass 60
+# fail 9
+```
+
+Each failure is the predicted one: the record and `sourcifyStatus` carry only the summary, and a job
+error object is stringified. The other new tests passed against the unchanged code, which is correct:
+the code was right on those paths and the tests exist to kill the mutants below, which each survived
+the previous suite.
+
+### Green
+
+`sourcifyStatus` returns `{ match, creationMatch, runtimeMatch }` or null. The record carries all three
+and `perfectMatch`, true only when all three are `exact_match`, with `creationMatch` and `runtimeMatch`
+null while pending. `assertPerfectMatch` reads `customCode` and `message` from the job's error object.
+The stub `fetch` now calls a route given as a function, so the "must not be called" routes really
+throw; before, it returned the function object as the response, and only the `postedTo` assertions
+guarded those tests.
+
+`node --test test/tools/verify-sourcify.test.mjs test/tools/record-deployment.test.mjs`: 69 passed, 0
+failed (42 and 27).
+
+`deployments/5042002.json` was rebuilt with the tool's own `buildRecord` and `sourcifyStatus`, not its
+`main`. `main` takes the commit from `git rev-parse HEAD` and refuses when HEAD is not the broadcast
+commit, and HEAD had moved to `c65c7f4`, which committed the record. `gitCommit` was therefore carried
+over from the existing record, `61fa8b0`, which is the commit the broadcast itself names, and
+`dirtyPaths` was passed as `[]` after checking that `git diff --stat 61fa8b0 HEAD -- src lib
+foundry.toml` and `git status --porcelain -- src lib foundry.toml` are both empty. The invocation:
+
+```
+node --input-type=module -e '
+import { readFileSync, writeFileSync } from "node:fs";
+import { buildRecord, sourcifyStatus } from "./tools/record-deployment.mjs";
+const old = JSON.parse(readFileSync("deployments/5042002.json", "utf8"));
+const broadcast = JSON.parse(readFileSync("broadcast/Deploy.s.sol/5042002/run-latest.json", "utf8"));
+const artifact = JSON.parse(readFileSync("out/SatStake.sol/SatStake.json", "utf8"));
+const sourcify = await sourcifyStatus(5042002, old.address);
+const rec = buildRecord({ chainId: 5042002, contractName: "SatStake", broadcast, artifact,
+  gitCommit: old.gitCommit, dirtyPaths: [], sourcify });
+writeFileSync("deployments/5042002.json", JSON.stringify(rec, null, 2) + "\n");'
+```
+
+`git diff deployments/5042002.json` afterward shows only `creationMatch` and `runtimeMatch` added, both
+`exact_match`.
+
+New or renamed tests:
+
+| Test | Verifies |
+|---|---|
+| `records a perfect Sourcify match as verified, with all three match fields` | LLR-DP-005, LLR-DP-006 |
+| `does not record a perfect summary as verified when only the runtime side matches partially` | LLR-DP-006 |
+| `does not record a perfect summary as verified when only the creation side matches partially` | LLR-DP-006 |
+| `returns all three match fields Sourcify reports` | LLR-DP-006 |
+| `fails on a submission Sourcify refuses with a status other than 409, naming the status` | LLR-DP-006 |
+| `fails on an accepted submission that carries no verificationId` | LLR-DP-006 |
+| `waits between polls, so a real compile has time to finish` | LLR-DP-006 |
+| `fails on a poll Sourcify answers with an error status, naming it` | LLR-DP-006 |
+| `fails when the list of supported chains cannot be read, naming the status` | LLR-DP-006 |
+| `refuses a job that reports an error, naming its code and message` | LLR-DP-006 |
+| `fails rather than reporting no match when Sourcify answers an error status` | LLR-DP-006 |
+| `fails when the job's answer and the read-back disagree on creationMatch only` | LLR-DP-006 |
+| `fails when the job's answer and the read-back disagree on runtimeMatch only` | LLR-DP-006 |
+| `submits again when the existing summary is exact_match but creationMatch is only partial` | LLR-DP-006 |
+| `submits again when the existing summary is exact_match but runtimeMatch is only partial` | LLR-DP-006 |
+| `fails, and submits nothing, when the first read cannot reach Sourcify` | LLR-DP-006 |
+| `refuses a 409 already_verified whose read-back is partial on the summary` | LLR-DP-006 |
+| `refuses a 409 already_verified whose read-back is partial on creationMatch` | LLR-DP-006 |
+| `refuses a 409 already_verified whose read-back is partial on runtimeMatch` | LLR-DP-006 |
+
+`fails when the read-back disagrees with the job that just completed` now names the rejection it
+expects; before, any rejection passed it, including the stub running out of responses.
+
+### Mutations
+
+Applied to copies of the tools and run against the copied test file, so the repository's source was
+never modified. The copies sat in the Claude Code session's temporary scratch directory outside the
+repository, which CLAUDE.md section 5 does not permit; they held only these two tools and their tests.
+Mutations from 237 on use `cache/mutants/` inside the repository, which `.gitignore` covers, and remove
+it afterward.
+
+| # | Mutation | Before this round | Failing tests now |
+|---|---|---|---|
+| 223 | race fallback skips `assertPerfectMatch` (review M1) | survived | the three `refuses a 409 already_verified whose read-back is partial` tests |
+| 224 | a 409 `already_verified` alone returns success (M11) | survived | the same three |
+| 225 | read-before-write accepts on the summary `match` alone (M2) | survived | both `submits again when the existing summary is exact_match but ... is only partial` |
+| 226 | `assertAgreement` compares the summary only (M3) | survived | both `disagree on creationMatch only` and `on runtimeMatch only` |
+| 227 | `existingMatchFor` treats any non-ok status as no match (M4) | survived | `fails rather than reporting no match when Sourcify answers an error status`, `fails, and submits nothing, when the first read cannot reach Sourcify` |
+| 228 | the wait between polls removed (M5) | survived | `waits between polls, so a real compile has time to finish` |
+| 229 | submit ignores a non-ok status | survived | `fails on a submission Sourcify refuses with a status other than 409, naming the status` |
+| 230 | poll ignores a non-ok status | survived | `fails on a poll Sourcify answers with an error status, naming it` |
+| 231 | the missing-`verificationId` check removed | survived | `fails on an accepted submission that carries no verificationId` |
+| 232 | the chain list ignores a non-ok status | survived | `fails when the list of supported chains cannot be read, naming the status` |
+| 233 | a job error object is stringified | survived | `refuses a job that reports an error, naming its code and message` |
+| 234 | the record's `perfectMatch` reads the summary only | survived | both `does not record a perfect summary as verified when only the ... side matches partially` |
+| 235 | the record copies `creationMatch` into `runtimeMatch` | not applicable | the same two |
+| 236 | `sourcifyStatus` reports the summary for all three fields | not applicable | `returns all three match fields Sourcify reports` |
+
+Review mutant M13, `main()` passing a field the record does not carry as the creation transaction,
+was at first left untested on the grounds that the live re-run exercised `main`. The confirmation
+review showed that reason was false: against an already-verified contract the tool returns after the
+first read and never uses the creation transaction. The argument assembly is now a tested function,
+mutation 239 below.
+
+`node --test test/tools/*.test.mjs`: 200 passed, 0 failed, including the VV-005 group's tests written
+alongside. `node tools/trace-check.mjs`: `OK. 56/112 LLRs referenced, 2/55 journeys passing.`
+
+### Confirmation review, 2026-10-01
+
+A second independent reviewer checked the fixes. It found that mutation 214, deleting the chain-support
+check, survived again: after read-before-write, the deleted check sent the first request to an
+unrouted URL in that test's stub, whose throw satisfied an `assert.rejects` with no matcher. It also
+found a wait that is called but not awaited passed the wait test, the M13 reason above false, an
+untested string fallback for a job error, no record case with only the summary partial, and evidence
+gaps fixed in this section and in `testnet-deployment.md`.
+
+Red: `verificationRequest` did not exist, so the test file failed to load:
+
+```
+SyntaxError: The requested module '../../tools/verify-sourcify.mjs' does not provide an export named 'verificationRequest'
+# tests 29
+# pass 28
+# fail 1
+```
+
+Green: `verificationRequest` extracted from `main` and called by it; the job error read as the object
+the specification defines, the string fallback deleted. The chain-support test now matches the error
+and asserts `/chains` was the only request; the wait test counts a wait only after it resolves and
+checks before each poll that the previous wait finished. Command
+`node --test test/tools/verify-sourcify.test.mjs test/tools/record-deployment.test.mjs`: 71 passed, 0
+failed.
+
+| Test | Verifies |
+|---|---|
+| `submits the creation transaction the deployment record names` | LLR-DP-006 |
+| `does not record a match as verified when only the summary is partial` | LLR-DP-006 |
+
+| # | Mutation | Failing test |
+|---|---|---|
+| 237 | the `assertChainSupported` call deleted from `verifyOnSourcify` (214 again) | `stops before any submission is attempted for an unsupported chain` |
+| 238 | `wait(attempt)` called without `await` | `waits between polls, so a real compile has time to finish` |
+| 239 | `verificationRequest` passes `record.deployTransaction` (review M13) | `submits the creation transaction the deployment record names` |
+| 240 | a job error object is stringified (233 again, after the fallback was deleted) | `refuses a job that reports an error, naming its code and message` |
+| 241 | the record's `perfectMatch` ignores the summary `match` | `does not record a match as verified when only the summary is partial` |

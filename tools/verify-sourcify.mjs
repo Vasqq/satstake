@@ -137,7 +137,9 @@ export async function pollUntilComplete(verificationId, fetched = fetch, { attem
  */
 export function assertPerfectMatch(job, context) {
   if (job.error) {
-    throw new Error(`Sourcify reported an error for ${context}: ${job.error}`); // LLR-DP-006
+    // The v2 specification defines `error` as an object carrying `customCode` and `message`.
+    const { customCode, message } = job.error;
+    throw new Error(`Sourcify reported an error for ${context}: ${customCode}: ${message}`); // LLR-DP-006
   }
   const contract = job.contract ?? {};
   const { match, creationMatch, runtimeMatch } = contract;
@@ -230,6 +232,17 @@ export async function verifyOnSourcify({ chainId, address, creationTransactionHa
   return { chainId, address, match: jobContract.match };
 }
 
+/** What `verifyOnSourcify` is asked to verify, assembled from the record `deploymentFor` returns. */
+export function verificationRequest(chainId, record, stdJsonInput, compilerVersion) {
+  return {
+    chainId,
+    address: record.address,
+    creationTransactionHash: record.creationTransactionHash,
+    stdJsonInput,
+    compilerVersion,
+  };
+}
+
 async function main(chainIdArg) {
   const chainId = Number(chainIdArg);
   if (!Number.isInteger(chainId) || chainId <= 0) {
@@ -254,13 +267,7 @@ async function main(chainIdArg) {
     throw new Error(`out/${CONTRACT}.sol/${CONTRACT}.json carries no compiler version`);
   }
 
-  const result = await verifyOnSourcify({
-    chainId,
-    address: record.address,
-    creationTransactionHash: record.creationTransactionHash,
-    stdJsonInput,
-    compilerVersion,
-  });
+  const result = await verifyOnSourcify(verificationRequest(chainId, record, stdJsonInput, compilerVersion));
 
   console.log(
     `verify-sourcify: chain ${result.chainId}, ${result.address}, match ${result.match}. ` +

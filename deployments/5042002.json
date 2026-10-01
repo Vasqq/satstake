@@ -32,6 +32,8 @@
   "verification": {
     "sourcify": {
       "match": "exact_match",
+      "creationMatch": "exact_match",
+      "runtimeMatch": "exact_match",
       "perfectMatch": true
     }
   }

@@ -65,7 +65,7 @@ describe("LLR-DP-005 deployment record", () => {
     assert.equal(record.compiler.version, "0.8.28+commit.7893614a");
     assert.deepEqual(record.compiler.settings.optimizer, { enabled: true, runs: 200 });
     assert.equal(record.compiler.settings.evmVersion, "cancun");
-    assert.deepEqual(record.verification.sourcify, { match: "pending", perfectMatch: false });
+    assert.deepEqual(record.verification.sourcify, { match: "pending", creationMatch: null, runtimeMatch: null, perfectMatch: false });
   });
 
   it("reads a block number given as a JSON number as well as one given as hex", () => {
@@ -82,20 +82,34 @@ describe("LLR-DP-005 deployment record", () => {
     assert.equal(asNumber(42), 42);
   });
 
-  it("records a perfect Sourcify match as verified", () => {
-    assert.deepEqual(buildRecord(inputs({ sourcify: "exact_match" })).verification.sourcify, {
-      match: "exact_match",
-      perfectMatch: true,
-    });
+  const exact = { match: "exact_match", creationMatch: "exact_match", runtimeMatch: "exact_match" };
+
+  it("records a perfect Sourcify match as verified, with all three match fields", () => {
+    assert.deepEqual(buildRecord(inputs({ sourcify: exact })).verification.sourcify, { ...exact, perfectMatch: true });
   });
 
   it("does not record a partial Sourcify match as verified", () => {
     // Sourcify's v2 API answers "match" for a partially verified contract and "exact_match" only
     // for a perfect one, and LLR-DP-006 asks for a perfect match.
-    assert.deepEqual(buildRecord(inputs({ sourcify: "match" })).verification.sourcify, {
-      match: "match",
-      perfectMatch: false,
-    });
+    const partial = { match: "match", creationMatch: "match", runtimeMatch: "match" };
+    assert.deepEqual(buildRecord(inputs({ sourcify: partial })).verification.sourcify, { ...partial, perfectMatch: false });
+  });
+
+  it("does not record a perfect summary as verified when only the runtime side matches partially", () => {
+    // Sourcify's own v2 API specification gives this response as an example: the summary `match`
+    // reads exact_match while one side is only a partial match.
+    const sourcify = { ...exact, runtimeMatch: "match" };
+    assert.deepEqual(buildRecord(inputs({ sourcify })).verification.sourcify, { ...sourcify, perfectMatch: false });
+  });
+
+  it("does not record a perfect summary as verified when only the creation side matches partially", () => {
+    const sourcify = { ...exact, creationMatch: "match" };
+    assert.deepEqual(buildRecord(inputs({ sourcify })).verification.sourcify, { ...sourcify, perfectMatch: false });
+  });
+
+  it("does not record a match as verified when only the summary is partial", () => {
+    const sourcify = { ...exact, match: "match" };
+    assert.deepEqual(buildRecord(inputs({ sourcify })).verification.sourcify, { ...sourcify, perfectMatch: false });
   });
 
   it("says pending, not verified, while Sourcify has no match", () => {
@@ -103,6 +117,8 @@ describe("LLR-DP-005 deployment record", () => {
     // that did not happen.
     assert.deepEqual(buildRecord(inputs({ sourcify: null })).verification.sourcify, {
       match: "pending",
+      creationMatch: null,
+      runtimeMatch: null,
       perfectMatch: false,
     });
   });
@@ -198,14 +214,24 @@ describe("LLR-DP-006 Sourcify status", () => {
     json: async () => body,
   });
 
-  it("returns the match Sourcify reports", async () => {
-    const fetched = response(200, { match: "exact_match", address: ADDRESS, chainId: "5042002" });
-    assert.equal(await sourcifyStatus(5042002, ADDRESS, fetched), "exact_match");
+  it("returns all three match fields Sourcify reports", async () => {
+    const fetched = response(200, {
+      match: "exact_match",
+      creationMatch: "exact_match",
+      runtimeMatch: "match",
+      address: ADDRESS,
+      chainId: "5042002",
+    });
+    assert.deepEqual(await sourcifyStatus(5042002, ADDRESS, fetched), {
+      match: "exact_match",
+      creationMatch: "exact_match",
+      runtimeMatch: "match",
+    });
   });
 
   it("returns a partial match as the partial match it is", async () => {
-    const fetched = response(200, { match: "match", address: ADDRESS, chainId: "5042002" });
-    assert.equal(await sourcifyStatus(5042002, ADDRESS, fetched), "match");
+    const fetched = response(200, { match: "match", creationMatch: "match", runtimeMatch: "match", address: ADDRESS });
+    assert.deepEqual(await sourcifyStatus(5042002, ADDRESS, fetched), { match: "match", creationMatch: "match", runtimeMatch: "match" });
   });
 
   it("returns no match when Sourcify has no record of the address", async () => {

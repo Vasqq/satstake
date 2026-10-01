@@ -13,6 +13,7 @@ import {
   pollUntilComplete,
   readBack,
   submitVerification,
+  verificationRequest,
   verifyOnSourcify,
 } from "../../tools/verify-sourcify.mjs";
 
@@ -23,7 +24,10 @@ const VERIFICATION_ID = "b6b1a5e0-1c2d-4e3f-8a9b-0c1d2e3f4a5b";
 
 const perfectContract = () => ({ match: "exact_match", creationMatch: "exact_match", runtimeMatch: "exact_match" });
 
-/** A stub `fetch` that answers `routes[url substring]` in call order, and records every call made. */
+/**
+ * A stub `fetch` that answers `routes[url substring]` in call order, and records every call made.
+ * A route given as a function is called, so one that throws fails the call it answers.
+ */
 function stubFetch(routes) {
   const calls = [];
   const fetched = async (url, init) => {
@@ -37,7 +41,7 @@ function stubFetch(routes) {
     const next = routes[key];
     const entry = Array.isArray(next) ? next.shift() : next;
     if (!entry) throw new Error(`stubFetch: route for ${key} has no more responses queued`);
-    return entry;
+    return typeof entry === "function" ? entry(url, init) : entry;
   };
   fetched.calls = calls;
   return fetched;
@@ -84,6 +88,19 @@ describe("LLR-DP-006 deployment lookup", () => {
   });
 });
 
+describe("LLR-DP-006 verification request", () => {
+  it("submits the creation transaction the deployment record names", () => {
+    const record = deploymentFor(CHAIN_ID, () => ({ address: ADDRESS, deployTransaction: CREATION_TX }));
+    assert.deepEqual(verificationRequest(CHAIN_ID, record, { language: "Solidity" }, "0.8.28+commit.7893614a"), {
+      chainId: CHAIN_ID,
+      address: ADDRESS,
+      creationTransactionHash: CREATION_TX,
+      stdJsonInput: { language: "Solidity" },
+      compilerVersion: "0.8.28+commit.7893614a",
+    });
+  });
+});
+
 describe("LLR-DP-006 chain support", () => {
   it("passes for a chain Sourcify lists as supported", async () => {
     const fetched = stubFetch({ "/chains": jsonResponse(200, [{ chainId: CHAIN_ID, supported: true }]) });
@@ -99,6 +116,11 @@ describe("LLR-DP-006 chain support", () => {
     });
   });
 
+  it("fails when the list of supported chains cannot be read, naming the status", async () => {
+    const fetched = stubFetch({ "/chains": jsonResponse(503, {}) });
+    await assert.rejects(() => assertChainSupported(CHAIN_ID, fetched), /answered 503/);
+  });
+
   it("refuses a chain Sourcify does not list at all", async () => {
     const fetched = stubFetch({ "/chains": jsonResponse(200, [{ chainId: 1, supported: true }]) });
     await assert.rejects(() => assertChainSupported(CHAIN_ID, fetched), new RegExp(String(CHAIN_ID)));
@@ -111,13 +133,20 @@ describe("LLR-DP-006 chain support", () => {
         throw new Error("must not be called");
       },
     });
-    await assert.rejects(() =>
-      verifyOnSourcify(
-        { chainId: CHAIN_ID, address: ADDRESS, creationTransactionHash: CREATION_TX, stdJsonInput: {}, compilerVersion: "0.8.28" },
-        fetched,
-      ),
+    await assert.rejects(
+      () =>
+        verifyOnSourcify(
+          { chainId: CHAIN_ID, address: ADDRESS, creationTransactionHash: CREATION_TX, stdJsonInput: {}, compilerVersion: "0.8.28" },
+          fetched,
+        ),
+      /not listed as supported/,
     );
-    assert.ok(fetched.calls.every((c) => !c.url.includes("/v2/verify/")), "submitted despite an unsupported chain");
+    // Chain support is checked before anything else is asked of Sourcify.
+    assert.deepEqual(
+      fetched.calls.map((c) => new URL(c.url).pathname),
+      ["/server/chains"],
+      "asked Sourcify more than the list of supported chains",
+    );
   });
 });
 
@@ -139,6 +168,22 @@ describe("LLR-DP-006 submission", () => {
     assert.equal(body.compilerVersion, "0.8.28+commit.7893614a");
     assert.equal(body.contractIdentifier, "src/SatStake.sol:SatStake");
     assert.equal(body.creationTransactionHash, CREATION_TX);
+  });
+
+  it("fails on a submission Sourcify refuses with a status other than 409, naming the status", async () => {
+    const fetched = stubFetch({ "/v2/verify/": jsonResponse(500, { message: "internal error" }) });
+    await assert.rejects(
+      () => submitVerification({ chainId: CHAIN_ID, address: ADDRESS, stdJsonInput: {}, compilerVersion: "0.8.28", creationTransactionHash: CREATION_TX }, fetched),
+      /answered 500 submitting/,
+    );
+  });
+
+  it("fails on an accepted submission that carries no verificationId", async () => {
+    const fetched = stubFetch({ "/v2/verify/": jsonResponse(202, {}) });
+    await assert.rejects(
+      () => submitVerification({ chainId: CHAIN_ID, address: ADDRESS, stdJsonInput: {}, compilerVersion: "0.8.28", creationTransactionHash: CREATION_TX }, fetched),
+      /no verificationId/,
+    );
   });
 });
 
@@ -165,6 +210,32 @@ describe("LLR-DP-006 polling", () => {
       return true;
     });
     assert.equal(fetched.calls.length, 3, "polled more than the bounded number of attempts");
+  });
+
+  it("waits between polls, so a real compile has time to finish", async () => {
+    const fetched = stubFetch({
+      [`/v2/verify/${VERIFICATION_ID}`]: [
+        jsonResponse(200, { isJobCompleted: false }),
+        jsonResponse(200, { isJobCompleted: false }),
+        jsonResponse(200, { isJobCompleted: true, contract: perfectContract() }),
+      ],
+    });
+    // The wait only counts once it has resolved, and each poll checks that the previous wait did,
+    // so a wait that is called but not awaited fails here as surely as one that is skipped.
+    let waitsResolved = 0;
+    const wait = () => new Promise((r) => setImmediate(() => r(waitsResolved++)));
+    const polled = fetched;
+    const checked = async (url, init) => {
+      assert.equal(waitsResolved, polled.calls.length, "polled again before the previous wait finished");
+      return polled(url, init);
+    };
+    await pollUntilComplete(VERIFICATION_ID, checked, { attempts: 5, wait });
+    assert.equal(waitsResolved, 2, "did not wait after each incomplete poll");
+  });
+
+  it("fails on a poll Sourcify answers with an error status, naming it", async () => {
+    const fetched = stubFetch({ [`/v2/verify/${VERIFICATION_ID}`]: jsonResponse(502, {}) });
+    await assert.rejects(() => pollUntilComplete(VERIFICATION_ID, fetched, { attempts: 3, wait: noWait }), /answered 502 polling/);
   });
 });
 
@@ -201,9 +272,18 @@ describe("LLR-DP-006 match evaluation", () => {
     });
   });
 
-  it("refuses a job that reports an error, naming it", () => {
-    const job = { isJobCompleted: true, error: "compilation failed: stack too deep" };
-    assert.throws(() => assertPerfectMatch(job, "test"), /compilation failed: stack too deep/);
+  it("refuses a job that reports an error, naming its code and message", () => {
+    // Sourcify's v2 specification defines a job's `error` as an object, not a string.
+    const job = {
+      isJobCompleted: true,
+      error: { customCode: "compiler_error", message: "Stack too deep", errorId: "e1" },
+    };
+    assert.throws(() => assertPerfectMatch(job, "test"), (error) => {
+      assert.match(error.message, /compiler_error/);
+      assert.match(error.message, /Stack too deep/);
+      assert.doesNotMatch(error.message, /\[object Object\]/);
+      return true;
+    });
   });
 
   it("does not fail an otherwise perfect verification for a failure inside externalVerifications", () => {
@@ -220,6 +300,12 @@ describe("LLR-DP-006 existing match check", () => {
   it("returns null when Sourcify holds no record of the address", async () => {
     const fetched = stubFetch({ "/v2/contract/": jsonResponse(404, { match: null }) });
     assert.equal(await existingMatchFor(CHAIN_ID, ADDRESS, fetched), null);
+  });
+
+  it("fails rather than reporting no match when Sourcify answers an error status", async () => {
+    // A server error is not evidence that the contract is unverified.
+    const fetched = stubFetch({ "/v2/contract/": jsonResponse(503, {}) });
+    await assert.rejects(() => existingMatchFor(CHAIN_ID, ADDRESS, fetched), /answered 503/);
   });
 
   it("returns the contract Sourcify holds for the address", async () => {
@@ -239,6 +325,13 @@ describe("LLR-DP-006 read-back agreement", () => {
   it("passes when the job's answer and the read-back agree", () => {
     assert.doesNotThrow(() => assertAgreement(perfectContract(), perfectContract()));
   });
+
+  for (const field of ["creationMatch", "runtimeMatch"]) {
+    it(`fails when the job's answer and the read-back disagree on ${field} only`, () => {
+      const readBackContract = { ...perfectContract(), [field]: "match" };
+      assert.throws(() => assertAgreement(perfectContract(), readBackContract), new RegExp(field));
+    });
+  }
 
   it("fails when the job's answer and the read-back disagree", () => {
     const readBackContract = { ...perfectContract(), match: "match" };
@@ -307,6 +400,50 @@ describe("LLR-DP-006 end to end orchestration", () => {
     assert.ok(postedTo(fetched, "/v2/verify/"), "did not resubmit despite only a partial existing match");
   });
 
+  for (const field of ["creationMatch", "runtimeMatch"]) {
+    it(`submits again when the existing summary is exact_match but ${field} is only partial`, async () => {
+      // Sourcify's v2 specification documents exactly this response: the summary reads
+      // exact_match while one side matches only partially.
+      const fetched = stubFetch({
+        "/chains": supportedChains,
+        "/v2/contract/": [jsonResponse(200, { ...perfectContract(), [field]: "match" }), jsonResponse(200, perfectContract())],
+        "/v2/verify/": [jsonResponse(202, { verificationId: VERIFICATION_ID })],
+        [`/v2/verify/${VERIFICATION_ID}`]: jsonResponse(200, { isJobCompleted: true, contract: perfectContract() }),
+      });
+      await run(fetched);
+      assert.ok(postedTo(fetched, "/v2/verify/"), `treated a partial ${field} as already verified`);
+    });
+  }
+
+  it("fails, and submits nothing, when the first read cannot reach Sourcify", async () => {
+    const fetched = stubFetch({
+      "/chains": supportedChains,
+      "/v2/contract/": jsonResponse(503, {}),
+      "/v2/verify/": () => {
+        throw new Error("must not be called");
+      },
+    });
+    await assert.rejects(() => run(fetched), /answered 503 reading back/);
+    assert.ok(!postedTo(fetched, "/v2/verify/"), "submitted after failing to read the existing status");
+  });
+
+  for (const [label, partial] of [
+    ["the summary", { ...perfectContract(), match: "match" }],
+    ["creationMatch", { ...perfectContract(), creationMatch: "match" }],
+    ["runtimeMatch", { ...perfectContract(), runtimeMatch: "match" }],
+  ]) {
+    it(`refuses a 409 already_verified whose read-back is partial on ${label}`, async () => {
+      // A 409 says only that Sourcify holds some match. The race fallback must apply the same
+      // perfect-match rule as every other path, never take the 409 itself as success.
+      const fetched = stubFetch({
+        "/chains": supportedChains,
+        "/v2/contract/": [jsonResponse(404, { match: null }), jsonResponse(200, partial)],
+        "/v2/verify/": alreadyVerified409,
+      });
+      await assert.rejects(() => run(fetched), /not a perfect match/);
+    });
+  }
+
   it("recovers from a 409 already_verified reported mid-run, followed by a perfect read-back", async () => {
     // The read-before-write check found nothing, but Sourcify says it is already verified by the
     // time the submission lands, a race the read-back alone cannot rule out.
@@ -338,6 +475,6 @@ describe("LLR-DP-006 end to end orchestration", () => {
       "/v2/verify/": [jsonResponse(202, { verificationId: VERIFICATION_ID })],
       [`/v2/verify/${VERIFICATION_ID}`]: jsonResponse(200, { isJobCompleted: true, contract: perfectContract() }),
     });
-    await assert.rejects(() => run(fetched));
+    await assert.rejects(() => run(fetched), /the verification job answered match "exact_match" but reading the contract back answered "match"/);
   });
 });

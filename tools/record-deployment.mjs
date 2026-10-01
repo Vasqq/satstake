@@ -30,8 +30,9 @@ const SOURCIFY = "https://sourcify.dev/server";
 // Paths whose content decides the deployed bytecode. Everything else may move without making the
 // recorded commit a wrong answer to "which source is deployed".
 const BYTECODE_PATHS = ["src", "lib", "foundry.toml"];
-// Sourcify's v2 API answers this for a perfect match and "match" for a partial one.
+// Sourcify's v2 API answers this for a perfect match on a field and "match" for a partial one.
 const PERFECT_MATCH = "exact_match";
+const MATCH_FIELDS = ["match", "creationMatch", "runtimeMatch"];
 const SUCCESS = 1;
 const HEX = /^0x[0-9a-fA-F]+$/;
 
@@ -133,21 +134,27 @@ export function buildRecord({ chainId, contractName, broadcast, artifact, gitCom
     gitCommit,
     compiler: compilerOf(artifact),
     verification: {
-      // `match` is whatever Sourcify answered, and "pending" while it has no match at all, so the
-      // record can never claim a verification that did not happen. A partial match answers "match",
-      // which is not the perfect match the requirement asks for, so the reader and the release gate
-      // are told separately whether the match is perfect.
-      sourcify: { match: sourcify ?? "pending", perfectMatch: sourcify === PERFECT_MATCH }, // @trace LLR-DP-006
+      // The fields are whatever Sourcify answered, and "pending" while it has no match at all, so
+      // the record can never claim a verification that did not happen. The summary `match` alone is
+      // not enough: Sourcify's own specification shows it reading exact_match while one side
+      // matches only partially, so a perfect match needs all three.
+      sourcify: {
+        match: sourcify?.match ?? "pending",
+        creationMatch: sourcify?.creationMatch ?? null,
+        runtimeMatch: sourcify?.runtimeMatch ?? null,
+        perfectMatch: MATCH_FIELDS.every((field) => sourcify?.[field] === PERFECT_MATCH), // @trace LLR-DP-006
+      },
     },
   };
 }
 
-/** The match Sourcify reports for an address, or null when it holds none. */
+/** The three match fields Sourcify reports for an address, or null when it holds none. */
 export async function sourcifyStatus(chainId, address, fetched = fetch) {
   const response = await fetched(`${SOURCIFY}/v2/contract/${chainId}/${address}`);
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Sourcify answered ${response.status} for ${address} on chain ${chainId}`);
-  return (await response.json()).match ?? null;
+  const { match, creationMatch, runtimeMatch } = await response.json();
+  return match ? { match, creationMatch, runtimeMatch } : null;
 }
 
 async function main(chainIdArg) {
