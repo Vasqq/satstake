@@ -1,0 +1,149 @@
+/* LLR-FE-072, LLR-FE-073: system fonts and one style sheet, nothing fetched from elsewhere.
+   Colour tokens are checked for WCAG AA contrast by styles.test.ts, so a change to one is a change to a test. */
+
+:root {
+  color-scheme: light dark;
+
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #4d4d4d;
+  --link: #0b4fb3;
+  --border: #c8c8c8;
+  --focus: #0b4fb3;
+  --banner-error-bg: #fdecea;
+  --banner-error-fg: #8a1c13;
+  --banner-notice-bg: #fff4d6;
+  --banner-notice-fg: #5c4300;
+
+  --gap: 1rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121212;
+    --fg: #ececec;
+    --muted: #b3b3b3;
+    --link: #8ab4ff;
+    --border: #3a3a3a;
+    --focus: #8ab4ff;
+    --banner-error-bg: #3a1512;
+    --banner-error-fg: #ffb4a9;
+    --banner-notice-bg: #3a2e0a;
+    --banner-notice-fg: #ffe08a;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 1rem;
+  line-height: 1.55;
+  /* Addresses and transaction hashes have no break points, so they wrap anywhere on a narrow screen. */
+  overflow-wrap: anywhere;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+a {
+  color: var(--link);
+  text-underline-offset: 0.2em;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* A heading takes focus only so a route change is announced; it is not a control and needs no ring. */
+h1[tabindex="-1"]:focus {
+  outline: none;
+}
+
+h1 {
+  margin: 0 0 var(--gap);
+  font-size: 1.75rem;
+  line-height: 1.25;
+}
+
+.site-header,
+.site-footer,
+.banner,
+main {
+  width: 100%;
+  max-width: 44rem;
+  margin-inline: auto;
+  padding-inline: var(--gap);
+}
+
+.site-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem var(--gap);
+  padding-block: var(--gap);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  color: var(--fg);
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.site-header nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem var(--gap);
+}
+
+.site-header nav a[aria-current="page"] {
+  color: var(--fg);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.banner {
+  margin-block: var(--gap) 0;
+  padding-block: 0.75rem;
+  border-radius: 0.375rem;
+}
+
+.banner-error {
+  background: var(--banner-error-bg);
+  color: var(--banner-error-fg);
+}
+
+.banner-notice {
+  background: var(--banner-notice-bg);
+  color: var(--banner-notice-fg);
+}
+
+main {
+  flex: 1;
+  padding-block: calc(var(--gap) * 2);
+}
+
+.site-footer {
+  padding-block: var(--gap);
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.site-footer p {
+  margin: 0.25rem 0;
+}

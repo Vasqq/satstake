@@ -79,3 +79,47 @@ jobs:
           forge coverage --report summary > coverage-summary.txt
           cat coverage-summary.txt
           node tools/coverage-gate.mjs coverage-summary.txt
+
+  # LLR-FE-080: lint (no any), type check, unit tests, and the testnet build. The app imports its ABI from
+  # the Foundry artifact (LLR-FE-081), so the contract is built first.
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: v1.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Build the contract artifact
+        run: forge build
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci --ignore-scripts
+      - name: Lint
+        working-directory: app
+        run: npm run lint
+      - name: Type check
+        working-directory: app
+        run: npm run typecheck
+      - name: Test
+        working-directory: app
+        run: npm test
+      - name: Build for testnet
+        working-directory: app
+        run: npm run build:testnet
+      # Interim, until the mainnet contract exists (06 section 7 asks for a build of both targets): the
+      # mainnet build must refuse (LLR-FE-002), and for that reason, not for any other. The mainnet
+      # deployment group replaces this step with a real mainnet build.
+      - name: Mainnet build refuses without a contract address
+        working-directory: app
+        run: |
+          if npm run build:mainnet > mainnet-build.log 2>&1; then
+            echo "the mainnet build succeeded without a contract address"
+            exit 1
+          fi
+          cat mainnet-build.log
+          grep -q "mainnet has no SatStake contract address" mainnet-build.log

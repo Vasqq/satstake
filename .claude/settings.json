@@ -1,6 +1,6 @@
 {
   "permissions": {
-    "blockReadsOutsideWorkingDirectories": true,
+    "blockReadsOutsideWorkingDirectories": false,
     "allow": [
       "Bash(forge *)",
       "Bash(cast *)",

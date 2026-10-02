@@ -3202,3 +3202,987 @@ nonce 3, mined at 1790866310, deadline 1790866307) and `markBroken`
 `node tools/trace-check.mjs` currently fails, on ten `LLR-FE-*` requirements that the app implementer's
 uncommitted tests reference before their implementations exist. None concerns this group; before the app
 work began it read `OK. 56/112 LLRs referenced, 2/55 journeys passing`.
+
+
+## Group: FE configuration and reading (LLR-FE-001 to 006, 010 to 013, 080, 081), 2026-10-01
+
+### Red
+
+Tests were written from the requirement text first (14 files under `app/src`, `describe("LLR-FE-0xx ...")`),
+then run with the application modules absent. The first run, `npm --prefix app test`, failed every suite
+with `Failed to resolve import "../config/networks"` (12 of 12 files, no test collected). To get a per-test
+red, empty stubs with the final signatures and bodies that throw `not implemented` (or return `[]`/`{}`)
+were added and the suite rerun: 56 failed, 2 passed, and 5 suites failed at collection because
+`selectNetwork` threw. Representative failures:
+
+```
+FAIL src/config/networks.test.ts > LLR-FE-002 ... > fails when the selected configuration has no contract address
+AssertionError: expected [Function] to throw error matching /mainnet has no SatStake contract address/ but got 'not implemented'
+FAIL src/chain/transport.test.ts > LLR-FE-004 retry schedule > retries a failing read three times and then raises the last error   Error: not implemented
+FAIL src/chain/poller.test.ts > LLR-FE-011 ... > reads once at once, then once per 4 seconds, not a millisecond early   Error: not implemented
+FAIL src/chain/clock.test.ts > LLR-FE-012 chain time > adds the whole seconds elapsed locally since the block was fetched   Error: not implemented
+FAIL src/routes.test.ts > LLR-FE-013 hash routes > sends any other route to not found   Error: not implemented
+FAIL src/build.test.ts > LLR-FE-081 ... > is identical to the abi field of out/SatStake.sol/SatStake.json   (stub ABI is empty)
+Test Files 12 failed (12)   Tests 56 failed | 2 passed (58)
+```
+
+The 2 that passed (`has strict mode on`, `pins every dependency to an exact version`) assert files that
+existed before any code: `tsconfig.json` and `package.json`. They are checks on configuration, not on code.
+
+### Green
+
+`npm --prefix app test`: 12 files passed, 104 tests passed, 9 skipped (the two live files, which need
+`SATSTAKE_LIVE=1`). `npm --prefix app run lint` clean, `run typecheck` clean, `npm audit` 0 vulnerabilities,
+`npm ci --ignore-scripts` reproduces the install. `node tools/trace-check.mjs`:
+`OK. 68/112 LLRs referenced, 2/55 journeys passing`.
+
+Live run, `SATSTAKE_LIVE=1 npm --prefix app test -- src/live.test.ts src/liveApp.test.tsx`: 9 passed against
+Arc testnet (chain id check, both token decimals and symbols, `getPledge`/`stateOf`/`pledgeCount`/
+`pledgeCountOf`/`pledgeIdsOf`/`totalLocked` for pledge 1, `PledgeNotFound` for 999999, chain time within two
+minutes of the local clock, only `eth_chainId`, `eth_call`, `eth_getBlockByNumber` sent, both RPC URLs
+agree, and the whole App rendered at `#/p/1` and `#/p/999999`). `npm run build:testnet` succeeds and
+`vite preview` serves it; `npm run build:mainnet` fails with `mainnet has no SatStake contract address`.
+
+### Mutations (numbers 282 to 299, then 400 onward as agreed)
+
+Each row applies one change to one source file and runs the tests of the named area. The first run left four
+survivors; the tests named in their rows were added and each now dies.
+
+| # | Mutation | Result | Killed by |
+|---|---|---|---|
+| 282 | config: mainnet chain id set to the testnet id | killed | uses the mainnet chain id and the token addresses recorded in deployments/accounts.md |
+| 283 | config: mainnet USDC given the native 18 decimals | killed | uses the mainnet chain id and the token addresses recorded in deployments/accounts.md |
+| 284 | config: testnet RPC order reversed | killed | lists the primary RPC first and gives each network an explorer |
+| 285 | config: testnet contract taken from a literal, not the deployment record | killed | takes the testnet chain, contract, and tokens from the committed deployment files |
+| 286 | selectNetwork: skips the missing-address check | killed | fails when the selected configuration has no contract address |
+| 287 | selectNetwork: defaults an unset name to testnet | killed | fails on an unset or unknown target instead of choosing one |
+| 288 | vite.config: build no longer runs selectNetwork | killed | fails a mainnet build while the mainnet configuration has no contract address |
+| 289 | retry: second delay 500 becomes 600 | killed | waits exactly 250, 500, and 1000 ms |
+| 290 | retry: a fourth retry added | killed | waits exactly 250, 500, and 1000 ms |
+| 291 | retry: -32014 no longer retried | killed | retries JSON-RPC error -32014 |
+| 292 | retry: every numeric RPC error retried | killed | does not retry any other JSON-RPC error |
+| 293 | retry: HTTP responses with a status retried too | killed | does not retry an HTTP response that carried a status, or an ordinary failure |
+| 294 | retry: timeouts not retried | killed | retries a network error and a timeout |
+| 295 | retry: cause chain not walked | killed | finds the cause when the error is wrapped, as a contract read wraps it |
+| 296 | retry: retryRead retries every failure | killed | raises a failure that is not retryable at once, without waiting |
+| 297 | transport: URL list reversed | killed | is a viem fallback transport holding one http transport per URL, in order |
+| 298 | transport: retry wrapper dropped | killed | tries the whole list again after the retry delay, three times at most |
+| 299 | transport: only the first URL used | killed | is a viem fallback transport holding one http transport per URL, in order |
+| 400 | transport: retry wrapper retries after its retries (twice the rounds) | killed | spaces three retries by 250, 500, and 1000 ms and then gives up |
+| 401 | health: chain id compared with >= | killed | is a mismatch for an id one away in either direction |
+| 402 | health: unreachable reported as ok | killed | reports unreachable, not ok, when the RPC cannot be asked |
+| 403 | health: writes enabled unless a mismatch | killed | disables write actions on every result except a pass |
+| 404 | health: token decimals not compared | killed | disables creation in a token whose decimals differ, and only that token |
+| 405 | health: token symbol not compared | killed | disables creation in a token whose symbol differs |
+| 406 | health: unreadable token left enabled | killed | treats a token that cannot be read as not confirmed and disables it |
+| 407 | health: tokens read once only (decimals), symbol skipped | killed | reads decimals() and symbol() from each configured token address |
+| 408 | useHealth: stale at once, refetched on every mount | survived the first run; killed after a test was added | does not ask again when the same session mounts it a second time |
+| 409 | reads: Kept and Broken swapped | killed | names the derived state for each value of stateOf |
+| 410 | reads: unknown state falls back to Active | killed | refuses a state value outside the enum instead of guessing |
+| 411 | reads: any revert taken for a missing pledge | survived the first run; killed after a test was added | does not take another contract error for a missing pledge |
+| 412 | reads: a log query added to the block read | killed | names no log, filter, or event-subscription API |
+| 413 | reads: pledge struct check dropped | survived the first run; killed after a test was added | refuses a decoded value that does not match the Pledge struct, field by field |
+| 414 | clock: whole seconds rounded instead of floored | killed | adds the whole seconds elapsed locally since the block was fetched |
+| 415 | clock: negative elapsed time not clamped | killed | never subtracts when the local monotonic reading moves backwards |
+| 416 | clock: reads the device clock | killed | stays on the monotonic reading, so a device clock set wrongly changes nothing |
+| 417 | clock: a sync keeps the older local base | killed | starts again from each new block, not from the sum of earlier ones |
+| 418 | poller: interval 5000 ms | killed | polls every 4 seconds |
+| 419 | poller: no read at start | killed | reads once at once, then once per 4 seconds, not a millisecond early |
+| 420 | poller: polls while hidden | killed | stops polling while the page is hidden |
+| 421 | poller: old timer not cleared on a visibility change | killed | stops polling while the page is hidden |
+| 422 | poller: stop leaves the visibility listener | killed | stops for good, and stops listening, when told to stop |
+| 423 | poller: a rejected poll stops the schedule | killed | keeps polling after a read fails |
+| 424 | poller: hidden page not paused, only deferred | killed | stops polling while the page is hidden |
+| 425 | live: the clock is not synchronized by a poll | killed | synchronizes to the block read by the first poll and then counts local time |
+| 426 | live: the clock synchronizes on the first poll only | killed | re-synchronizes on each poll, taking the block's time over the local count |
+| 427 | live: a good poll does not clear the error | killed | keeps the last state and clock when a poll fails, and recovers on the next |
+| 428 | live: a failed poll blanks the state | killed | keeps the last state and clock when a poll fails, and recovers on the next |
+| 429 | live: the block is read before stateOf and not with it | killed | synchronizes to the block read by the first poll and then counts local time |
+| 430 | live: state read through the pledge page cleanup removed | killed | stops when the pledge page is left |
+| 431 | routes: leading zeros accepted | killed | sends any other route to not found |
+| 432 | routes: no upper bound on a pledge id | killed | reads a pledge id as a whole decimal number, from 0 to 2^256 - 1 |
+| 433 | routes: bound off by one | killed | reads a pledge id as a whole decimal number, from 0 to 2^256 - 1 |
+| 434 | routes: trailing slash accepted on create | killed | sends any other route to not found |
+| 435 | routes: empty hash is not found | killed | treats an empty hash as the home route, since the site root has none |
+| 436 | routes: pledge pattern unanchored at the end | killed | sends any other route to not found |
+| 437 | app: a failed pledge read shown as not found | killed | does not take a failed read for a missing pledge |
+| 438 | app: a missing pledge shown as a read failure | killed | shows the not-found view for a pledge id the contract does not recognize |
+| 439 | app: unreachable RPC raises no network error | killed | shows a network error when the RPC cannot be asked |
+| 440 | app: mismatch raises no network error | killed | shows a network error naming both chain ids when they differ |
+| 441 | app: shell reads the hash once and never follows it | killed | changes view when the hash changes |
+| 442 | app: pledge view not keyed by id | survived the first run; killed after a test was added | shows no state from an earlier pledge while the next one is being read |
+| 443 | live: testnet pointed at the mainnet endpoint | killed (SATSTAKE_LIVE=1) | the live tests of `src/live.test.ts` |
+| 444 | live: testnet contract set to another address | killed (SATSTAKE_LIVE=1) | the live tests of `src/live.test.ts` |
+| 445 | live: ABI replaced by an empty list | killed (SATSTAKE_LIVE=1) | the live tests of `src/live.test.ts` |
+
+After the four additions the full non-live suite was green again (104 passed). A complete second pass of the
+mutation script over the final tests was started and interrupted before it finished, so the table above
+is from the first pass plus the targeted rerun of the four survivors.
+
+## Review fixes: FE configuration and reading, 2026-10-01 (05 v1.10)
+
+Two independent reviews (requirements, frontend) of the group above found defects. The lead changed LLR-FE-004,
+005, and 006 first (05 v1.10), then every fix below was made test first. Local paths are redacted as `<repo>`.
+Mutation numbers continue from 445.
+
+### Finding 1: a mutant left on disk by the interrupted mutation pass
+
+The first review found `selectNetwork`'s LLR-FE-002 guard in `app/src/config/networks.ts` reading
+`if (false as boolean)` instead of `if (contract === null)`, left by the mutation pass that was interrupted
+(see the last paragraph of the group's mutation section). With it, a mainnet build with no address succeeded
+and two tests (`fails when the selected configuration has no contract address`, `fails a mainnet build while
+the mainnet configuration has no contract address`) were red. The lead restored the line. A fresh run at the
+start of this round, before any change: `npm --prefix app test`: 12 files passed, 104 passed, 9 skipped.
+
+Scan for any other leftover mutant: every file under `app/src` that is not a test was read in full (abi.ts,
+routes.ts, App.tsx, main.tsx, useHashRoute.ts, config/networks.ts, config/index.ts, chain/*.ts,
+views/*.tsx, vite.config.ts, vitest.config.ts). Checked for constant conditions, `as boolean` casts, off-by-one
+constants (retry delays 250/500/1000, depth 8, 4_000 interval, UINT256_MAX bound, `>=`/`>`), deleted checks
+(missing-address guard, struct check, enum bound, cleanup functions, visibility handling). None found beyond
+the one already restored. The full mutation pass at the end of this section runs against the final tree, and
+each row restores the source before the next is applied.
+
+### Finding 4: LLR-FE-004 retries HTTP 429 and 5xx
+
+Red, `npx vitest run src/chain/transport.test.ts` (7 failed, 20 passed). The tests were added first; the
+retry policy still treated an HTTP status as an answer:
+
+- `LLR-FE-004 which failures are retried > retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them` (429, 500, 502, 503, 504, 599 retried; 200, 400, 401, 403, 404, 428, 430, 499, 600, 601 not)
+- `... > finds an HTTP status on a wrapped error too`
+- `... through the real http transport > retries a 429 / 500 / 503 / 599 answer after 250 ms and uses the next answer` (4 tests)
+- `... > gives up after three retries of a persistent 503`
+
+```
+AssertionError: 429: expected false to be true // Object.is equality
+AssertionError: expected 1 to be 4 // Object.is equality          (persistent 503: one request, no retry)
+AssertionError: promise rejected "HttpRequestError: HTTP request failed. ... Status: 429 ..."
+```
+
+The tests for 400, 404, 428, 499 (not retried) pass already; they pin the lower boundary.
+
+Green: `isRetryable` in `app/src/chain/retry.ts` now also retries an `HttpRequestError` whose status is 429 or
+500 to 599. `npx vitest run src/chain/transport.test.ts`: 27 passed.
+
+### Findings 6 and 20 (ccipRead): the app's own client
+
+Added to `app/src/chain/wagmi.test.ts`: `LLR-FE-004 the application's own client retries ...` (two tests, a
+`-32014` answer and a persistent HTTP 503, both through `getPublicClient(createAppConfig(oneUrlNetwork))`,
+one URL so a fallback endpoint cannot stand in for the retry) and `LLR-FE-073 ... has CCIP Read turned off`.
+
+Red, `npx vitest run src/chain/wagmi.test.ts`: 1 failed, 4 passed.
+
+```
+FAIL src/chain/wagmi.test.ts > LLR-FE-073 the client makes no request the configuration does not name > has CCIP Read turned off, so an offchain lookup URL from a contract is never fetched
+AssertionError: expected undefined to be false // Object.is equality
+```
+
+The two retry tests were never seen red in this round: the retry wrapper already exists and they pin it
+through the exported client. Their red is mutation 446 below (the app's config built on a bare fallback
+transport), which the transport-level tests of the earlier round could not see (finding 6).
+
+Green: `createAppConfig` passes `ccipRead: false`. `npx vitest run src/chain/wagmi.test.ts`: 5 passed.
+
+### Finding 3: LLR-FE-005 and 006 repeat every 30 seconds, fail closed, and recover
+
+`app/src/chain/useHealth.test.tsx` was rewritten for 05 v1.10 and `FakeChain` gained `outage` (every request
+fails, as with an endpoint that is down) and `latency` (a per-request delay hook, used below). Red against the
+once-only `useHealth` (`staleTime: Infinity`), `npx vitest run src/chain/useHealth.test.tsx`: 8 failed, 2 passed.
+
+```
+FAIL ... > is still checking, with writes off and creation off, before the answers arrive      TypeError: result.current.creationEnabled is not a function
+FAIL ... > passes the chain check and enables each token that matches its configuration        TypeError: result.current.creationEnabled is not a function
+FAIL ... > asks both questions at load, then again at 30 seconds and at each 30 seconds after   AssertionError: expected 1 to be 2
+FAIL ... > asks nothing while the page is hidden, and asks again once it is visible            AssertionError: expected 1 to be greater than or equal to 2
+FAIL ... > turns writes off when a later answer is another chain, and back on ...              AssertionError: expected { status: 'ok' } to deeply equal { status: 'mismatch', ... }
+FAIL ... > fails closed when a check gets no answer, and recovers when a later check is answered   AssertionError: expected { status: 'ok' } to deeply equal { status: 'unreachable' }
+FAIL ... > starts failed closed when the very first check gets no answer, and recovers on the next AssertionError: expected { status: 'unreachable' } to deeply equal { status: 'ok' }
+FAIL ... > disables creation in one token when a later read differs, and enables it when a later read matches   TypeError / AssertionError
+```
+
+Green: `useHealth` refetches both queries every 30 000 ms (`refetchInterval`, `staleTime` 30 000), pauses while the
+page is hidden (query-core's own `refetchIntervalInBackground: false`), keeps each answer as the latest, and
+returns `creationEnabled(address)`. 10 passed. A first green attempt failed four tests for a test-side reason
+(the update reaches React a few milliseconds of fake time after the request fires); the tests now wait 50 ms
+after the interval, and the boundary test counts requests, which do not depend on that delay.
+
+### Finding 7: LLR-FE-006 boundaries, lower decimals and case-only symbol
+
+Added to `app/src/chain/health.test.ts`: `disables creation in a token with fewer decimals than configured, not
+only more` (5, 7, 0 against USDC's 6) and `compares the symbol exactly, so a change of case alone disables
+creation` (`usdc`, `Usdc`, `USDC `, ` USDC`). Both passed on first run: the comparison was already exact. They
+were never red; mutations 448 and 449 show each would catch the wrong implementation.
+
+### Findings 2 and 5: chain time from the block's arrival; out-of-order answers
+
+Seven tests were added to `app/src/chain/usePledgeLive.test.tsx`, using `FakeChain.latency` to make one answer
+slow or failing: `LLR-FE-012 chain time is measured from when the block was fetched` (4 tests: stateOf slower,
+block slower, stateOf fails and the clock still syncs, block fails and the state still shows) and `LLR-FE-011 an
+older answer that arrives late never replaces a newer one` (3 tests: state, block, and a late failure).
+Red against the earlier hook, `npx vitest run src/chain/usePledgeLive.test.tsx`: 7 failed, 4 passed.
+
+```
+FAIL ... > counts from the block's arrival when stateOf is the slower answer              expected null to be 1000n   (clock waited for stateOf)
+FAIL ... > counts from the block's arrival when the block is the slower answer            expected null to be 'Active' (state waited for the block)
+FAIL ... > still synchronizes to the block when stateOf fails, and reports the failure    expected null to be 1000n
+FAIL ... > still shows the state when the block read fails, and keeps the last clock      expected 'Active' to be 'Kept'
+FAIL ... > keeps the newer state when the first poll's stateOf answers after the second poll's   expected 'Active' to be 'Kept'
+FAIL ... > keeps the newer chain time when the first poll's block answers after the second poll's expected 1000n to be 1006n
+FAIL ... > does not report a failure of the first poll that arrives after the second poll succeeded  expected ContractFunctionExecutionError ... to be null
+```
+
+Green: `usePledgeLive` handles the two reads separately, takes `clock.mark()` in the block's own callback and passes
+it to `sync(timestamp, arrived)`, and applies an answer only when no later poll of the same read has been
+answered (`stateApplied`, `blockApplied`). Added a `ChainClock` test for the two-argument `sync`. One earlier
+test, `keeps the last state and clock when a poll fails`, encoded the old behaviour (a failed `stateOf` left
+the clock alone); it now sets the block time the way a real chain would advance and is named `keeps the last
+state when a poll fails, and recovers on the next`. `npx vitest run src/chain`: 8 files, 93 passed (the first
+count includes this and all earlier items).
+
+### Findings 10, 12, 13 (configuration and build)
+
+- Finding 10: `docs.arc.io/arc/references/rpc-endpoints` (the page V-02 cites) lists `rpc.testnet.arc.io`,
+  `rpc.blockdaemon.testnet.arc.io`, `rpc.drpc.testnet.arc.io`, `rpc.quicknode.testnet.arc.io` and the mainnet
+  equivalents, and does not list `rpc.testnet.arc.network`. All four testnet hosts answered an anonymous
+  `eth_chainId` POST with a cross-origin allowance when fetched on 2026-10-01. The `.network` host is dropped;
+  `rpc.blockdaemon.testnet.arc.io` is the second URL. Test added to `app/src/config/networks.test.ts`: `lists only
+  endpoints that docs.arc.io/arc/references/rpc-endpoints names (01 V-02)`. Red: `AssertionError: expected [
+  'https://rpc.testnet.arc.io', ... ] to deeply equal [ 'https://rpc.testnet.arc.io', ... ]`. Green: 12 passed.
+- Finding 12: `parsePledge` now carries `@trace LLR-FE-010`. No test can see a tag; `node tools/trace-check.mjs` does.
+- Finding 13: `vite.config.ts` `server.fs.allow` is `[".", "../out", "../deployments"]`. A test was added after the
+  change (`build.test.ts`, below), so it has no red of its own; mutation 462 (allow `".."`) is its kill.
+
+### Finding 9: the LLR-FE-010 source scan
+
+`app/src/chain/reads.test.ts` replaced `calls only the six view functions on SatStake, plus decimals and symbol on
+tokens` (which matched only the literal `functionName: "x"`) with three scans over the source with comments
+removed: no log, filter, or subscription API by name (a longer list, including `watchBlocks`, `eth_getFilter`,
+`decodeEventLog`, `getTransactionReceipt`); every mention of `functionName` is a string literal in the allowed set,
+by comparing the count of mentions with the count of literals; and no raw `method:` other than `eth_chainId`,
+no `encodeFunctionData`, `.call(`, `getStorageAt`, or `multicall`. They passed on first run (the source was
+already clean) and were never red; mutations 463 to 467 each add one forbidden form and each dies.
+
+### Findings 15 to 23, App level (red)
+
+Tests were added to `app/src/App.test.tsx` (`LLR-FE-005 the network error follows the most recent check, in plain
+words`, `LLR-FE-006 a notice names a token whose creation is disabled`, `LLR-FE-011 the pledge page in plain
+words, and a failed first read is tried again`, `LLR-FE-013 the header and footer`, `LLR-FE-072 each page sets the
+title and moves focus to its heading`) and two existing tests changed to the section 2.2 wording for an unknown
+pledge. Red, `npx vitest run src/App.test.tsx`: 19 failed, 21 passed. Representative failures:
+
+```
+FAIL ... in the words of section 2.2        TestingLibraryElementError: Unable to find role="heading" and name "Pledge not found"
+FAIL ... explains a chain mismatch ...      AssertionError: expected 'Network error: the RPC endpoint repor...' to contain 'Arc Testnet (chain 5042002)'
+FAIL ... explains an unanswered check ...   AssertionError: expected 'Network error: no RPC endpoint answer...' not to match /\bRPC\b|endpoint|eth_chainId|JSON/i
+FAIL ... names the token whose decimals differ, and only that token     AssertionError: expected [] to have a length of 1 but got +0
+FAIL ... shows state 4 as Settled: stake returned to the staker         Unable to find an element with the text: Settled: stake returned to the staker.
+FAIL ... says it is reading, not nothing, ...                           Unable to find an accessible element with the role "status"
+FAIL ... keeps trying when the first read of the pledge fails ...       expected 'Could not read this pledge. Check you...' not to match /reload/i
+FAIL ... links the brand to the home page ...                           Unable to find role="banner"
+FAIL ... has a footer on every page that names the network              Unable to find role="contentinfo"
+FAIL ... sets the document title for each route                         AssertionError: #/: expected 'stale' to be 'SatStake'
+FAIL ... moves the title and the focus when the route changes           AssertionError: expected 'stale' to be 'About SatStake'
+```
+
+Passing on first run: the 30-second raise-and-clear tests of the network error (the work of `useHealth` above,
+already wired through `App`), the four states that need no label (0 to 3), and the test that a missing pledge
+is not polled.
+
+### Findings 17, 20 (red): the policy and the style sheet
+
+`app/src/config/csp.test.ts` (5 tests), `app/src/styles.test.ts` (27 tests), and three tests in `build.test.ts`
+(`LLR-FE-073 the built page carries the policy and loads nothing from elsewhere`, the dev server's file
+allowance) were written before `csp.ts` and `styles.css` existed. First run: both new suites failed to collect,
+`Failed to resolve import "./config/csp"` and `ENOENT ... src/styles.css`. To get a per-test red, an empty
+`contentSecurityPolicy` returning `""` and an empty `styles.css` were added and the three files rerun:
+25 failed, 15 passed.
+
+```
+FAIL csp.test.ts > ... > allows exactly the testnet RPC URLs to be connected to, in the testnet build   expected undefined to deeply equal [ 'https://rpc.testnet.arc.io', ... ]
+FAIL csp.test.ts > ... > allows no inline or eval code, no wildcard, and no unencrypted or third-party origin   expected [] to deeply equal [ ... ]
+FAIL styles.test.ts > ... > declares both colour schemes and a dark block under prefers-color-scheme      expected '' to match /color-scheme:\s*light dark\s*;/
+FAIL styles.test.ts > light: --fg on --bg is at least 4.5 to 1                                          --fg: expected undefined to be defined
+FAIL styles.test.ts > ... > styles :focus-visible with an outline of at least 2 px using the focus token   expected '' to match /outline:\s*(\d+)px solid var\(--focus\)/
+FAIL styles.test.ts > ... > sets a system font stack that ends in a generic family                       expected '' to contain 'system-ui'
+FAIL build.test.ts > ... > has a policy meta tag, ahead of every script and stylesheet, ...               expected undefined to be ''
+FAIL build.test.ts > ... > loads every script and stylesheet from a relative path ...                     expected 1 to be greater than 1
+Test Files 3 failed (3)   Tests 25 failed | 15 passed (40)
+```
+
+The 15 that passed on the stub are the ones that hold for an empty file, among them `has no import, no font file,
+and no url()`, the viewport declaration, `is not applied by the source index.html`, and the dev server's file
+allowance (changed earlier, finding 13).
+
+### Findings 15 to 23, App level (green)
+
+Green: `App.tsx` gained a header (brand link and a nav of only the three routes that exist, `aria-current` on the
+current one), a footer, a plain-words network error and one notice per token that is not `ok`;
+`views/PageHeading.tsx` sets the title and moves focus on mount; `views/Views.tsx` has `PledgeNotFoundView` with
+the section 2.2 wording; `views/stateLabels.ts` maps all six states; `views/PledgeView.tsx` shows a heading from
+the first render, a reading status, and re-reads a failed first `getPledge` on the poll interval;
+`config/csp.ts` builds the policy and `vite.config.ts` writes it into `index.html` with `injectTo:
+"head-prepend"` for builds only; `styles.css` is imported by `main.tsx`. One test of mine was wrong, not the
+code (`getPledge` was counted by function name for a request that fails before a name is decoded; it now counts
+`eth_call`), and one test assertion needed the HTML-escaped `&#39;` decoded. `npm test`: 14 files passed,
+191 passed, 9 skipped. `npm run lint` and `npm run typecheck` clean.
+
+Inspection rows (finding 8): `docs/INSPECTIONS.md` has rows for LLR-FE-010, 080, 081 with result `Pending`, left
+for the reviewer. `tools/trace-check.mjs` accepts `Pending` before the release gate and demands `Pass` only with
+`--release`. The LLR-FE-081 test was tautological (it compared the ABI with the artifact through the same
+import), so a test of the source was added (`is imported from the artifact path in the source, and no ABI is
+written by hand under src`) and the row says the inspection discharges the claim.
+
+Finding 23 (placeholders): a search of `app/src` and `app/index.html` for placeholder, todo, lorem, fixme,
+coming soon finds nothing. What remains are views that are headings only: `HomeView`, `CreateView`, `MineView`,
+`AboutView`. Their content is required by LLR-FE-070, 071, 030 to 037, 050, which belong to later groups, so
+nothing was invented here. There is no Pages workflow yet; none may be added until those groups replace the
+four stubs. The mainnet `examplePledgeId: 1n` is a value, not a text, and has a comment saying the mainnet
+group sets it; the mainnet build refuses until the contract exists.
+
+### Final green, and the commands of this round
+
+From `app/`: `npm run lint` clean; `npm run typecheck` clean; `npm test`: 15 files passed, 196 passed, 9 skipped
+(the two live files); `npm run build:testnet` succeeds and writes the policy for the testnet RPC URLs into
+`dist/index.html`; `npm run build:mainnet` fails with `Error: mainnet has no SatStake contract address in its
+network configuration`. `SATSTAKE_LIVE=1 npx vitest run src/live.test.ts src/liveApp.test.tsx`: 9 passed against
+Arc testnet, including `answers the same chain id and contract count from every configured URL` over both
+URLs now configured. From the root: `node tools/trace-check.mjs`: `OK. 70/112 LLRs referenced, 2/55 journeys
+passing`. The dev server was started programmatically and answered `/src/abi.ts`, `/src/styles.css`, and the
+artifact path with 200 and `foundry.toml` at the repository root with 403, which is what the narrowed
+`server.fs.allow` should give.
+
+Finding 11 (CI): the `app` job's mainnet step now runs `npm run build:mainnet`, fails the job if it succeeds,
+and otherwise requires the log to contain `mainnet has no SatStake contract address`. The step logic was run
+locally against the real build (exit 1, message present, `grep -q` succeeds). This step is interim against 06
+section 7, which asks for a build of both targets: it stays until the mainnet group has a contract address and
+replaces it with a real mainnet build, whose `index.html` must then be checked for the mainnet policy.
+
+### Mutation pass over the final tree (finding 1, finding 14)
+
+The interrupted pass of the first round left no per-row commands, and one mutant on disk. This pass is driven
+by one table (`cache/mutations.mjs`, not committed: `cache/` is gitignored) read by one runner
+(`cache/mutate.mjs`). For each row the runner (1) copies each file it will touch to `cache/mutants/` as
+`<n>-<file>.orig`; (2) checks that each find-string occurs exactly once, so a stale row fails loudly instead of
+doing nothing; (3) applies the edits; (4) runs `npx vitest run --reporter=json` over the unit suite without
+`build.test.ts` (or over the files and `-t` filter named in the row, with `SATSTAKE_LIVE=1` for the live
+rows); (5) restores every touched file in a `finally` block; (6) reads the JSON for failures. A row is killed if
+at least one test fails. Before and after the whole pass it hashes every file under `app/src` plus
+`vite.config.ts`, `vitest.config.ts`, `index.html`, `package.json`, and prints `TREE RESTORED (hash equal)`.
+All 64 mutations of the first round (282 to 299, 400 to 445) were rewritten against the code as it is now and
+rerun, since several no longer matched (retry, health, live, PledgeView). Rows 446 to 503 are new. The `Edit`
+column is the exact command: replace the first string by the second in that file. Counts in `Killed by` are
+failing tests beyond the first named. A search of the source afterwards for `as boolean` (the form every
+"disable a check" mutation takes) finds nothing, and `cache/mutants/` was deleted.
+
+Survivors on the first pass: 470 (no status while the pledge loads: the test only waited for the state read),
+476 (title and focus only on first mount: every route remounts the heading, so no view could tell), 490
+(equivalent, below), and 496 (a named font before `system-ui`: the test only looked for `system-ui` anywhere in
+the stack). Each was answered with a test (`says it is reading while the pledge itself has not been answered`,
+`PageHeading.test.tsx`, `starts with system-ui`) and all three die on a rerun of the row. Row 464 also showed
+that a test was order-dependent: `shows a network error when the RPC cannot be asked` used `chain.failures`,
+which fails whichever request goes first, and it broke under 467 only because an extra `await` changed which
+request that was. It now uses `chain.outage`; rows 439 and 467 were rerun.
+
+Row 490 survives and is argued equivalent for now: replacing the selected network in the policy plugin with
+`networks.testnet` changes nothing while the testnet is the only target that builds (the mainnet build refuses
+without a contract address). The function that builds the policy is tested against a mainnet configuration in
+`csp.test.ts` (rows 485 to 487), but the line that passes the selected network to it cannot be observed for
+mainnet until the mainnet group gives that target an address. Owed by the mainnet group: build the mainnet
+target and assert its `index.html` policy names only the mainnet RPC.
+
+Rows 500 and 501 are the red evidence for the two tests of the first round that were never seen red (`has
+strict mode on` and `pins every dependency to an exact version`): each asserts a file that existed before any
+code, and each now fails when that file is changed. Row 462 is the kill for finding 13's test, written after the
+change.
+
+Result: 122 rows, 121 killed, 1 survivor argued equivalent (490).
+
+| # | Mutation | Edit, as `file: find -> replace` | Where run | Result | Killed by |
+|---|---|---|---|---|---|
+| 282 | config: mainnet chain id set to the testnet id | `src/config/networks.ts:     chainId: 5042, ->     chainId: 5042002,` | unit suite without build.test.ts | killed | network configuration uses the mainnet chain id and the token addresses recorded in deployments/accounts.md (+1 more) |
+| 283 | config: mainnet USDC given the native 18 decimals | `src/config/networks.ts: address: "0x3600000000000000000000000000000000000000", decimals: 6 } -> address: "0x3600000000000000000000000000000000000000", decimals: 18 }` | unit suite without build.test.ts | killed | network configuration uses the mainnet chain id and the token addresses recorded in deployments/accounts.md (+1 more) |
+| 284 | config: testnet RPC order reversed | `src/config/networks.ts: rpcUrls: ["https://rpc.testnet.arc.io", "https://rpc.blockdaemon.testnet.arc.io"] -> rpcUrls: ["https://rpc.blockdaemon.testnet.arc.io", "https://rpc.testnet.arc.io"]` | unit suite without build.test.ts | killed | network configuration lists the primary RPC first and gives each network an explorer (+1 more) |
+| 285 | config: testnet contract taken from a literal, not the deployment record | `src/config/networks.ts: contract: getAddress(deployment.address), -> contract: getAddress("0x3Ae26b15B9085ddB223FfEb503B4f713e682Cac5"),` | unit suite without build.test.ts | killed | network configuration takes the testnet chain, contract, and tokens from the committed deployment files |
+| 286 | selectNetwork: skips the missing-address check | `src/config/networks.ts: if (contract === null) { -> if (false as boolean) {` | unit suite without build.test.ts | killed | build target selection fails when the selected configuration has no contract address |
+| 287 | selectNetwork: defaults an unset name to testnet | `src/config/networks.ts: if (name !== "testnet" && name !== "mainnet") { -> if (name !== undefined && name !== "testnet" && name !== "mainnet") {`; `src/config/networks.ts: const selected = table[name]; -> const selected = table[name ?? "testnet"];` | unit suite without build.test.ts | killed | build target selection fails on an unset or unknown target instead of choosing one |
+| 288 | vite.config: build no longer runs selectNetwork on the environment | `vite.config.ts: selectNetwork(loadEnv(mode, process.cwd(), "VITE_").VITE_NETWORK) -> selectNetwork("testnet")` | src/build.test.ts -t "LLR-FE-002" | killed | the build selects its target from VITE_NETWORK fails a mainnet build while the mainnet configuration has no contract address (+1 more) |
+| 289 | retry: second delay 500 becomes 600 | `src/chain/retry.ts: [250, 500, 1000] -> [250, 600, 1000]` | unit suite without build.test.ts | killed | retry schedule waits exactly 250, 500, and 1000 ms (+4 more) |
+| 290 | retry: a fourth retry added | `src/chain/retry.ts: [250, 500, 1000] -> [250, 500, 1000, 1000]` | unit suite without build.test.ts | killed | retry schedule waits exactly 250, 500, and 1000 ms (+5 more) |
+| 291 | retry: -32014 no longer retried | `src/chain/retry.ts: if ("code" in current && current.code === DATA_NOT_AVAILABLE) return true; -> if (false as boolean) return true;` | unit suite without build.test.ts | killed | which failures are retried retries JSON-RPC error -32014 (+7 more) |
+| 292 | retry: every numeric RPC error retried | `src/chain/retry.ts: current.code === DATA_NOT_AVAILABLE -> typeof current.code === "number"` | unit suite without build.test.ts | killed | which failures are retried does not retry any other JSON-RPC error (+1 more) |
+| 293 | retry: every HTTP status retried | `src/chain/retry.ts: (current.status === undefined \|\| isRetryableStatus(current.status)) -> true` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them (+4 more) |
+| 294 | retry: timeouts not retried | `src/chain/retry.ts:     if (current instanceof TimeoutError) return true;\n -> (deleted)` | unit suite without build.test.ts | killed | which failures are retried retries a network error and a timeout |
+| 295 | retry: cause chain not walked | `src/chain/retry.ts: current = current.cause; -> current = undefined;` | unit suite without build.test.ts | killed | which failures are retried finds the cause when the error is wrapped, as a contract read wraps it (+1 more) |
+| 296 | retry: retryRead retries every failure | `src/chain/retry.ts: if (delay === undefined \|\| !isRetryable(error)) throw error; -> if (delay === undefined) throw error;` | unit suite without build.test.ts | killed | retry schedule raises a failure that is not retryable at once, without waiting (+4 more) |
+| 297 | transport: URL list reversed | `src/chain/transport.ts: urls.map((url) -> [...urls].reverse().map((url)` | unit suite without build.test.ts | killed | reads go through a fallback transport over the configured URLs in order is a viem fallback transport holding one http transport per URL, ... (+4 more) |
+| 298 | transport: retry wrapper dropped | `src/chain/transport.ts: return retryingTransport(fallback(endpoints, { retryCount: 0 })); -> return fallback(endpoints, { retryCount: 0 });` | unit suite without build.test.ts | killed | reads go through a fallback transport over the configured URLs in order an HTTP status from the endpoint, through the real http transport... (+7 more) |
+| 299 | transport: only the first URL used | `src/chain/transport.ts: const endpoints = urls.map( -> const endpoints = urls.slice(0, 1).map(` | unit suite without build.test.ts | killed | reads go through a fallback transport over the configured URLs in order is a viem fallback transport holding one http transport per URL, ... (+3 more) |
+| 400 | transport: retry wrapper retries after its retries (twice the rounds) | `src/chain/transport.ts: retryRead(() => transport.request(args, options)) -> retryRead(() => retryRead(() => transport.request(args, options)))` | unit suite without build.test.ts | killed | retry schedule on a transport, with timers spaces three retries by 250, 500, and 1000 ms and then gives up (+3 more) |
+| 401 | health: chain id compared with >= | `src/chain/health.ts: actual === expected ? { status -> actual >= expected ? { status` | unit suite without build.test.ts | killed | chain id check is a mismatch for an id one away in either direction |
+| 402 | health: unreachable reported as ok | `src/chain/health.ts: return { status: "unreachable" }; -> return { status: "ok" };` | unit suite without build.test.ts | killed | network error shows a network error when the RPC cannot be asked (+5 more) |
+| 403 | health: writes enabled unless a mismatch | `src/chain/health.ts: return check.status === "ok"; -> return check.status !== "mismatch";` | unit suite without build.test.ts | killed | chain id check disables write actions on every result except a pass |
+| 404 | health: token decimals not compared | `src/chain/health.ts: const matches = decimals === token.decimals && symbol === token.symbol; -> const matches = symbol === token.symbol;` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose decimals differ, and only that token (+4 more) |
+| 405 | health: token symbol not compared | `src/chain/health.ts: const matches = decimals === token.decimals && symbol === token.symbol; -> const matches = decimals === token.decimals;` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose symbol differs only in case (+3 more) |
+| 406 | health: unreadable token left enabled | `src/chain/health.ts: status: "unavailable", creationEnabled: false -> status: "unavailable", creationEnabled: true` | unit suite without build.test.ts | killed | token decimals and symbol check treats a token that cannot be read as not confirmed and disables it (+1 more) |
+| 407 | health: token symbol not read | `src/chain/health.ts: client.readContract({ address: token.address, abi: erc20Abi, functionName: "symbol" }), -> Promise.resolve(token.symbol),` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose symbol differs only in case (+5 more) |
+| 408 | useHealth: answers stale at once, refetched on every mount | `src/chain/useHealth.ts: staleTime: HEALTH_INTERVAL_MS, -> staleTime: 0,` | unit suite without build.test.ts | killed | and LLR-FE-006 checks run on load does not ask again when the same session mounts it a second time at once |
+| 409 | reads: Kept and Broken swapped | `src/chain/reads.ts:   "Kept",\n  "Broken", ->   "Broken",\n  "Kept",` | unit suite without build.test.ts | killed | the shell shows the view for each route shows no state from an earlier pledge while the next one is being read (+7 more) |
+| 410 | reads: unknown state falls back to Active | `src/chain/reads.ts: if (name === undefined) throw new Error('stateOf returned an unknown pledge state: ${St... -> if (name === undefined) return "Active";` | unit suite without build.test.ts | killed | reads go through the six view functions only refuses a state value outside the enum instead of guessing |
+| 411 | reads: any revert taken for a missing pledge | `src/chain/reads.ts: reverted.data?.errorName === "PledgeNotFound" -> reverted.data?.errorName !== undefined` | unit suite without build.test.ts | killed | reads go through the six view functions only does not take another contract error for a missing pledge |
+| 412 | reads: a log query added to the block read | `src/chain/reads.ts: return (await client.getBlock()).timestamp; -> await client.getLogs();\n      return (await client.getBlock()).timestamp;` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds reads stateOf and the latest block when the page opens, then every 4 ... (+11 more) |
+| 413 | reads: pledge struct check dropped for the deadline field | `src/chain/reads.ts: typeof p.deadline === "bigint" && -> true &&` | unit suite without build.test.ts | killed | reads go through the six view functions only refuses a decoded value that does not match the Pledge struct, field by field |
+| 414 | clock: whole seconds rounded instead of floored | `src/chain/clock.ts: Math.floor(elapsedMs / 1000) -> Math.round(elapsedMs / 1000)` | unit suite without build.test.ts | killed | chain time adds the whole seconds elapsed locally since the block was fetched (+2 more) |
+| 415 | clock: negative elapsed time not clamped | `src/chain/clock.ts: Math.max(0, this.monotonic() - this.base.fetchedAt) -> this.monotonic() - this.base.fetchedAt` | unit suite without build.test.ts | killed | chain time never subtracts when the local monotonic reading moves backwards |
+| 416 | clock: reads the device clock | `src/chain/clock.ts: () => performance.now() -> () => Date.now()` | unit suite without build.test.ts | killed | chain time stays on the monotonic reading, so a device clock set wrongly changes nothing |
+| 417 | clock: a sync keeps the older local base | `src/chain/clock.ts: this.base = { timestamp: blockTimestamp, fetchedAt }; -> this.base = this.base ?? { timestamp: blockTimestamp, fetchedAt };` | unit suite without build.test.ts | killed | chain time starts again from each new block, not from the sum of earlier ones (+3 more) |
+| 418 | poller: interval 5000 ms | `src/chain/poller.ts: POLL_INTERVAL_MS = 4_000 -> POLL_INTERVAL_MS = 5_000` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds reads stateOf and the latest block when the page opens, then every 4 ... (+16 more) |
+| 419 | poller: no read at start | `src/chain/poller.ts:     run();\n    timer = setInterval ->     timer = setInterval` | unit suite without build.test.ts | killed | the shell shows the view for each route shows no state from an earlier pledge while the next one is being read (+27 more) |
+| 420 | poller: polls while hidden | `src/chain/poller.ts: if (document.visibilityState === "hidden") return; -> if (false as boolean) return;` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds stops while the page is hidden and reads again when it is shown (+4 more) |
+| 421 | poller: old timer not cleared on a visibility change | `src/chain/poller.ts:     clear();\n    if (document.visibilityState ->     if (document.visibilityState` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds stops while the page is hidden and reads again when it is shown (+3 more) |
+| 422 | poller: stop leaves the visibility listener | `src/chain/poller.ts: document.removeEventListener("visibilitychange", start); -> (deleted)` | unit suite without build.test.ts | killed | polling while the page is visible stops for good, and stops listening, when told to stop |
+| 423 | poller: a rejected poll stops the schedule | `src/chain/poller.ts: Promise.resolve(poll()).catch(() => {}); -> Promise.resolve(poll()).catch(() => clear());` | unit suite without build.test.ts | killed | polling while the page is visible keeps polling after a read fails |
+| 424 | poller: hidden page not paused, only deferred | `src/chain/poller.ts: if (document.visibilityState === "hidden") return; -> if (document.visibilityState === "hidden") {\n      timer = setInterval(run, POLL_INTERV...` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds stops while the page is hidden and reads again when it is shown (+3 more) |
+| 425 | live: the clock is not synchronized by a poll | `src/chain/usePledgeLive.ts:           clock.sync(timestamp, arrived);\n -> (deleted)` | unit suite without build.test.ts | killed | chain time follows the latest block on every poll synchronizes to the block read by the first poll and then counts local time (+7 more) |
+| 426 | live: the clock synchronizes on the first poll only | `src/chain/usePledgeLive.ts:           clock.sync(timestamp, arrived); ->           if (poll === 1) clock.sync(timestamp, arrived);` | unit suite without build.test.ts | killed | chain time follows the latest block on every poll re-synchronizes on each poll, taking the block's time over the local count (+2 more) |
+| 427 | live: a good poll does not clear the state error | `src/chain/usePledgeLive.ts: ({ ...previous, state: value, stateError: null }) -> ({ ...previous, state: value })` | unit suite without build.test.ts | killed | chain time follows the latest block on every poll keeps the last state when a poll fails, and recovers on the next |
+| 428 | live: a failed poll blanks the state | `src/chain/usePledgeLive.ts: ({ ...previous, stateError: error }) -> ({ ...previous, state: null, stateError: error })` | unit suite without build.test.ts | killed | chain time follows the latest block on every poll keeps the last state when a poll fails, and recovers on the next |
+| 429 | live: the block is read only after stateOf has answered | `src/chain/usePledgeLive.ts: const block = reads.latestBlockTimestamp().then( -> const block = state.then(() => reads.latestBlockTimestamp()).then(` | unit suite without build.test.ts | killed | chain time is measured from when the block was fetched counts from the block's arrival when stateOf is the slower answer |
+| 430 | live: polling not stopped when the pledge page is left | `src/chain/usePledgeLive.ts:       active = false;\n      poller.stop(); ->       active = false;` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds stops when the pledge page is left |
+| 431 | routes: leading zeros accepted | `src/routes.ts: (0\|[1-9]\d*) -> (\d+)` | unit suite without build.test.ts | killed | hash routes sends any other route to not found |
+| 432 | routes: no upper bound on a pledge id | `src/routes.ts: if (id <= UINT256_MAX) return { name: "pledge", id }; -> return { name: "pledge", id };` | unit suite without build.test.ts | killed | hash routes reads a pledge id as a whole decimal number, from 0 to 2^256 - 1 |
+| 433 | routes: bound off by one | `src/routes.ts: id <= UINT256_MAX -> id < UINT256_MAX` | unit suite without build.test.ts | killed | hash routes reads a pledge id as a whole decimal number, from 0 to 2^256 - 1 |
+| 434 | routes: trailing slash accepted on create | `src/routes.ts: case "#/create": -> case "#/create":\n    case "#/create/":` | unit suite without build.test.ts | killed | hash routes sends any other route to not found |
+| 435 | routes: empty hash is not found | `src/routes.ts:     case "":\n -> (deleted)` | unit suite without build.test.ts | killed | hash routes treats an empty hash as the home route, since the site root has none |
+| 436 | routes: pledge pattern unanchored at the end | `src/routes.ts: (0\|[1-9]\d*)$/ -> (0\|[1-9]\d*)/` | unit suite without build.test.ts | killed | hash routes sends any other route to not found |
+| 437 | app: a failed pledge read shown as not found | `src/views/PledgeView.tsx: if (pledge.error && isPledgeNotFound(pledge.error)) return <PledgeNotFoundView />; -> if (pledge.error) return <PledgeNotFoundView />;` | unit suite without build.test.ts | killed | the shell shows the view for each route does not take a failed read for a missing pledge (+1 more) |
+| 438 | app: a missing pledge shown as a read failure | `src/views/PledgeView.tsx: if (pledge.error && isPledgeNotFound(pledge.error)) return <PledgeNotFoundView />; -> if (false as boolean) return <PledgeNotFoundView />;` | unit suite without build.test.ts | killed | the shell shows the view for each route shows the not-found view for a pledge id the contract does not recognize, in the words of section... (+2 more) |
+| 439 | app: unreachable RPC raises no network error | `src/App.tsx: if (check.status === "unreachable") { -> if (false as boolean) {` | unit suite without build.test.ts | killed | network error shows a network error when the RPC cannot be asked (+2 more) |
+| 440 | app: mismatch raises no network error | `src/App.tsx: if (check.status === "mismatch") { -> if (false as boolean) {` | unit suite without build.test.ts | killed | network error shows a network error naming both chain ids when they differ (+2 more) |
+| 441 | app: shell reads the hash once and never follows it | `src/useHashRoute.ts: useSyncExternalStore(subscribe, -> useSyncExternalStore(() => () => {},` | unit suite without build.test.ts | killed | the shell shows the view for each route shows no state from an earlier pledge while the next one is being read (+3 more) |
+| 442 | app: pledge view not keyed by id | `src/App.tsx: <PledgeView key={route.id.toString()}  -> <PledgeView ` | unit suite without build.test.ts | killed | the shell shows the view for each route shows no state from an earlier pledge while the next one is being read |
+| 443 | live: testnet pointed at the mainnet endpoint | `src/config/networks.ts: rpcUrls: ["https://rpc.testnet.arc.io", "https://rpc.blockdaemon.testnet.arc.io"] -> rpcUrls: ["https://rpc.mainnet.arc.io"]` | src/live.test.ts src/liveApp.test.tsx with SATSTAKE_LIVE=1 | killed | LLR-FE-005 LLR-FE-006 LLR-FE-010 LLR-FE-012 the application's own reads against Arc testnet passes the chain id check through the configu... (+6 more) |
+| 444 | live: testnet contract set to another address | `src/config/networks.ts: contract: getAddress(deployment.address), -> contract: getAddress("0x3Ae26b15B9085ddB223FfEb503B4f713e682Cac5"),` | src/live.test.ts src/liveApp.test.tsx with SATSTAKE_LIVE=1 | killed | LLR-FE-005 LLR-FE-006 LLR-FE-010 LLR-FE-012 the application's own reads against Arc testnet reads the configured example pledge through g... (+4 more) |
+| 445 | live: ABI replaced by an empty list | `src/abi.ts: abi as Abi; -> [] as Abi;` | src/live.test.ts src/liveApp.test.tsx with SATSTAKE_LIVE=1 | killed | LLR-FE-005 LLR-FE-006 LLR-FE-010 LLR-FE-012 the application's own reads against Arc testnet reads the configured example pledge through g... (+4 more) |
+| 446 | wagmi: the app's config built on a bare fallback transport | `src/chain/wagmi.ts: import { type Transport, defineChain } from "viem"; -> import { type Transport, defineChain, fallback, http } from "viem";`; `src/chain/wagmi.ts: transport: Transport = createReadTransport(network.rpcUrls), -> transport: Transport = fallback(network.rpcUrls.map((u) => http(u, { retryCount: 0 }))),` | unit suite without build.test.ts | killed | the application's own client retries, not only a transport built in a test asks again after a -32014 answer, 250 ms later, through the cl... |
+| 447 | wagmi: CCIP Read left on | `src/chain/wagmi.ts:     ccipRead: false,\n -> (deleted)` | unit suite without build.test.ts | killed | the client makes no request the configuration does not name has CCIP Read turned off, so an offchain lookup URL from a contract is never ... |
+| 448 | health: decimals accepted when equal or higher | `src/chain/health.ts: decimals === token.decimals && -> decimals >= token.decimals &&` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose decimals differ, and only that token (+4 more) |
+| 449 | health: symbol compared without regard to case | `src/chain/health.ts: symbol === token.symbol -> symbol.toLowerCase() === token.symbol.toLowerCase()` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose symbol differs only in case (+2 more) |
+| 450 | retry: HTTP 429 not retried | `src/chain/retry.ts: status === 429 \|\| (status >= 500 && status <= 599) -> status >= 500 && status <= 599` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them (+1 more) |
+| 451 | retry: HTTP 5xx upper bound 598 | `src/chain/retry.ts: status <= 599 -> status <= 598` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them (+1 more) |
+| 452 | retry: HTTP 5xx upper bound 600 | `src/chain/retry.ts: status <= 599 -> status <= 600` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them |
+| 453 | retry: HTTP 5xx lower bound 499 | `src/chain/retry.ts: status >= 500 -> status >= 499` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them (+1 more) |
+| 454 | retry: HTTP 5xx lower bound 501 | `src/chain/retry.ts: status >= 500 -> status >= 501` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them (+1 more) |
+| 455 | retry: a network error with no status not retried | `src/chain/retry.ts: current.status === undefined \|\|  -> (deleted)` | unit suite without build.test.ts | killed | which failures are retried retries a network error and a timeout (+3 more) |
+| 456 | useHealth: interval 31 s | `src/chain/useHealth.ts: HEALTH_INTERVAL_MS = 30_000 -> HEALTH_INTERVAL_MS = 31_000` | unit suite without build.test.ts | killed | the network error follows the most recent check, in plain words raises the error when a later check finds another chain, and clears it wh... (+7 more) |
+| 457 | useHealth: checks continue while the page is hidden | `src/chain/useHealth.ts: refetchInterval: HEALTH_INTERVAL_MS, retry: false -> refetchInterval: HEALTH_INTERVAL_MS, refetchIntervalInBackground: true, retry: false` | unit suite without build.test.ts | killed | and LLR-FE-006 checks repeat every 30 seconds while the page is visible asks nothing while the page is hidden, and asks again once it is ... |
+| 458 | useHealth: creation enabled before any answer and for unknown tokens | `src/chain/useHealth.ts: ?.creationEnabled ?? false -> ?.creationEnabled ?? true` | unit suite without build.test.ts | killed | and LLR-FE-006 checks run on load is still checking, with writes off and creation off, before the answers arrive (+1 more) |
+| 459 | useHealth: creationEnabled compares the address case-sensitively | `src/chain/useHealth.ts: c.token.address.toLowerCase() === token.toLowerCase() -> c.token.address === token` | unit suite without build.test.ts | killed | and LLR-FE-006 checks run on load passes the chain check and enables each token that matches its configuration |
+| 460 | live: the clock waits for stateOf as well as the block | `src/chain/usePledgeLive.ts: const block = reads.latestBlockTimestamp().then(\n        (timestamp) => { -> const block = Promise.all([state, reads.latestBlockTimestamp()]).then(\n        ([, time...` | unit suite without build.test.ts | killed | chain time is measured from when the block was fetched counts from the block's arrival when stateOf is the slower answer |
+| 461 | live: a late stateOf answer replaces a newer state | `src/chain/usePledgeLive.ts: (value) => {\n          if (!active \|\| poll < stateApplied) return; -> (value) => {\n          if (!active) return;` | unit suite without build.test.ts | killed | an older answer that arrives late never replaces a newer one keeps the newer state when the first poll's stateOf answers after the second... |
+| 462 | vite.config: dev server allowed to serve the whole repository | `vite.config.ts: allow: [".", "../out", "../deployments"] -> allow: [".."]` | src/build.test.ts -t "serves the artifact" | killed | the development server serves the artifact and the deployment records only allows the app folder, the Foundry output, and the deployments... |
+| 463 | scan: a functionName that is not a string literal | `src/chain/reads.ts: functionName: "getPledge", args: [id] -> functionName: ("get" + "Pledge") as "getPledge", args: [id]` | unit suite without build.test.ts | killed | reads go through the six view functions only in the source names the function of every contract call as a literal, and only an allowed one |
+| 464 | scan: a raw eth_getLogs request | `src/chain/health.ts: client.request({ method: "eth_chainId" }) -> client.request({ method: "eth_getLogs", params: [{}] })` | unit suite without build.test.ts | killed | the shell shows the view for each route does not take a failed read for a missing pledge (+20 more) |
+| 465 | scan: a contract function outside the allowed set | `src/chain/reads.ts: functionName: "totalLocked", -> functionName: "allowedTokens",` | unit suite without build.test.ts | killed | reads go through the six view functions only reads the pledge count, the per-account count, a page of ids, and the locked total (+1 more) |
+| 466 | scan: raw calldata encoding | `src/chain/reads.ts: import { type Address, BaseError,  -> import { type Address, BaseError, encodeFunctionData, `; `src/chain/reads.ts: const isAddress =  -> export const probe = encodeFunctionData;\nconst isAddress = ` | unit suite without build.test.ts | killed | reads go through the six view functions only in the source sends no raw JSON-RPC method other than eth_chainId, and never calls a contrac... |
+| 467 | scan: a log API named in the health check | `src/chain/health.ts: const actual = hexToNumber( -> await client.getFilterLogs;\n    const actual = hexToNumber(` | unit suite without build.test.ts | killed | reads go through the six view functions only in the source names no log, filter, or event-subscription API |
+| 468 | PledgeView: a failed first read never retried | `src/views/PledgeView.tsx: query.state.status === "error" && !isPledgeNotFound(query.state.error) ? POLL_INTERVAL_... -> false,` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again keeps trying when the first read of the pledge fails, and shows it... |
+| 469 | PledgeView: a missing pledge also retried | `src/views/PledgeView.tsx:  && !isPledgeNotFound(query.state.error) -> (deleted)` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again does not keep asking for a pledge the contract says does not exist |
+| 470 | PledgeView: no status while the pledge loads | `src/views/PledgeView.tsx: {pledge.isPending && <p role="status">{READING}</p>} -> (deleted)` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again says it is reading while the pledge itself has not been answered, ... |
+| 471 | PledgeView: the raw state name shown | `src/views/PledgeView.tsx: <p>{STATE_LABELS[live.state]}</p> -> <p>{live.state}</p>` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again shows state 4 as Settled: stake returned to the staker (+1 more) |
+| 472 | PledgeView: nothing shown before the first state answer | `src/views/PledgeView.tsx: live.state === null ? <p role="status">{READING}</p> : -> live.state === null ? null :` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again says it is reading, not nothing, until the first state answer arrives |
+| 473 | labels: the two settled states swapped | `src/views/stateLabels.ts: SettledToStaker: "Settled: stake returned to the staker" -> SettledToStaker: "Settled: stake sent to the beneficiary"` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again shows state 4 as Settled: stake returned to the staker |
+| 474 | PageHeading: the title not set | `src/views/PageHeading.tsx:     document.title = title;\n -> (deleted)` | unit suite without build.test.ts | killed | each page sets the title and moves focus to its heading sets the document title for each route (+3 more) |
+| 475 | PageHeading: focus not moved | `src/views/PageHeading.tsx:     ref.current?.focus();\n -> (deleted)` | unit suite without build.test.ts | killed | each page sets the title and moves focus to its heading moves the title and the focus when the route changes (+1 more) |
+| 476 | PageHeading: title and focus only on the first mount | `src/views/PageHeading.tsx: }, [title]); -> }, []);` | unit suite without build.test.ts | killed | a page heading sets the title and takes focus follows a new title on the same heading, as when a route changes without remounting it |
+| 477 | Views: the unknown-pledge text changed | `src/views/Views.tsx: "This pledge does not exist. Check the link." -> "This page does not exist."` | unit suite without build.test.ts | killed | the shell shows the view for each route shows the not-found view for a pledge id the contract does not recognize, in the words of section... |
+| 478 | App: a nav link to a route that does not exist | `src/App.tsx: href: "#/about", label: "About" -> href: "#/abouts", label: "About"` | unit suite without build.test.ts | killed | the header and footer links the brand to the home page and the nav only to routes that exist |
+| 479 | App: every nav link marked as the current page | `src/App.tsx: aria-current={route.name === item.route ? "page" : undefined} -> aria-current="page"` | unit suite without build.test.ts | killed | the header and footer marks the page the visitor is on |
+| 480 | App: the footer does not name the network | `src/App.tsx: SatStake runs on {network.name}. -> SatStake runs on Arc.` | unit suite without build.test.ts | killed | the header and footer has a footer on every page that names the network |
+| 481 | App: no notice for a token that could not be read | `src/App.tsx: if (check.status === "ok") return null; -> if (check.status !== "mismatch") return null;` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names a token that could not be read, and clears the notice when a later read matches |
+| 482 | App: the notice does not name the token | `src/App.tsx: ${check.token.symbol} cannot be used -> This token cannot be used` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose decimals differ, and only that token (+2 more) |
+| 483 | App: the network error omits what is turned off | `src/App.tsx: const consequence = "Sending transactions is turned off until this is fixed."; -> const consequence = "";` | unit suite without build.test.ts | killed | the network error follows the most recent check, in plain words explains a chain mismatch without jargon, naming both chains and the cons... (+1 more) |
+| 484 | App: the network error uses jargon | `src/App.tsx: This site could not reach the network, -> No RPC endpoint answered,` | unit suite without build.test.ts | killed | the network error follows the most recent check, in plain words explains an unanswered check without jargon |
+| 485 | csp: connect-src also allows the site itself | `src/config/csp.ts: 'connect-src ${network.rpcUrls.join(" ")}' -> 'connect-src 'self' ${network.rpcUrls.join(" ")}'` | unit suite without build.test.ts | killed | the Content-Security-Policy limits connect-src to the configured RPC URLs allows exactly the testnet RPC URLs to be connected to, in the ... (+2 more) |
+| 486 | csp: default-src open to the site itself | `src/config/csp.ts: "default-src 'none'" -> "default-src 'self'"` | unit suite without build.test.ts | killed | the Content-Security-Policy limits connect-src to the configured RPC URLs loads scripts and styles only from the site itself and refuses ... |
+| 487 | csp: inline scripts allowed | `src/config/csp.ts: "script-src 'self'" -> "script-src 'self' 'unsafe-inline'"` | unit suite without build.test.ts | killed | the Content-Security-Policy limits connect-src to the configured RPC URLs loads scripts and styles only from the site itself and refuses ... (+1 more) |
+| 488 | vite.config: the policy is injected into the development server only | `vite.config.ts: apply: "build", -> apply: "serve",` | src/build.test.ts -t "LLR-FE-073" | killed | the built page carries the policy and loads nothing from elsewhere has a policy meta tag, ahead of every script and stylesheet, equal to ... |
+| 489 | vite.config: the policy is injected after the scripts | `vite.config.ts: injectTo: "head-prepend" -> injectTo: "body"` | src/build.test.ts -t "LLR-FE-073" | killed | the built page carries the policy and loads nothing from elsewhere has a policy meta tag, ahead of every script and stylesheet, equal to ... |
+| 490 | vite.config: the policy built from the testnet whatever the target | `vite.config.ts: content: contentSecurityPolicy(network) -> content: contentSecurityPolicy(networks.testnet)`; `vite.config.ts: import { selectNetwork } from "./src/config/networks.ts"; -> import { networks, selectNetwork } from "./src/config/networks.ts";` | src/config/csp.test.ts | SURVIVED (equivalent for the testnet build, which is the only target that builds today) |  |
+| 491 | styles: muted text lightened below AA in the light theme | `src/styles.css: --muted: #4d4d4d; -> --muted: #999999;` | unit suite without build.test.ts | killed | text contrast meets WCAG 2.1 AA in both themes light: --muted on --bg is at least 4.5 to 1 |
+| 492 | styles: dark link colour darkened below AA | `src/styles.css: --link: #8ab4ff; -> --link: #3355aa;` | unit suite without build.test.ts | killed | text contrast meets WCAG 2.1 AA in both themes dark: --link on --bg is at least 4.5 to 1 |
+| 493 | styles: focus outline 1 px | `src/styles.css: outline: 3px solid var(--focus); -> outline: 1px solid var(--focus);` | unit suite without build.test.ts | killed | keyboard focus is visible and layouts hold from 360 to 1440 px styles :focus-visible with an outline of at least 2 px using the focus token |
+| 494 | styles: light colour scheme only | `src/styles.css: color-scheme: light dark; -> color-scheme: light;` | unit suite without build.test.ts | killed | the theme follows the system setting declares both colour schemes and a dark block under prefers-color-scheme |
+| 495 | styles: a stylesheet import | `src/styles.css: :root {\n  color-scheme -> @import "https://fonts.example/x.css";\n:root {\n  color-scheme` | unit suite without build.test.ts | killed | the style sheet loads nothing from elsewhere and uses system fonts has no import, no font file, and no url() |
+| 496 | styles: a web font family first | `src/styles.css: font-family: system-ui, -> font-family: Inter, system-ui,` | unit suite without build.test.ts | killed | the style sheet loads nothing from elsewhere and uses system fonts sets a system font stack that starts with system-ui and ends in a gene... |
+| 497 | styles: a fixed 400 px width | `src/styles.css:   min-height: 100vh; ->   min-height: 100vh;\n  width: 400px;` | unit suite without build.test.ts | killed | keyboard focus is visible and layouts hold from 360 to 1440 px keeps the content in a column no wider than the viewport, with no fixed wi... |
+| 498 | main: the style sheet not imported | `src/main.tsx: import "./styles.css";\n -> (deleted)` | src/build.test.ts -t "LLR-FE-073" | killed | the built page carries the policy and loads nothing from elsewhere has a policy meta tag, ahead of every script and stylesheet, equal to ... (+1 more) |
+| 499 | styles: words no longer wrap | `src/styles.css: overflow-wrap: anywhere; -> (deleted)` | unit suite without build.test.ts | killed | keyboard focus is visible and layouts hold from 360 to 1440 px wraps long words, so an address or a transaction hash cannot push the page... |
+| 500 | tsconfig: strict mode off | `tsconfig.json: "strict": true, -> "strict": false,` | src/build.test.ts -t "has strict mode on" | killed | TypeScript strict, ESLint with no any has strict mode on |
+| 501 | package.json: a dependency given a range | `package.json: "viem": "2.57.2" -> "viem": "^2.57.2"` | src/build.test.ts -t "pins every dependency" | killed | TypeScript strict, ESLint with no any pins every dependency to an exact version |
+| 502 | abi: an ABI written by hand instead of the artifact | `src/abi.ts: export const satStakeAbi = abi as Abi; -> export const satStakeAbi = [{ type: "function", name: "x", inputs: [], outputs: [], sta...` | src/build.test.ts -t "LLR-FE-081" | killed | the contract ABI comes from the Foundry artifact is identical to the abi field of out/SatStake.sol/SatStake.json (+2 more) |
+| 503 | eslint: no-explicit-any switched off | `eslint.config.js: "@typescript-eslint/no-explicit-any": "error" -> "@typescript-eslint/no-explicit-any": "off"` | src/build.test.ts -t "explicit any" | killed | TypeScript strict, ESLint with no any makes ESLint report an explicit any as an error |
+
+## Round two fixes: FE configuration and reading, 2026-10-02 (05 v1.11)
+
+The lead changed LLR-FE-011, 013, and 072 first (05 v1.11). Header and footer are now traced to LLR-FE-013, the
+heading's title and focus and the announced status containers to LLR-FE-072, and the loading and error display
+to LLR-FE-011. The state labels stay under LLR-FE-011 as the display of the polled state; they move to the
+pledge-page group's requirement for displaying the derived state when that group lands (its ID is not named
+here because naming an unimplemented requirement in an evidence file makes the trace checker demand it).
+Mutation numbers continue from 503.
+
+### R1: a 429 or 5xx with a JSON-RPC body, and an unparsable 200
+
+viem 2.57.2 returns the body of a non-OK answer when it holds a JSON-RPC error, so the HTTP status was lost and a
+429 with `-32005` or a 503 with `-32603` was never retried. A 200 whose body does not parse was retried as a
+"network error" because viem reports it as an `HttpRequestError` with no status. Tests added first to
+`app/src/chain/transport.test.ts` (through `createReadTransport`, the real http transport) and
+`app/src/chain/wagmi.test.ts` (through the app's own client): 429, 503, 500, 599 with JSON-RPC bodies are
+retried; 400, 404, 499 with bodies are not; a 200 with an unparsable body is not retried; a rejected fetch is
+retried; an aborted request is retried (viem turns an abort into a timeout). Red, `npx vitest run
+src/chain/transport.test.ts src/chain/wagmi.test.ts`: 11 failed, 33 passed. Six failures were the behaviour:
+
+```
+FAIL ... through the real http transport > retries a 429 answer that carries the JSON-RPC error -32005     (RpcRequestError, no retry)
+FAIL ... > retries a 503 answer that carries the JSON-RPC error -32603 / a 500 ... -32000 / a 599 ... -32603
+FAIL ... > does not retry an HTTP 200 whose body cannot be parsed, since a response arrived              (retried as a network error)
+FAIL wagmi.test.ts > asks again after a 429 or 503 that carries a JSON-RPC error body
+```
+
+The other five failed because the test helper built the network error with `NoResponseError`, which did not exist
+yet (`TypeError: NoResponseError is not a constructor`); they are the tests that pin the new meaning of a
+network error.
+
+Green: `createReadTransport` now wraps `fetchFn` so a rejected fetch raises `NoResponseError` (the only case
+where no HTTP response arrived), and passes `onFetchResponse` to each http transport to raise an
+`HttpRequestError` carrying the status for 429 and 500 to 599 before viem reads the body. `isRetryable` retries
+`NoResponseError`, `TimeoutError`, `-32014`, and an `HttpRequestError` whose status is retryable, and no longer
+treats an `HttpRequestError` with no status as a network error. `npx vitest run src/chain`: all pass. An earlier
+draft also guarded `AbortError` in the fetch wrapper; the abort test showed viem turns it into a `TimeoutError`
+first, so the guard did nothing and was removed.
+
+### R2, R3, R4: tests for surviving mutants of round one
+
+Added, all passing on first run because the code was already right, and each shown to bite by the mutation
+named: `health.test.ts` and `App.test.tsx` `disables creation when only decimals() / symbol() cannot be read`
+(rows 508, 509); `usePledgeLive.test.tsx` `still shows an answer when every read takes longer than the poll
+interval` (rows 510, 511) and `does not report a block failure of the first poll that arrives after the second
+poll's block succeeded` (row 512). Row 513 is the state-side twin of 512, which already had a test.
+
+### R5: row 490
+
+The first run of row 490 named `csp.test.ts`, which never loads `vite.config.ts`. It is rerun against
+`src/build.test.ts -t "LLR-FE-073"`, which builds. It still survives, and the argument stands: only the
+testnet builds today, so passing `networks.testnet` instead of the selected network changes nothing; on
+mainnet the effect would fail closed (a policy naming testnet hosts blocks mainnet reads). The mainnet group
+owes a mainnet build whose policy is asserted.
+
+### F1 to F4, F5, F6 (red)
+
+Tests added to `app/src/App.test.tsx`, `src/config/csp.test.ts`, `src/build.test.ts`. Red, `npx vitest run
+src/App.test.tsx`: 17 failed, 24 passed (the full suite adds the two below).
+
+```
+FAIL ... explains a chain mismatch ...                      expected 'Network error. The network answered a...' to contain 'every 30 seconds'
+FAIL ... shows no notice while every token matches ...      Unable to find an accessible element with the role "status" and name "Token notices"
+FAIL ... keeps the last state on screen and shows the error while the most recent poll failed ...   Unable to find an accessible element with the role "alert"
+FAIL ... shows the error and not the reading message when no state was ever read     Unable to find an accessible element with the role "alert"
+FAIL ... updates one status element from the reading message to the state ...         (status was inside LivePledge and replaced)
+FAIL ... keeps one token-notice status container mounted ...    Unable to find ... name "Token notices"
+FAIL ... sets the title but leaves the focus alone on the first page load            expected [ 'About SatStake' ] to deeply equal []
+FAIL ... moves focus once, and never titles the page as the pledge, when a pledge turns out not to exist   expected [ Array(2) ] to deeply equal [ 'Pledge not found' ]
+FAIL csp.test.ts > loads scripts and styles only from the site itself ...             expected undefined to deeply equal [ '\'self\'' ]
+FAIL build.test.ts > links a favicon from the site itself ...                           expected undefined to be './favicon.svg'
+```
+
+Green: `PledgeView` now calls `usePledgeLive(reads, id, pledge.isSuccess)` (a new `enabled` argument), keeps one
+`<p role="status">` whose text moves from the reading message to the state label, shows the retry alert
+beside the last state while the most recent poll failed (or instead of "reading" when no state was ever read),
+and renders the heading only once `getPledge` has answered. `App.tsx` has an always-mounted `<div role="status"
+aria-label="Token notices">`, a `NavigatedContext` that turns true at the first hashchange to an address other
+than the one the page loaded at (a restated address does not count, which matters in jsdom where assigning
+`location.hash` fires a late event), and the new banner wording ("Sending transactions is turned off, and this
+page checks again every 30 seconds."). `PageHeading` sets the title always and focuses only when navigated.
+`csp.ts` gained `img-src 'self'`; `app/public/favicon.svg` and the `<link rel="icon">` were added (Vite writes
+the built href as `./favicon.svg`). Four tests of mine were wrong and were fixed, not the code: the SVG
+`xmlns` attribute is a namespace name and is set aside before the scan; the focus test needed the
+loaded-address comparison above; one count used a function name that is not recorded for a request that fails
+earlier; one pending-state test expected a heading that the new design withholds.
+
+Two tests were added after the code (no red of their own, killed by the rows named): `reads no state for a
+pledge the contract says does not exist` (row 519) and the aborted-request test above.
+
+A redundancy was found by row 470 of the first pass: `if (pledge.isPending) status = READING` was unreachable
+in effect, since the following branch gives the same text. It was removed and the row dropped. Row 498 (the
+style sheet import removed) first survived because the new favicon link made the "more than one reference"
+assertion pass; the test now requires a stylesheet link and a script by pattern.
+
+### Final green and mutations
+
+From `app/`: `npm run lint` clean; `npm run typecheck` clean; `npm test` 15 files passed, 225 passed, 9 skipped;
+`npm run build:testnet` succeeds; `npm run build:mainnet` fails with `Error: mainnet has no SatStake contract
+address in its network configuration`; `SATSTAKE_LIVE=1 npm test` 17 files, 234 passed. From the root: `node
+tools/trace-check.mjs`: `OK. 70/112 LLRs referenced, 2/55 journeys passing`.
+
+The whole table (every earlier row rewritten where its code changed, 504 to 529 new) was run over the final tree
+by the same runner as round one: 147 rows, 146 killed, 1 survivor (490, argued above). The tree hash before and
+after was equal, and a search for `as boolean` in the source finds nothing. `cache/mutants/` was removed.
+
+Mutation table of round two (replaces the table of round one for rows that appear in both; the edit column is the exact change):
+
+| # | Mutation | Edit, as `file: find -> replace` | Where run | Result | Killed by |
+|---|---|---|---|---|---|
+| 282 | config: mainnet chain id set to the testnet id | `src/config/networks.ts:     chainId: 5042, ->     chainId: 5042002,` | unit suite without build.test.ts | killed | network configuration uses the mainnet chain id and the token addresses recorded in deployments/accounts.md (+1 more) |
+| 283 | config: mainnet USDC given the native 18 decimals | `src/config/networks.ts: address: "0x3600000000000000000000000000000000000000", decimals: 6 } -> address: "0x3600000000000000000000000000000000000000", decimals: 18 }` | unit suite without build.test.ts | killed | network configuration uses the mainnet chain id and the token addresses recorded in deployments/accounts.md (+1 more) |
+| 284 | config: testnet RPC order reversed | `src/config/networks.ts: rpcUrls: ["https://rpc.testnet.arc.io", "https://rpc.blockdaemon.testnet.arc.io"] -> rpcUrls: ["https://rpc.blockdaemon.testnet.arc.io", "https://rpc.testnet.arc.io"]` | unit suite without build.test.ts | killed | network configuration lists the primary RPC first and gives each network an explorer (+1 more) |
+| 285 | config: testnet contract taken from a literal, not the deployment record | `src/config/networks.ts: contract: getAddress(deployment.address), -> contract: getAddress("0x3Ae26b15B9085ddB223FfEb503B4f713e682Cac5"),` | unit suite without build.test.ts | killed | network configuration takes the testnet chain, contract, and tokens from the committed deployment files |
+| 286 | selectNetwork: skips the missing-address check | `src/config/networks.ts: if (contract === null) { -> if (false as boolean) {` | unit suite without build.test.ts | killed | build target selection fails when the selected configuration has no contract address |
+| 287 | selectNetwork: defaults an unset name to testnet | `src/config/networks.ts: if (name !== "testnet" && name !== "mainnet") { -> if (name !== undefined && name !== "testnet" && name !== "mainnet") {`; `src/config/networks.ts: const selected = table[name]; -> const selected = table[name ?? "testnet"];` | unit suite without build.test.ts | killed | build target selection fails on an unset or unknown target instead of choosing one |
+| 288 | vite.config: build no longer runs selectNetwork on the environment | `vite.config.ts: selectNetwork(loadEnv(mode, process.cwd(), "VITE_").VITE_NETWORK) -> selectNetwork("testnet")` | src/build.test.ts -t "LLR-FE-002" | killed | the build selects its target from VITE_NETWORK fails a mainnet build while the mainnet configuration has no contract address (+1 more) |
+| 289 | retry: second delay 500 becomes 600 | `src/chain/retry.ts: [250, 500, 1000] -> [250, 600, 1000]` | unit suite without build.test.ts | killed | retry schedule waits exactly 250, 500, and 1000 ms (+5 more) |
+| 290 | retry: a fourth retry added | `src/chain/retry.ts: [250, 500, 1000] -> [250, 500, 1000, 1000]` | unit suite without build.test.ts | killed | retry schedule waits exactly 250, 500, and 1000 ms (+6 more) |
+| 291 | retry: -32014 no longer retried | `src/chain/retry.ts: if ("code" in current && current.code === DATA_NOT_AVAILABLE) return true; -> if (false as boolean) return true;` | unit suite without build.test.ts | killed | which failures are retried retries JSON-RPC error -32014 (+7 more) |
+| 292 | retry: every numeric RPC error retried | `src/chain/retry.ts: current.code === DATA_NOT_AVAILABLE -> typeof current.code === "number"` | unit suite without build.test.ts | killed | which failures are retried does not retry any other JSON-RPC error (+4 more) |
+| 293 | retry: every HTTP error retried, with or without a retryable status | `src/chain/retry.ts: current.status !== undefined && isRetryableStatus(current.status) -> true` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them (+6 more) |
+| 294 | retry: timeouts not retried | `src/chain/retry.ts:     if (current instanceof TimeoutError) return true;\n -> (deleted)` | unit suite without build.test.ts | killed | which failures are retried retries a network error and a timeout |
+| 295 | retry: cause chain not walked | `src/chain/retry.ts: current = current.cause; -> current = undefined;` | unit suite without build.test.ts | killed | which failures are retried retries a network error and a timeout (+7 more) |
+| 296 | retry: retryRead retries every failure | `src/chain/retry.ts: if (delay === undefined \|\| !isRetryable(error)) throw error; -> if (delay === undefined) throw error;` | unit suite without build.test.ts | killed | retry schedule raises a failure that is not retryable at once, without waiting (+8 more) |
+| 297 | transport: URL list reversed | `src/chain/transport.ts: urls.map((url) -> [...urls].reverse().map((url)` | unit suite without build.test.ts | killed | reads go through a fallback transport over the configured URLs in order is a viem fallback transport holding one http transport per URL, ... (+4 more) |
+| 298 | transport: retry wrapper dropped | `src/chain/transport.ts: return retryingTransport(fallback(endpoints, { retryCount: 0 })); -> return fallback(endpoints, { retryCount: 0 });` | unit suite without build.test.ts | killed | reads go through a fallback transport over the configured URLs in order an HTTP status from the endpoint, through the real http transport... (+15 more) |
+| 299 | transport: only the first URL used | `src/chain/transport.ts: const endpoints = urls.map( -> const endpoints = urls.slice(0, 1).map(` | unit suite without build.test.ts | killed | reads go through a fallback transport over the configured URLs in order is a viem fallback transport holding one http transport per URL, ... (+3 more) |
+| 400 | transport: retry wrapper retries after its retries (twice the rounds) | `src/chain/transport.ts: retryRead(() => transport.request(args, options)) -> retryRead(() => retryRead(() => transport.request(args, options)))` | unit suite without build.test.ts | killed | retry schedule on a transport, with timers spaces three retries by 250, 500, and 1000 ms and then gives up (+4 more) |
+| 401 | health: chain id compared with >= | `src/chain/health.ts: actual === expected ? { status -> actual >= expected ? { status` | unit suite without build.test.ts | killed | chain id check is a mismatch for an id one away in either direction |
+| 402 | health: unreachable reported as ok | `src/chain/health.ts: return { status: "unreachable" }; -> return { status: "ok" };` | unit suite without build.test.ts | killed | network error shows a network error when the RPC cannot be asked (+5 more) |
+| 403 | health: writes enabled unless a mismatch | `src/chain/health.ts: return check.status === "ok"; -> return check.status !== "mismatch";` | unit suite without build.test.ts | killed | chain id check disables write actions on every result except a pass |
+| 404 | health: token decimals not compared | `src/chain/health.ts: const matches = decimals === token.decimals && symbol === token.symbol; -> const matches = symbol === token.symbol;` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose decimals differ, and only that token (+5 more) |
+| 405 | health: token symbol not compared | `src/chain/health.ts: const matches = decimals === token.decimals && symbol === token.symbol; -> const matches = decimals === token.decimals;` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose symbol differs only in case (+3 more) |
+| 406 | health: unreadable token left enabled | `src/chain/health.ts: status: "unavailable", creationEnabled: false -> status: "unavailable", creationEnabled: true` | unit suite without build.test.ts | killed | token decimals and symbol check disables creation when only decimals() cannot be read, though the other read matches (+3 more) |
+| 407 | health: token symbol not read | `src/chain/health.ts: client.readContract({ address: token.address, abi: erc20Abi, functionName: "symbol" }), -> Promise.resolve(token.symbol),` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose symbol differs only in case (+7 more) |
+| 408 | useHealth: answers stale at once, refetched on every mount | `src/chain/useHealth.ts: staleTime: HEALTH_INTERVAL_MS, -> staleTime: 0,` | unit suite without build.test.ts | killed | and LLR-FE-006 checks run on load does not ask again when the same session mounts it a second time at once |
+| 409 | reads: Kept and Broken swapped | `src/chain/reads.ts:   "Kept",\n  "Broken", ->   "Broken",\n  "Kept",` | unit suite without build.test.ts | killed | the shell shows the view for each route shows no state from an earlier pledge while the next one is being read (+9 more) |
+| 410 | reads: unknown state falls back to Active | `src/chain/reads.ts: if (name === undefined) throw new Error('stateOf returned an unknown pledge state: ${St... -> if (name === undefined) return "Active";` | unit suite without build.test.ts | killed | reads go through the six view functions only refuses a state value outside the enum instead of guessing |
+| 411 | reads: any revert taken for a missing pledge | `src/chain/reads.ts: reverted.data?.errorName === "PledgeNotFound" -> reverted.data?.errorName !== undefined` | unit suite without build.test.ts | killed | reads go through the six view functions only does not take another contract error for a missing pledge |
+| 412 | reads: a log query added to the block read | `src/chain/reads.ts: return (await client.getBlock()).timestamp; -> await client.getLogs();\n      return (await client.getBlock()).timestamp;` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds reads stateOf and the latest block when the page opens, then every 4 ... (+17 more) |
+| 413 | reads: pledge struct check dropped for the deadline field | `src/chain/reads.ts: typeof p.deadline === "bigint" && -> true &&` | unit suite without build.test.ts | killed | reads go through the six view functions only refuses a decoded value that does not match the Pledge struct, field by field |
+| 414 | clock: whole seconds rounded instead of floored | `src/chain/clock.ts: Math.floor(elapsedMs / 1000) -> Math.round(elapsedMs / 1000)` | unit suite without build.test.ts | killed | chain time adds the whole seconds elapsed locally since the block was fetched (+2 more) |
+| 415 | clock: negative elapsed time not clamped | `src/chain/clock.ts: Math.max(0, this.monotonic() - this.base.fetchedAt) -> this.monotonic() - this.base.fetchedAt` | unit suite without build.test.ts | killed | chain time never subtracts when the local monotonic reading moves backwards |
+| 416 | clock: reads the device clock | `src/chain/clock.ts: () => performance.now() -> () => Date.now()` | unit suite without build.test.ts | killed | chain time stays on the monotonic reading, so a device clock set wrongly changes nothing |
+| 417 | clock: a sync keeps the older local base | `src/chain/clock.ts: this.base = { timestamp: blockTimestamp, fetchedAt }; -> this.base = this.base ?? { timestamp: blockTimestamp, fetchedAt };` | unit suite without build.test.ts | killed | chain time starts again from each new block, not from the sum of earlier ones (+3 more) |
+| 418 | poller: interval 5000 ms | `src/chain/poller.ts: POLL_INTERVAL_MS = 4_000 -> POLL_INTERVAL_MS = 5_000` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds reads stateOf and the latest block when the page opens, then every 4 ... (+19 more) |
+| 419 | poller: no read at start | `src/chain/poller.ts:     run();\n    timer = setInterval ->     timer = setInterval` | unit suite without build.test.ts | killed | the shell shows the view for each route shows no state from an earlier pledge while the next one is being read (+33 more) |
+| 420 | poller: polls while hidden | `src/chain/poller.ts: if (document.visibilityState === "hidden") return; -> if (false as boolean) return;` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds stops while the page is hidden and reads again when it is shown (+4 more) |
+| 421 | poller: old timer not cleared on a visibility change | `src/chain/poller.ts:     clear();\n    if (document.visibilityState ->     if (document.visibilityState` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds stops while the page is hidden and reads again when it is shown (+3 more) |
+| 422 | poller: stop leaves the visibility listener | `src/chain/poller.ts: document.removeEventListener("visibilitychange", start); -> (deleted)` | unit suite without build.test.ts | killed | polling while the page is visible stops for good, and stops listening, when told to stop |
+| 423 | poller: a rejected poll stops the schedule | `src/chain/poller.ts: Promise.resolve(poll()).catch(() => {}); -> Promise.resolve(poll()).catch(() => clear());` | unit suite without build.test.ts | killed | polling while the page is visible keeps polling after a read fails |
+| 424 | poller: hidden page not paused, only deferred | `src/chain/poller.ts: if (document.visibilityState === "hidden") return; -> if (document.visibilityState === "hidden") {\n      timer = setInterval(run, POLL_INTERV...` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds stops while the page is hidden and reads again when it is shown (+3 more) |
+| 425 | live: the clock is not synchronized by a poll | `src/chain/usePledgeLive.ts:           clock.sync(timestamp, arrived);\n -> (deleted)` | unit suite without build.test.ts | killed | chain time follows the latest block on every poll synchronizes to the block read by the first poll and then counts local time (+9 more) |
+| 426 | live: the clock synchronizes on the first poll only | `src/chain/usePledgeLive.ts:           clock.sync(timestamp, arrived); ->           if (poll === 1) clock.sync(timestamp, arrived);` | unit suite without build.test.ts | killed | chain time follows the latest block on every poll re-synchronizes on each poll, taking the block's time over the local count (+3 more) |
+| 427 | live: a good poll does not clear the state error | `src/chain/usePledgeLive.ts: ({ ...previous, state: value, stateError: null }) -> ({ ...previous, state: value })` | unit suite without build.test.ts | killed | a failed poll shows an error beside the last state, and the reading message becomes the state keeps the last state on screen and shows th... (+1 more) |
+| 428 | live: a failed poll blanks the state | `src/chain/usePledgeLive.ts: ({ ...previous, stateError: error }) -> ({ ...previous, state: null, stateError: error })` | unit suite without build.test.ts | killed | a failed poll shows an error beside the last state, and the reading message becomes the state keeps the last state on screen and shows th... (+1 more) |
+| 429 | live: the block is read only after stateOf has answered | `src/chain/usePledgeLive.ts: const block = reads.latestBlockTimestamp().then( -> const block = state.then(() => reads.latestBlockTimestamp()).then(` | unit suite without build.test.ts | killed | chain time is measured from when the block was fetched counts from the block's arrival when stateOf is the slower answer (+1 more) |
+| 430 | live: polling not stopped when the pledge page is left | `src/chain/usePledgeLive.ts:       active = false;\n      poller.stop(); ->       active = false;` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds stops when the pledge page is left |
+| 431 | routes: leading zeros accepted | `src/routes.ts: (0\|[1-9]\d*) -> (\d+)` | unit suite without build.test.ts | killed | hash routes sends any other route to not found |
+| 432 | routes: no upper bound on a pledge id | `src/routes.ts: if (id <= UINT256_MAX) return { name: "pledge", id }; -> return { name: "pledge", id };` | unit suite without build.test.ts | killed | hash routes reads a pledge id as a whole decimal number, from 0 to 2^256 - 1 |
+| 433 | routes: bound off by one | `src/routes.ts: id <= UINT256_MAX -> id < UINT256_MAX` | unit suite without build.test.ts | killed | hash routes reads a pledge id as a whole decimal number, from 0 to 2^256 - 1 |
+| 434 | routes: trailing slash accepted on create | `src/routes.ts: case "#/create": -> case "#/create":\n    case "#/create/":` | unit suite without build.test.ts | killed | hash routes sends any other route to not found |
+| 435 | routes: empty hash is not found | `src/routes.ts:     case "":\n -> (deleted)` | unit suite without build.test.ts | killed | hash routes treats an empty hash as the home route, since the site root has none |
+| 436 | routes: pledge pattern unanchored at the end | `src/routes.ts: (0\|[1-9]\d*)$/ -> (0\|[1-9]\d*)/` | unit suite without build.test.ts | killed | hash routes sends any other route to not found |
+| 437 | app: a failed pledge read shown as not found | `src/views/PledgeView.tsx: if (pledge.error && isPledgeNotFound(pledge.error)) return <PledgeNotFoundView />; -> if (pledge.error) return <PledgeNotFoundView />;` | unit suite without build.test.ts | killed | the shell shows the view for each route does not take a failed read for a missing pledge (+2 more) |
+| 438 | app: a missing pledge shown as a read failure | `src/views/PledgeView.tsx: if (pledge.error && isPledgeNotFound(pledge.error)) return <PledgeNotFoundView />; -> if (false as boolean) return <PledgeNotFoundView />;` | unit suite without build.test.ts | killed | the shell shows the view for each route shows the not-found view for a pledge id the contract does not recognize, in the words of section... (+3 more) |
+| 439 | app: unreachable RPC raises no network error | `src/App.tsx: if (check.status === "unreachable") { -> if (false as boolean) {` | unit suite without build.test.ts | killed | network error shows a network error when the RPC cannot be asked (+2 more) |
+| 440 | app: mismatch raises no network error | `src/App.tsx: if (check.status === "mismatch") { -> if (false as boolean) {` | unit suite without build.test.ts | killed | network error shows a network error naming both chain ids when they differ (+2 more) |
+| 441 | app: shell reads the hash once and never follows it | `src/useHashRoute.ts: useSyncExternalStore(subscribe, -> useSyncExternalStore(() => () => {},` | unit suite without build.test.ts | killed | the shell shows the view for each route shows no state from an earlier pledge while the next one is being read |
+| 442 | app: pledge view not keyed by id | `src/App.tsx: <PledgeView key={route.id.toString()}  -> <PledgeView ` | unit suite without build.test.ts | killed | the shell shows the view for each route shows no state from an earlier pledge while the next one is being read |
+| 443 | live: testnet pointed at the mainnet endpoint | `src/config/networks.ts: rpcUrls: ["https://rpc.testnet.arc.io", "https://rpc.blockdaemon.testnet.arc.io"] -> rpcUrls: ["https://rpc.mainnet.arc.io"]` | src/live.test.ts src/liveApp.test.tsx with SATSTAKE_LIVE=1 | killed | LLR-FE-005 LLR-FE-006 LLR-FE-010 LLR-FE-012 the application's own reads against Arc testnet passes the chain id check through the configu... (+6 more) |
+| 444 | live: testnet contract set to another address | `src/config/networks.ts: contract: getAddress(deployment.address), -> contract: getAddress("0x3Ae26b15B9085ddB223FfEb503B4f713e682Cac5"),` | src/live.test.ts src/liveApp.test.tsx with SATSTAKE_LIVE=1 | killed | LLR-FE-005 LLR-FE-006 LLR-FE-010 LLR-FE-012 the application's own reads against Arc testnet reads the configured example pledge through g... (+4 more) |
+| 445 | live: ABI replaced by an empty list | `src/abi.ts: abi as Abi; -> [] as Abi;` | src/live.test.ts src/liveApp.test.tsx with SATSTAKE_LIVE=1 | killed | LLR-FE-005 LLR-FE-006 LLR-FE-010 LLR-FE-012 the application's own reads against Arc testnet reads the configured example pledge through g... (+4 more) |
+| 446 | wagmi: the app's config built on a bare fallback transport | `src/chain/wagmi.ts: import { type Transport, defineChain } from "viem"; -> import { type Transport, defineChain, fallback, http } from "viem";`; `src/chain/wagmi.ts: transport: Transport = createReadTransport(network.rpcUrls), -> transport: Transport = fallback(network.rpcUrls.map((u) => http(u, { retryCount: 0 }))),` | unit suite without build.test.ts | killed | the application's own client retries, not only a transport built in a test asks again after a -32014 answer, 250 ms later, through the cl... |
+| 447 | wagmi: CCIP Read left on | `src/chain/wagmi.ts:     ccipRead: false,\n -> (deleted)` | unit suite without build.test.ts | killed | the client makes no request the configuration does not name has CCIP Read turned off, so an offchain lookup URL from a contract is never ... |
+| 448 | health: decimals accepted when equal or higher | `src/chain/health.ts: decimals === token.decimals && -> decimals >= token.decimals &&` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose decimals differ, and only that token (+5 more) |
+| 449 | health: symbol compared without regard to case | `src/chain/health.ts: symbol === token.symbol -> symbol.toLowerCase() === token.symbol.toLowerCase()` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose symbol differs only in case (+2 more) |
+| 450 | retry: HTTP 429 not retried | `src/chain/retry.ts: status === 429 \|\| (status >= 500 && status <= 599) -> status >= 500 && status <= 599` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them (+3 more) |
+| 451 | retry: HTTP 5xx upper bound 598 | `src/chain/retry.ts: status <= 599 -> status <= 598` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them (+2 more) |
+| 452 | retry: HTTP 5xx upper bound 600 | `src/chain/retry.ts: status <= 599 -> status <= 600` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them |
+| 453 | retry: HTTP 5xx lower bound 499 | `src/chain/retry.ts: status >= 500 -> status >= 499` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them (+2 more) |
+| 454 | retry: HTTP 5xx lower bound 501 | `src/chain/retry.ts: status >= 500 -> status >= 501` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them (+2 more) |
+| 455 | retry: a request with no HTTP response not retried | `src/chain/retry.ts:     if (current instanceof NoResponseError) return true;\n -> (deleted)` | unit suite without build.test.ts | killed | which failures are retried retries a network error and a timeout (+6 more) |
+| 456 | useHealth: interval 31 s | `src/chain/useHealth.ts: HEALTH_INTERVAL_MS = 30_000 -> HEALTH_INTERVAL_MS = 31_000` | unit suite without build.test.ts | killed | the network error follows the most recent check, in plain words raises the error when a later check finds another chain, and clears it wh... (+8 more) |
+| 457 | useHealth: checks continue while the page is hidden | `src/chain/useHealth.ts: refetchInterval: HEALTH_INTERVAL_MS, retry: false -> refetchInterval: HEALTH_INTERVAL_MS, refetchIntervalInBackground: true, retry: false` | unit suite without build.test.ts | killed | and LLR-FE-006 checks repeat every 30 seconds while the page is visible asks nothing while the page is hidden, and asks again once it is ... |
+| 458 | useHealth: creation enabled before any answer and for unknown tokens | `src/chain/useHealth.ts: ?.creationEnabled ?? false -> ?.creationEnabled ?? true` | unit suite without build.test.ts | killed | and LLR-FE-006 checks run on load is still checking, with writes off and creation off, before the answers arrive (+1 more) |
+| 459 | useHealth: creationEnabled compares the address case-sensitively | `src/chain/useHealth.ts: c.token.address.toLowerCase() === token.toLowerCase() -> c.token.address === token` | unit suite without build.test.ts | killed | and LLR-FE-006 checks run on load passes the chain check and enables each token that matches its configuration |
+| 460 | live: the clock waits for stateOf as well as the block | `src/chain/usePledgeLive.ts: const block = reads.latestBlockTimestamp().then(\n        (timestamp) => { -> const block = Promise.all([state, reads.latestBlockTimestamp()]).then(\n        ([, time...` | unit suite without build.test.ts | killed | chain time is measured from when the block was fetched counts from the block's arrival when stateOf is the slower answer |
+| 461 | live: a late stateOf answer replaces a newer state | `src/chain/usePledgeLive.ts: (value) => {\n          if (!active \|\| poll < stateApplied) return; -> (value) => {\n          if (!active) return;` | unit suite without build.test.ts | killed | an older answer that arrives late never replaces a newer one keeps the newer state when the first poll's stateOf answers after the second... |
+| 462 | vite.config: dev server allowed to serve the whole repository | `vite.config.ts: allow: [".", "../out", "../deployments"] -> allow: [".."]` | src/build.test.ts -t "serves the artifact" | killed | the development server serves the artifact and the deployment records only allows the app folder, the Foundry output, and the deployments... |
+| 463 | scan: a functionName that is not a string literal | `src/chain/reads.ts: functionName: "getPledge", args: [id] -> functionName: ("get" + "Pledge") as "getPledge", args: [id]` | unit suite without build.test.ts | killed | reads go through the six view functions only in the source names the function of every contract call as a literal, and only an allowed one |
+| 464 | scan: a raw eth_getLogs request | `src/chain/health.ts: client.request({ method: "eth_chainId" }) -> client.request({ method: "eth_getLogs", params: [{}] })` | unit suite without build.test.ts | killed | the shell shows the view for each route does not take a failed read for a missing pledge (+23 more) |
+| 465 | scan: a contract function outside the allowed set | `src/chain/reads.ts: functionName: "totalLocked", -> functionName: "allowedTokens",` | unit suite without build.test.ts | killed | reads go through the six view functions only reads the pledge count, the per-account count, a page of ids, and the locked total (+1 more) |
+| 466 | scan: raw calldata encoding | `src/chain/reads.ts: import { type Address, BaseError,  -> import { type Address, BaseError, encodeFunctionData, `; `src/chain/reads.ts: const isAddress =  -> export const probe = encodeFunctionData;\nconst isAddress = ` | unit suite without build.test.ts | killed | reads go through the six view functions only in the source sends no raw JSON-RPC method other than eth_chainId, and never calls a contrac... |
+| 467 | scan: a log API named in the health check | `src/chain/health.ts: const actual = hexToNumber( -> await client.getFilterLogs;\n    const actual = hexToNumber(` | unit suite without build.test.ts | killed | reads go through the six view functions only in the source names no log, filter, or event-subscription API |
+| 468 | PledgeView: a failed first read never retried | `src/views/PledgeView.tsx: query.state.status === "error" && !isPledgeNotFound(query.state.error) ? POLL_INTERVAL_... -> false,` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again keeps trying when the first read of the pledge fails, and shows it... |
+| 469 | PledgeView: a missing pledge also retried | `src/views/PledgeView.tsx:  && !isPledgeNotFound(query.state.error) -> (deleted)` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again does not keep asking for a pledge the contract says does not exist |
+| 471 | PledgeView: the raw state name shown | `src/views/PledgeView.tsx: status = STATE_LABELS[live.state]; -> status = live.state;` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again shows state 4 as Settled: stake returned to the staker (+1 more) |
+| 472 | PledgeView: nothing shown before the first state answer | `src/views/PledgeView.tsx:   else if (!failed) status = READING;\n -> (deleted)` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again says it is reading, not nothing, until the first state answer arrives (+2 more) |
+| 473 | labels: the two settled states swapped | `src/views/stateLabels.ts: SettledToStaker: "Settled: stake returned to the staker" -> SettledToStaker: "Settled: stake sent to the beneficiary"` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again shows state 4 as Settled: stake returned to the staker |
+| 474 | PageHeading: the title not set | `src/views/PageHeading.tsx:     document.title = title;\n -> (deleted)` | unit suite without build.test.ts | killed | each page sets the title and moves focus to its heading sets the document title for each route (+8 more) |
+| 475 | PageHeading: focus not moved | `src/views/PageHeading.tsx:     if (navigated) ref.current?.focus();\n -> (deleted)` | unit suite without build.test.ts | killed | each page sets the title and moves focus to its heading moves the title and the focus when the route changes (+4 more) |
+| 476 | PageHeading: title and focus only on the first mount | `src/views/PageHeading.tsx: }, [title, navigated]); -> }, []);` | unit suite without build.test.ts | killed | each page sets the title and moves focus to its heading moves the title and the focus when the route changes (+1 more) |
+| 477 | Views: the unknown-pledge text changed | `src/views/Views.tsx: "This pledge does not exist. Check the link." -> "This page does not exist."` | unit suite without build.test.ts | killed | the shell shows the view for each route shows the not-found view for a pledge id the contract does not recognize, in the words of section... |
+| 478 | App: a nav link to a route that does not exist | `src/App.tsx: href: "#/about", label: "About" -> href: "#/abouts", label: "About"` | unit suite without build.test.ts | killed | the header and footer links the brand to the home page and the nav only to routes that exist |
+| 479 | App: every nav link marked as the current page | `src/App.tsx: aria-current={route.name === item.route ? "page" : undefined} -> aria-current="page"` | unit suite without build.test.ts | killed | the header and footer marks the page the visitor is on |
+| 480 | App: the footer does not name the network | `src/App.tsx: SatStake runs on {network.name}. -> SatStake runs on Arc.` | unit suite without build.test.ts | killed | the header and footer has a footer on every page that names the network |
+| 481 | App: no notice for a token that could not be read | `src/App.tsx: if (check.status === "ok") return null; -> if (check.status !== "mismatch") return null;` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names a token that could not be read, and clears the notice when a later read matches (+2 more) |
+| 482 | App: the notice does not name the token | `src/App.tsx: ${check.token.symbol} cannot be used -> This token cannot be used` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose decimals differ, and only that token (+5 more) |
+| 483 | App: the network error omits what is turned off | `src/App.tsx: const consequence = "Sending transactions is turned off, and this page checks again eve... -> const consequence = "";` | unit suite without build.test.ts | killed | the network error follows the most recent check, in plain words explains a chain mismatch without jargon, naming both chains and the cons... (+1 more) |
+| 484 | App: the network error uses jargon | `src/App.tsx: This site could not reach the network, -> No RPC endpoint answered,` | unit suite without build.test.ts | killed | the network error follows the most recent check, in plain words explains an unanswered check without jargon |
+| 485 | csp: connect-src also allows the site itself | `src/config/csp.ts: 'connect-src ${network.rpcUrls.join(" ")}' -> 'connect-src 'self' ${network.rpcUrls.join(" ")}'` | unit suite without build.test.ts | killed | the Content-Security-Policy limits connect-src to the configured RPC URLs allows exactly the testnet RPC URLs to be connected to, in the ... (+2 more) |
+| 486 | csp: default-src open to the site itself | `src/config/csp.ts: "default-src 'none'" -> "default-src 'self'"` | unit suite without build.test.ts | killed | the Content-Security-Policy limits connect-src to the configured RPC URLs loads scripts and styles only from the site itself and refuses ... |
+| 487 | csp: inline scripts allowed | `src/config/csp.ts: "script-src 'self'" -> "script-src 'self' 'unsafe-inline'"` | unit suite without build.test.ts | killed | the Content-Security-Policy limits connect-src to the configured RPC URLs loads scripts and styles only from the site itself and refuses ... (+1 more) |
+| 488 | vite.config: the policy is injected into the development server only | `vite.config.ts: apply: "build", -> apply: "serve",` | src/build.test.ts -t "LLR-FE-073" | killed | the built page carries the policy and loads nothing from elsewhere has a policy meta tag, ahead of every script and stylesheet, equal to ... |
+| 489 | vite.config: the policy is injected after the scripts | `vite.config.ts: injectTo: "head-prepend" -> injectTo: "body"` | src/build.test.ts -t "LLR-FE-073" | killed | the built page carries the policy and loads nothing from elsewhere has a policy meta tag, ahead of every script and stylesheet, equal to ... |
+| 490 | vite.config: the policy built from the testnet whatever the target | `vite.config.ts: content: contentSecurityPolicy(network) -> content: contentSecurityPolicy(networks.testnet)`; `vite.config.ts: import { selectNetwork } from "./src/config/networks.ts"; -> import { networks, selectNetwork } from "./src/config/networks.ts";` | src/build.test.ts -t "LLR-FE-073" | SURVIVED (equivalent while only the testnet builds; on mainnet the effect would fail closed) |  |
+| 491 | styles: muted text lightened below AA in the light theme | `src/styles.css: --muted: #4d4d4d; -> --muted: #999999;` | unit suite without build.test.ts | killed | text contrast meets WCAG 2.1 AA in both themes light: --muted on --bg is at least 4.5 to 1 |
+| 492 | styles: dark link colour darkened below AA | `src/styles.css: --link: #8ab4ff; -> --link: #3355aa;` | unit suite without build.test.ts | killed | text contrast meets WCAG 2.1 AA in both themes dark: --link on --bg is at least 4.5 to 1 |
+| 493 | styles: focus outline 1 px | `src/styles.css: outline: 3px solid var(--focus); -> outline: 1px solid var(--focus);` | unit suite without build.test.ts | killed | keyboard focus is visible and layouts hold from 360 to 1440 px styles :focus-visible with an outline of at least 2 px using the focus token |
+| 494 | styles: light colour scheme only | `src/styles.css: color-scheme: light dark; -> color-scheme: light;` | unit suite without build.test.ts | killed | the theme follows the system setting declares both colour schemes and a dark block under prefers-color-scheme |
+| 495 | styles: a stylesheet import | `src/styles.css: :root {\n  color-scheme -> @import "https://fonts.example/x.css";\n:root {\n  color-scheme` | unit suite without build.test.ts | killed | the style sheet loads nothing from elsewhere and uses system fonts has no import, no font file, and no url() |
+| 496 | styles: a web font family first | `src/styles.css: font-family: system-ui, -> font-family: Inter, system-ui,` | unit suite without build.test.ts | killed | the style sheet loads nothing from elsewhere and uses system fonts sets a system font stack that starts with system-ui and ends in a gene... |
+| 497 | styles: a fixed 400 px width | `src/styles.css:   min-height: 100vh; ->   min-height: 100vh;\n  width: 400px;` | unit suite without build.test.ts | killed | keyboard focus is visible and layouts hold from 360 to 1440 px keeps the content in a column no wider than the viewport, with no fixed wi... |
+| 498 | main: the style sheet not imported | `src/main.tsx: import "./styles.css";\n -> (deleted)` | src/build.test.ts -t "LLR-FE-073" | killed | the built page carries the policy and loads nothing from elsewhere loads every script and stylesheet from a relative path, with no inline... |
+| 499 | styles: words no longer wrap | `src/styles.css: overflow-wrap: anywhere; -> (deleted)` | unit suite without build.test.ts | killed | keyboard focus is visible and layouts hold from 360 to 1440 px wraps long words, so an address or a transaction hash cannot push the page... |
+| 500 | tsconfig: strict mode off | `tsconfig.json: "strict": true, -> "strict": false,` | src/build.test.ts -t "has strict mode on" | killed | TypeScript strict, ESLint with no any has strict mode on |
+| 501 | package.json: a dependency given a range | `package.json: "viem": "2.57.2" -> "viem": "^2.57.2"` | src/build.test.ts -t "pins every dependency" | killed | TypeScript strict, ESLint with no any pins every dependency to an exact version |
+| 502 | abi: an ABI written by hand instead of the artifact | `src/abi.ts: export const satStakeAbi = abi as Abi; -> export const satStakeAbi = [{ type: "function", name: "x", inputs: [], outputs: [], sta...` | src/build.test.ts -t "LLR-FE-081" | killed | the contract ABI comes from the Foundry artifact is identical to the abi field of out/SatStake.sol/SatStake.json (+2 more) |
+| 503 | eslint: no-explicit-any switched off | `eslint.config.js: "@typescript-eslint/no-explicit-any": "error" -> "@typescript-eslint/no-explicit-any": "off"` | src/build.test.ts -t "explicit any" | killed | TypeScript strict, ESLint with no any makes ESLint report an explicit any as an error |
+| 504 | transport: a 429 or 5xx status not raised before the body is read | `src/chain/transport.ts: if (isRetryableStatus(response.status)) { -> if (false as boolean) {` | unit suite without build.test.ts | killed | reads go through a fallback transport over the configured URLs in order an HTTP status from the endpoint, through the real http transport... (+4 more) |
+| 505 | transport: the status check not installed on the http transport | `src/chain/transport.ts: , onFetchResponse: rejectRetryableStatus(url) } ->  }` | unit suite without build.test.ts | killed | reads go through a fallback transport over the configured URLs in order an HTTP status from the endpoint, through the real http transport... (+4 more) |
+| 506 | transport: a rejected fetch not marked as no response | `src/chain/transport.ts: throw new NoResponseError("the request received no HTTP response", { cause }); -> throw cause;` | unit suite without build.test.ts | killed | reads go through a fallback transport over the configured URLs in order an HTTP status from the endpoint, through the real http transport... (+2 more) |
+| 507 | retry: an HTTP error with no status retried, as a bad body would be | `src/chain/retry.ts: if (current instanceof NoResponseError) return true; -> if (current instanceof NoResponseError \|\| (current instanceof HttpRequestError && curre...` | unit suite without build.test.ts | killed | which failures are retried does not retry a failure after an HTTP response arrived, such as an unparsable body, or one with no marker (+1 more) |
+| 508 | health: a failed decimals() read taken as the configured value | `src/chain/health.ts: client.readContract({ address: token.address, abi: erc20Abi, functionName: "decimals" }), -> client.readContract({ address: token.address, abi: erc20Abi, functionName: "decimals" }...` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token when only decimals() cannot be read (+1 more) |
+| 509 | health: a failed symbol() read taken as the configured value | `src/chain/health.ts: client.readContract({ address: token.address, abi: erc20Abi, functionName: "symbol" }), -> client.readContract({ address: token.address, abi: erc20Abi, functionName: "symbol" })....` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token when only symbol() cannot be read (+1 more) |
+| 510 | live: a state answer applied only if its poll is the latest started | `src/chain/usePledgeLive.ts: (value) => {\n          if (!active \|\| poll < stateApplied) return; -> (value) => {\n          if (!active \|\| poll !== started) return;` | unit suite without build.test.ts | killed | an older answer that arrives late never replaces a newer one still shows an answer when every read takes longer than the poll interval |
+| 511 | live: a block answer applied only if its poll is the latest started | `src/chain/usePledgeLive.ts: const arrived = clock.mark();\n          if (!active \|\| poll < blockApplied) return; -> const arrived = clock.mark();\n          if (!active \|\| poll !== started) return;` | unit suite without build.test.ts | killed | an older answer that arrives late never replaces a newer one still shows an answer when every read takes longer than the poll interval |
+| 512 | live: a late block failure reported over a newer success | `src/chain/usePledgeLive.ts: (error: unknown) => {\n          if (!active \|\| poll < blockApplied) return; -> (error: unknown) => {\n          if (!active) return;` | unit suite without build.test.ts | killed | an older answer that arrives late never replaces a newer one does not report a block failure of the first poll that arrives after the sec... |
+| 513 | live: a late state failure reported over a newer success | `src/chain/usePledgeLive.ts: (error: unknown) => {\n          if (!active \|\| poll < stateApplied) return; -> (error: unknown) => {\n          if (!active) return;` | unit suite without build.test.ts | killed | an older answer that arrives late never replaces a newer one does not report a failure of the first poll that arrives after the second po... |
+| 514 | live: nothing read while disabled is ignored | `src/chain/usePledgeLive.ts:     if (!enabled) return;\n -> (deleted)` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds reads stateOf and the latest block when the page opens, then every 4 ... (+3 more) |
+| 515 | PledgeView: a failed live poll shows no error | `src/views/PledgeView.tsx: const failed = pledge.error !== null \|\| live.error !== null; -> const failed = pledge.error !== null;` | unit suite without build.test.ts | killed | a failed poll shows an error beside the last state, and the reading message becomes the state keeps the last state on screen and shows th... (+1 more) |
+| 516 | PledgeView: reading message kept after a failure with no state | `src/views/PledgeView.tsx:   else if (!failed) status = READING; ->   else status = READING;` | unit suite without build.test.ts | killed | a failed poll shows an error beside the last state, and the reading message becomes the state shows the error and not the reading message... |
+| 517 | PledgeView: the status element replaced when its text changes | `src/views/PledgeView.tsx: <p role="status">{status}</p> -> <p role="status" key={status}>{status}</p>` | unit suite without build.test.ts | killed | a failed poll shows an error beside the last state, and the reading message becomes the state updates one status element from the reading... |
+| 518 | PledgeView: the heading shown while the pledge is still being read | `src/views/PledgeView.tsx: {!pledge.isPending && <PageHeading -> {true && <PageHeading` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again says it is reading while the pledge itself has not been answered, ... (+1 more) |
+| 519 | PledgeView: live reads start before the pledge is known to exist | `src/views/PledgeView.tsx: usePledgeLive(reads, id, pledge.isSuccess) -> usePledgeLive(reads, id, true)` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again says it is reading while the pledge itself has not been answered, ... (+1 more) |
+| 520 | App: every hashchange event counts as a navigation | `src/App.tsx: if (window.location.hash !== loadedAt) setNavigated(true); -> setNavigated(true);` | unit suite without build.test.ts | killed | focus and title on the first page load and on the swap to not found sets the title but leaves the focus alone on the first page load (+2 more) |
+| 521 | App: the page counts as navigated from the start | `src/App.tsx: const [navigated, setNavigated] = useState(false); -> const [navigated, setNavigated] = useState(true);` | unit suite without build.test.ts | killed | focus and title on the first page load and on the swap to not found sets the title but leaves the focus alone on the first page load (+2 more) |
+| 522 | App: the token-notice container replaced when the notice count changes | `src/App.tsx: <div role="status" aria-label="Token notices"> -> <div role="status" aria-label="Token notices" key={notices.length}>` | unit suite without build.test.ts | killed | status changes are announced through containers that are already on the page keeps one token-notice status container mounted from the fir... |
+| 523 | App: the network error names another interval | `src/App.tsx: every 30 seconds -> every minute` | unit suite without build.test.ts | killed | the network error follows the most recent check, in plain words explains a chain mismatch without jargon, naming both chains and the cons... (+1 more) |
+| 524 | csp: img-src missing | `src/config/csp.ts:     "img-src 'self'",\n -> (deleted)` | unit suite without build.test.ts | killed | the Content-Security-Policy limits connect-src to the configured RPC URLs loads scripts and styles only from the site itself and refuses ... |
+| 525 | csp: img-src allows data URIs | `src/config/csp.ts: "img-src 'self'" -> "img-src 'self' data:"` | unit suite without build.test.ts | killed | the Content-Security-Policy limits connect-src to the configured RPC URLs loads scripts and styles only from the site itself and refuses ... (+1 more) |
+| 526 | index.html: favicon link removed | `index.html:     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />\n -> (deleted)` | src/build.test.ts -t "LLR-FE-073" | killed | the built page carries the policy and loads nothing from elsewhere links a favicon from the site itself, so the browser asks nowhere else... |
+| 527 | favicon: an external reference inside the SVG | `public/favicon.svg: <rect width="32" -> <image href="https://x.example/a.png"/><rect width="32"` | src/build.test.ts -t "LLR-FE-073" | killed | the built page carries the policy and loads nothing from elsewhere links a favicon from the site itself, so the browser asks nowhere else... |
+| 528 | PageHeading: context default says not navigated | `src/views/PageHeading.tsx: createContext(true) -> createContext(false)` | unit suite without build.test.ts | killed | a page heading sets the title and takes focus sets the document title and focuses the heading when it mounts (+1 more) |
+| 529 | PledgeView: pledge-not-found check dropped from the error alert (a missing pledge shows the alert) | `src/views/PledgeView.tsx: if (pledge.error && isPledgeNotFound(pledge.error)) return <PledgeNotFoundView />; -> if (false as boolean) return <PledgeNotFoundView />;` | unit suite without build.test.ts | killed | the shell shows the view for each route shows the not-found view for a pledge id the contract does not recognize, in the words of section... (+3 more) |
+
+## Round three fixes: FE configuration and reading, 2026-10-02 (05 v1.12)
+
+Three fixes from the second confirmation review. Mutation numbers continue from 529. The favicon rows 524 to
+527 now trace to LLR-FE-073 as 05 v1.12 words it (the site's own icon, `img-src` limited to its origin);
+`csp.ts` carries `@trace LLR-FE-073` and the favicon tests are in `describe("LLR-FE-073 ...")`, so their tags
+read correctly.
+
+### Red
+
+Tests changed in `app/src/App.test.tsx`; red, `npx vitest run src/App.test.tsx`: 7 failed, 51 passed.
+
+```
+FAIL ... on #/ marks exactly the SatStake link as the current page      AssertionError: expected [] to deeply equal [ 'SatStake' ]
+FAIL ... shows the error beside the reading message while no state has been read     expected '' to contain 'Reading the pledge'
+FAIL ... ... beside the reading message, when the first read of the pledge itself failed   expected '' to contain 'Reading the pledge'
+FAIL ... shows both the reading message and the alert when the first read of the pledge fails with a 503   expected '' to contain 'Reading the pledge'
+FAIL ... says it is reading ... with the heading and title already there     Unable to find an accessible element with the role "heading"
+FAIL ... sets the title and the heading at once on a slow first read, right after a route change    Unable to find ... "heading"
+FAIL ... gives the title and focus to the not-found heading, after the pledge heading ...    expected [ 'Pledge not found | SatStake' ] to deeply equal [ 'Pledge #99 | SatStake', ... ]
+```
+
+The tests for create, mine, and about each marking exactly their own link, and for no link marked on a pledge
+page or an unknown route, passed already; the reviewer's mutant for them is row 531.
+
+### Green
+
+1. The brand link carries `aria-current="page"` when the route is home.
+2. `PledgeView` keeps the reading message in the status while no state has been read; the alert sits beside it
+   on failure. The 503 case uses an `HttpRequestError` with status 503 on the first `getPledge`.
+3. The pledge heading and title are rendered at once. On `PledgeNotFound` the not-found heading takes the
+   title and focus after it (two named focus moves, as accepted).
+
+A first green attempt passed all but one test: the focus on the pledge heading depended on the order in
+which two separate updates reached React. `useNavigated` was moved into `useHashRoute.ts` and reads from the
+same `hashchange` store as the route (`useSyncExternalStore`), so the first view of a new route already knows
+it is not the first load. Mutations 520 and 521 now target that hook.
+
+### Mutations
+
+Rows touching the changed code were rewritten (441 find string, 471, 472, 516, 518, 520, 521) and rows 530 to
+534 added: brand never marked (530), the reviewer's only-mine mutant (531), brand always marked (532), pledge
+title not naming the pledge (533), alert shown only after a state (534). The whole table was rerun over the
+final tree: 152 rows, 151 killed, 1 survivor (490, argued in round two). Row 441 failed to apply on the first
+run because its find string occurs twice now; the string was corrected and the row rerun and killed. Tree hash
+equal before and after; `cache/mutants/` removed.
+
+From `app/`: `npm run lint` clean; `npm run typecheck` clean; `npm test` 15 files passed, 231 passed, 9 skipped;
+`npm run build:testnet` succeeds; `npm run build:mainnet` fails with `Error: mainnet has no SatStake contract
+address in its network configuration`. Root: `node tools/trace-check.mjs`: `OK. 70/112 LLRs referenced, 2/55
+journeys passing`.
+
+Mutation table of round three (supersedes the tables above for the rows it contains):
+
+| # | Mutation | Edit, as `file: find -> replace` | Where run | Result | Killed by |
+|---|---|---|---|---|---|
+| 282 | config: mainnet chain id set to the testnet id | `src/config/networks.ts:     chainId: 5042, ->     chainId: 5042002,` | unit suite without build.test.ts | killed | network configuration uses the mainnet chain id and the token addresses recorded in deployments/accounts.md (+1 more) |
+| 283 | config: mainnet USDC given the native 18 decimals | `src/config/networks.ts: address: "0x3600000000000000000000000000000000000000", decimals: 6 } -> address: "0x3600000000000000000000000000000000000000", decimals: 18 }` | unit suite without build.test.ts | killed | network configuration uses the mainnet chain id and the token addresses recorded in deployments/accounts.md (+1 more) |
+| 284 | config: testnet RPC order reversed | `src/config/networks.ts: rpcUrls: ["https://rpc.testnet.arc.io", "https://rpc.blockdaemon.testnet.arc.io"] -> rpcUrls: ["https://rpc.blockdaemon.testnet.arc.io", "https://rpc.testnet.arc.io"]` | unit suite without build.test.ts | killed | network configuration lists the primary RPC first and gives each network an explorer (+1 more) |
+| 285 | config: testnet contract taken from a literal, not the deployment record | `src/config/networks.ts: contract: getAddress(deployment.address), -> contract: getAddress("0x3Ae26b15B9085ddB223FfEb503B4f713e682Cac5"),` | unit suite without build.test.ts | killed | network configuration takes the testnet chain, contract, and tokens from the committed deployment files |
+| 286 | selectNetwork: skips the missing-address check | `src/config/networks.ts: if (contract === null) { -> if (false as boolean) {` | unit suite without build.test.ts | killed | build target selection fails when the selected configuration has no contract address |
+| 287 | selectNetwork: defaults an unset name to testnet | `src/config/networks.ts: if (name !== "testnet" && name !== "mainnet") { -> if (name !== undefined && name !== "testnet" && name !== "mainnet") {`; `src/config/networks.ts: const selected = table[name]; -> const selected = table[name ?? "testnet"];` | unit suite without build.test.ts | killed | build target selection fails on an unset or unknown target instead of choosing one |
+| 288 | vite.config: build no longer runs selectNetwork on the environment | `vite.config.ts: selectNetwork(loadEnv(mode, process.cwd(), "VITE_").VITE_NETWORK) -> selectNetwork("testnet")` | src/build.test.ts -t "LLR-FE-002" | killed | the build selects its target from VITE_NETWORK fails a mainnet build while the mainnet configuration has no contract address (+1 more) |
+| 289 | retry: second delay 500 becomes 600 | `src/chain/retry.ts: [250, 500, 1000] -> [250, 600, 1000]` | unit suite without build.test.ts | killed | retry schedule waits exactly 250, 500, and 1000 ms (+5 more) |
+| 290 | retry: a fourth retry added | `src/chain/retry.ts: [250, 500, 1000] -> [250, 500, 1000, 1000]` | unit suite without build.test.ts | killed | retry schedule waits exactly 250, 500, and 1000 ms (+6 more) |
+| 291 | retry: -32014 no longer retried | `src/chain/retry.ts: if ("code" in current && current.code === DATA_NOT_AVAILABLE) return true; -> if (false as boolean) return true;` | unit suite without build.test.ts | killed | which failures are retried retries JSON-RPC error -32014 (+7 more) |
+| 292 | retry: every numeric RPC error retried | `src/chain/retry.ts: current.code === DATA_NOT_AVAILABLE -> typeof current.code === "number"` | unit suite without build.test.ts | killed | which failures are retried does not retry any other JSON-RPC error (+4 more) |
+| 293 | retry: every HTTP error retried, with or without a retryable status | `src/chain/retry.ts: current.status !== undefined && isRetryableStatus(current.status) -> true` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them (+6 more) |
+| 294 | retry: timeouts not retried | `src/chain/retry.ts:     if (current instanceof TimeoutError) return true;\n -> (deleted)` | unit suite without build.test.ts | killed | which failures are retried retries a network error and a timeout |
+| 295 | retry: cause chain not walked | `src/chain/retry.ts: current = current.cause; -> current = undefined;` | unit suite without build.test.ts | killed | which failures are retried retries a network error and a timeout (+7 more) |
+| 296 | retry: retryRead retries every failure | `src/chain/retry.ts: if (delay === undefined \|\| !isRetryable(error)) throw error; -> if (delay === undefined) throw error;` | unit suite without build.test.ts | killed | retry schedule raises a failure that is not retryable at once, without waiting (+8 more) |
+| 297 | transport: URL list reversed | `src/chain/transport.ts: urls.map((url) -> [...urls].reverse().map((url)` | unit suite without build.test.ts | killed | reads go through a fallback transport over the configured URLs in order is a viem fallback transport holding one http transport per URL, ... (+4 more) |
+| 298 | transport: retry wrapper dropped | `src/chain/transport.ts: return retryingTransport(fallback(endpoints, { retryCount: 0 })); -> return fallback(endpoints, { retryCount: 0 });` | unit suite without build.test.ts | killed | reads go through a fallback transport over the configured URLs in order an HTTP status from the endpoint, through the real http transport... (+15 more) |
+| 299 | transport: only the first URL used | `src/chain/transport.ts: const endpoints = urls.map( -> const endpoints = urls.slice(0, 1).map(` | unit suite without build.test.ts | killed | reads go through a fallback transport over the configured URLs in order is a viem fallback transport holding one http transport per URL, ... (+3 more) |
+| 400 | transport: retry wrapper retries after its retries (twice the rounds) | `src/chain/transport.ts: retryRead(() => transport.request(args, options)) -> retryRead(() => retryRead(() => transport.request(args, options)))` | unit suite without build.test.ts | killed | retry schedule on a transport, with timers spaces three retries by 250, 500, and 1000 ms and then gives up (+4 more) |
+| 401 | health: chain id compared with >= | `src/chain/health.ts: actual === expected ? { status -> actual >= expected ? { status` | unit suite without build.test.ts | killed | chain id check is a mismatch for an id one away in either direction |
+| 402 | health: unreachable reported as ok | `src/chain/health.ts: return { status: "unreachable" }; -> return { status: "ok" };` | unit suite without build.test.ts | killed | network error shows a network error when the RPC cannot be asked (+5 more) |
+| 403 | health: writes enabled unless a mismatch | `src/chain/health.ts: return check.status === "ok"; -> return check.status !== "mismatch";` | unit suite without build.test.ts | killed | chain id check disables write actions on every result except a pass |
+| 404 | health: token decimals not compared | `src/chain/health.ts: const matches = decimals === token.decimals && symbol === token.symbol; -> const matches = symbol === token.symbol;` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose decimals differ, and only that token (+5 more) |
+| 405 | health: token symbol not compared | `src/chain/health.ts: const matches = decimals === token.decimals && symbol === token.symbol; -> const matches = decimals === token.decimals;` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose symbol differs only in case (+3 more) |
+| 406 | health: unreadable token left enabled | `src/chain/health.ts: status: "unavailable", creationEnabled: false -> status: "unavailable", creationEnabled: true` | unit suite without build.test.ts | killed | token decimals and symbol check disables creation when only decimals() cannot be read, though the other read matches (+3 more) |
+| 407 | health: token symbol not read | `src/chain/health.ts: client.readContract({ address: token.address, abi: erc20Abi, functionName: "symbol" }), -> Promise.resolve(token.symbol),` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose symbol differs only in case (+7 more) |
+| 408 | useHealth: answers stale at once, refetched on every mount | `src/chain/useHealth.ts: staleTime: HEALTH_INTERVAL_MS, -> staleTime: 0,` | unit suite without build.test.ts | killed | and LLR-FE-006 checks run on load does not ask again when the same session mounts it a second time at once |
+| 409 | reads: Kept and Broken swapped | `src/chain/reads.ts:   "Kept",\n  "Broken", ->   "Broken",\n  "Kept",` | unit suite without build.test.ts | killed | the shell shows the view for each route shows no state from an earlier pledge while the next one is being read (+9 more) |
+| 410 | reads: unknown state falls back to Active | `src/chain/reads.ts: if (name === undefined) throw new Error('stateOf returned an unknown pledge state: ${St... -> if (name === undefined) return "Active";` | unit suite without build.test.ts | killed | reads go through the six view functions only refuses a state value outside the enum instead of guessing |
+| 411 | reads: any revert taken for a missing pledge | `src/chain/reads.ts: reverted.data?.errorName === "PledgeNotFound" -> reverted.data?.errorName !== undefined` | unit suite without build.test.ts | killed | reads go through the six view functions only does not take another contract error for a missing pledge |
+| 412 | reads: a log query added to the block read | `src/chain/reads.ts: return (await client.getBlock()).timestamp; -> await client.getLogs();\n      return (await client.getBlock()).timestamp;` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds reads stateOf and the latest block when the page opens, then every 4 ... (+15 more) |
+| 413 | reads: pledge struct check dropped for the deadline field | `src/chain/reads.ts: typeof p.deadline === "bigint" && -> true &&` | unit suite without build.test.ts | killed | reads go through the six view functions only refuses a decoded value that does not match the Pledge struct, field by field |
+| 414 | clock: whole seconds rounded instead of floored | `src/chain/clock.ts: Math.floor(elapsedMs / 1000) -> Math.round(elapsedMs / 1000)` | unit suite without build.test.ts | killed | chain time adds the whole seconds elapsed locally since the block was fetched (+2 more) |
+| 415 | clock: negative elapsed time not clamped | `src/chain/clock.ts: Math.max(0, this.monotonic() - this.base.fetchedAt) -> this.monotonic() - this.base.fetchedAt` | unit suite without build.test.ts | killed | chain time never subtracts when the local monotonic reading moves backwards |
+| 416 | clock: reads the device clock | `src/chain/clock.ts: () => performance.now() -> () => Date.now()` | unit suite without build.test.ts | killed | chain time stays on the monotonic reading, so a device clock set wrongly changes nothing |
+| 417 | clock: a sync keeps the older local base | `src/chain/clock.ts: this.base = { timestamp: blockTimestamp, fetchedAt }; -> this.base = this.base ?? { timestamp: blockTimestamp, fetchedAt };` | unit suite without build.test.ts | killed | chain time starts again from each new block, not from the sum of earlier ones (+3 more) |
+| 418 | poller: interval 5000 ms | `src/chain/poller.ts: POLL_INTERVAL_MS = 4_000 -> POLL_INTERVAL_MS = 5_000` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds reads stateOf and the latest block when the page opens, then every 4 ... (+19 more) |
+| 419 | poller: no read at start | `src/chain/poller.ts:     run();\n    timer = setInterval ->     timer = setInterval` | unit suite without build.test.ts | killed | the shell shows the view for each route shows no state from an earlier pledge while the next one is being read (+33 more) |
+| 420 | poller: polls while hidden | `src/chain/poller.ts: if (document.visibilityState === "hidden") return; -> if (false as boolean) return;` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds stops while the page is hidden and reads again when it is shown (+4 more) |
+| 421 | poller: old timer not cleared on a visibility change | `src/chain/poller.ts:     clear();\n    if (document.visibilityState ->     if (document.visibilityState` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds stops while the page is hidden and reads again when it is shown (+3 more) |
+| 422 | poller: stop leaves the visibility listener | `src/chain/poller.ts: document.removeEventListener("visibilitychange", start); -> (deleted)` | unit suite without build.test.ts | killed | polling while the page is visible stops for good, and stops listening, when told to stop |
+| 423 | poller: a rejected poll stops the schedule | `src/chain/poller.ts: Promise.resolve(poll()).catch(() => {}); -> Promise.resolve(poll()).catch(() => clear());` | unit suite without build.test.ts | killed | polling while the page is visible keeps polling after a read fails |
+| 424 | poller: hidden page not paused, only deferred | `src/chain/poller.ts: if (document.visibilityState === "hidden") return; -> if (document.visibilityState === "hidden") {\n      timer = setInterval(run, POLL_INTERV...` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds stops while the page is hidden and reads again when it is shown (+3 more) |
+| 425 | live: the clock is not synchronized by a poll | `src/chain/usePledgeLive.ts:           clock.sync(timestamp, arrived);\n -> (deleted)` | unit suite without build.test.ts | killed | chain time follows the latest block on every poll synchronizes to the block read by the first poll and then counts local time (+9 more) |
+| 426 | live: the clock synchronizes on the first poll only | `src/chain/usePledgeLive.ts:           clock.sync(timestamp, arrived); ->           if (poll === 1) clock.sync(timestamp, arrived);` | unit suite without build.test.ts | killed | chain time follows the latest block on every poll re-synchronizes on each poll, taking the block's time over the local count (+3 more) |
+| 427 | live: a good poll does not clear the state error | `src/chain/usePledgeLive.ts: ({ ...previous, state: value, stateError: null }) -> ({ ...previous, state: value })` | unit suite without build.test.ts | killed | a failed poll shows an error beside the last state, and the reading message becomes the state keeps the last state on screen and shows th... (+1 more) |
+| 428 | live: a failed poll blanks the state | `src/chain/usePledgeLive.ts: ({ ...previous, stateError: error }) -> ({ ...previous, state: null, stateError: error })` | unit suite without build.test.ts | killed | a failed poll shows an error beside the last state, and the reading message becomes the state keeps the last state on screen and shows th... (+1 more) |
+| 429 | live: the block is read only after stateOf has answered | `src/chain/usePledgeLive.ts: const block = reads.latestBlockTimestamp().then( -> const block = state.then(() => reads.latestBlockTimestamp()).then(` | unit suite without build.test.ts | killed | chain time is measured from when the block was fetched counts from the block's arrival when stateOf is the slower answer (+1 more) |
+| 430 | live: polling not stopped when the pledge page is left | `src/chain/usePledgeLive.ts:       active = false;\n      poller.stop(); ->       active = false;` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds stops when the pledge page is left |
+| 431 | routes: leading zeros accepted | `src/routes.ts: (0\|[1-9]\d*) -> (\d+)` | unit suite without build.test.ts | killed | hash routes sends any other route to not found |
+| 432 | routes: no upper bound on a pledge id | `src/routes.ts: if (id <= UINT256_MAX) return { name: "pledge", id }; -> return { name: "pledge", id };` | unit suite without build.test.ts | killed | hash routes reads a pledge id as a whole decimal number, from 0 to 2^256 - 1 |
+| 433 | routes: bound off by one | `src/routes.ts: id <= UINT256_MAX -> id < UINT256_MAX` | unit suite without build.test.ts | killed | hash routes reads a pledge id as a whole decimal number, from 0 to 2^256 - 1 |
+| 434 | routes: trailing slash accepted on create | `src/routes.ts: case "#/create": -> case "#/create":\n    case "#/create/":` | unit suite without build.test.ts | killed | hash routes sends any other route to not found |
+| 435 | routes: empty hash is not found | `src/routes.ts:     case "":\n -> (deleted)` | unit suite without build.test.ts | killed | hash routes treats an empty hash as the home route, since the site root has none |
+| 436 | routes: pledge pattern unanchored at the end | `src/routes.ts: (0\|[1-9]\d*)$/ -> (0\|[1-9]\d*)/` | unit suite without build.test.ts | killed | hash routes sends any other route to not found |
+| 437 | app: a failed pledge read shown as not found | `src/views/PledgeView.tsx: if (pledge.error && isPledgeNotFound(pledge.error)) return <PledgeNotFoundView />; -> if (pledge.error) return <PledgeNotFoundView />;` | unit suite without build.test.ts | killed | the shell shows the view for each route does not take a failed read for a missing pledge (+3 more) |
+| 438 | app: a missing pledge shown as a read failure | `src/views/PledgeView.tsx: if (pledge.error && isPledgeNotFound(pledge.error)) return <PledgeNotFoundView />; -> if (false as boolean) return <PledgeNotFoundView />;` | unit suite without build.test.ts | killed | the shell shows the view for each route shows the not-found view for a pledge id the contract does not recognize, in the words of section... (+3 more) |
+| 439 | app: unreachable RPC raises no network error | `src/App.tsx: if (check.status === "unreachable") { -> if (false as boolean) {` | unit suite without build.test.ts | killed | network error shows a network error when the RPC cannot be asked (+2 more) |
+| 440 | app: mismatch raises no network error | `src/App.tsx: if (check.status === "mismatch") { -> if (false as boolean) {` | unit suite without build.test.ts | killed | network error shows a network error naming both chain ids when they differ (+2 more) |
+| 441 | app: shell reads the hash once and never follows it | `src/useHashRoute.ts: const hash = useSyncExternalStore(subscribe, -> const hash = useSyncExternalStore(() => () => {},` | unit suite without build.test.ts | killed | the shell shows the view for each route shows no state from an earlier pledge while the next one is being read (+2 more) |
+| 442 | app: pledge view not keyed by id | `src/App.tsx: <PledgeView key={route.id.toString()}  -> <PledgeView ` | unit suite without build.test.ts | killed | the shell shows the view for each route shows no state from an earlier pledge while the next one is being read |
+| 443 | live: testnet pointed at the mainnet endpoint | `src/config/networks.ts: rpcUrls: ["https://rpc.testnet.arc.io", "https://rpc.blockdaemon.testnet.arc.io"] -> rpcUrls: ["https://rpc.mainnet.arc.io"]` | src/live.test.ts src/liveApp.test.tsx with SATSTAKE_LIVE=1 | killed | LLR-FE-005 LLR-FE-006 LLR-FE-010 LLR-FE-012 the application's own reads against Arc testnet passes the chain id check through the configu... (+6 more) |
+| 444 | live: testnet contract set to another address | `src/config/networks.ts: contract: getAddress(deployment.address), -> contract: getAddress("0x3Ae26b15B9085ddB223FfEb503B4f713e682Cac5"),` | src/live.test.ts src/liveApp.test.tsx with SATSTAKE_LIVE=1 | killed | LLR-FE-005 LLR-FE-006 LLR-FE-010 LLR-FE-012 the application's own reads against Arc testnet reads the configured example pledge through g... (+4 more) |
+| 445 | live: ABI replaced by an empty list | `src/abi.ts: abi as Abi; -> [] as Abi;` | src/live.test.ts src/liveApp.test.tsx with SATSTAKE_LIVE=1 | killed | LLR-FE-005 LLR-FE-006 LLR-FE-010 LLR-FE-012 the application's own reads against Arc testnet reads the configured example pledge through g... (+4 more) |
+| 446 | wagmi: the app's config built on a bare fallback transport | `src/chain/wagmi.ts: import { type Transport, defineChain } from "viem"; -> import { type Transport, defineChain, fallback, http } from "viem";`; `src/chain/wagmi.ts: transport: Transport = createReadTransport(network.rpcUrls), -> transport: Transport = fallback(network.rpcUrls.map((u) => http(u, { retryCount: 0 }))),` | unit suite without build.test.ts | killed | the application's own client retries, not only a transport built in a test asks again after a -32014 answer, 250 ms later, through the cl... |
+| 447 | wagmi: CCIP Read left on | `src/chain/wagmi.ts:     ccipRead: false,\n -> (deleted)` | unit suite without build.test.ts | killed | the client makes no request the configuration does not name has CCIP Read turned off, so an offchain lookup URL from a contract is never ... |
+| 448 | health: decimals accepted when equal or higher | `src/chain/health.ts: decimals === token.decimals && -> decimals >= token.decimals &&` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose decimals differ, and only that token (+5 more) |
+| 449 | health: symbol compared without regard to case | `src/chain/health.ts: symbol === token.symbol -> symbol.toLowerCase() === token.symbol.toLowerCase()` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose symbol differs only in case (+2 more) |
+| 450 | retry: HTTP 429 not retried | `src/chain/retry.ts: status === 429 \|\| (status >= 500 && status <= 599) -> status >= 500 && status <= 599` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them (+3 more) |
+| 451 | retry: HTTP 5xx upper bound 598 | `src/chain/retry.ts: status <= 599 -> status <= 598` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them (+2 more) |
+| 452 | retry: HTTP 5xx upper bound 600 | `src/chain/retry.ts: status <= 599 -> status <= 600` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them |
+| 453 | retry: HTTP 5xx lower bound 499 | `src/chain/retry.ts: status >= 500 -> status >= 499` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them (+2 more) |
+| 454 | retry: HTTP 5xx lower bound 501 | `src/chain/retry.ts: status >= 500 -> status >= 501` | unit suite without build.test.ts | killed | which failures are retried retries an HTTP 429 and every HTTP 5xx status, and nothing just outside them (+2 more) |
+| 455 | retry: a request with no HTTP response not retried | `src/chain/retry.ts:     if (current instanceof NoResponseError) return true;\n -> (deleted)` | unit suite without build.test.ts | killed | which failures are retried retries a network error and a timeout (+6 more) |
+| 456 | useHealth: interval 31 s | `src/chain/useHealth.ts: HEALTH_INTERVAL_MS = 30_000 -> HEALTH_INTERVAL_MS = 31_000` | unit suite without build.test.ts | killed | the network error follows the most recent check, in plain words raises the error when a later check finds another chain, and clears it wh... (+8 more) |
+| 457 | useHealth: checks continue while the page is hidden | `src/chain/useHealth.ts: refetchInterval: HEALTH_INTERVAL_MS, retry: false -> refetchInterval: HEALTH_INTERVAL_MS, refetchIntervalInBackground: true, retry: false` | unit suite without build.test.ts | killed | and LLR-FE-006 checks repeat every 30 seconds while the page is visible asks nothing while the page is hidden, and asks again once it is ... |
+| 458 | useHealth: creation enabled before any answer and for unknown tokens | `src/chain/useHealth.ts: ?.creationEnabled ?? false -> ?.creationEnabled ?? true` | unit suite without build.test.ts | killed | and LLR-FE-006 checks run on load is still checking, with writes off and creation off, before the answers arrive (+1 more) |
+| 459 | useHealth: creationEnabled compares the address case-sensitively | `src/chain/useHealth.ts: c.token.address.toLowerCase() === token.toLowerCase() -> c.token.address === token` | unit suite without build.test.ts | killed | and LLR-FE-006 checks run on load passes the chain check and enables each token that matches its configuration |
+| 460 | live: the clock waits for stateOf as well as the block | `src/chain/usePledgeLive.ts: const block = reads.latestBlockTimestamp().then(\n        (timestamp) => { -> const block = Promise.all([state, reads.latestBlockTimestamp()]).then(\n        ([, time...` | unit suite without build.test.ts | killed | chain time is measured from when the block was fetched counts from the block's arrival when stateOf is the slower answer |
+| 461 | live: a late stateOf answer replaces a newer state | `src/chain/usePledgeLive.ts: (value) => {\n          if (!active \|\| poll < stateApplied) return; -> (value) => {\n          if (!active) return;` | unit suite without build.test.ts | killed | an older answer that arrives late never replaces a newer one keeps the newer state when the first poll's stateOf answers after the second... |
+| 462 | vite.config: dev server allowed to serve the whole repository | `vite.config.ts: allow: [".", "../out", "../deployments"] -> allow: [".."]` | src/build.test.ts -t "serves the artifact" | killed | the development server serves the artifact and the deployment records only allows the app folder, the Foundry output, and the deployments... |
+| 463 | scan: a functionName that is not a string literal | `src/chain/reads.ts: functionName: "getPledge", args: [id] -> functionName: ("get" + "Pledge") as "getPledge", args: [id]` | unit suite without build.test.ts | killed | reads go through the six view functions only in the source names the function of every contract call as a literal, and only an allowed one |
+| 464 | scan: a raw eth_getLogs request | `src/chain/health.ts: client.request({ method: "eth_chainId" }) -> client.request({ method: "eth_getLogs", params: [{}] })` | unit suite without build.test.ts | killed | the shell shows the view for each route does not take a failed read for a missing pledge (+24 more) |
+| 465 | scan: a contract function outside the allowed set | `src/chain/reads.ts: functionName: "totalLocked", -> functionName: "allowedTokens",` | unit suite without build.test.ts | killed | reads go through the six view functions only reads the pledge count, the per-account count, a page of ids, and the locked total (+1 more) |
+| 466 | scan: raw calldata encoding | `src/chain/reads.ts: import { type Address, BaseError,  -> import { type Address, BaseError, encodeFunctionData, `; `src/chain/reads.ts: const isAddress =  -> export const probe = encodeFunctionData;\nconst isAddress = ` | unit suite without build.test.ts | killed | reads go through the six view functions only in the source sends no raw JSON-RPC method other than eth_chainId, and never calls a contrac... |
+| 467 | scan: a log API named in the health check | `src/chain/health.ts: const actual = hexToNumber( -> await client.getFilterLogs;\n    const actual = hexToNumber(` | unit suite without build.test.ts | killed | reads go through the six view functions only in the source names no log, filter, or event-subscription API |
+| 468 | PledgeView: a failed first read never retried | `src/views/PledgeView.tsx: query.state.status === "error" && !isPledgeNotFound(query.state.error) ? POLL_INTERVAL_... -> false,` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again keeps trying when the first read of the pledge fails, and shows it... |
+| 469 | PledgeView: a missing pledge also retried | `src/views/PledgeView.tsx:  && !isPledgeNotFound(query.state.error) -> (deleted)` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again does not keep asking for a pledge the contract says does not exist |
+| 471 | PledgeView: the raw state name shown | `src/views/PledgeView.tsx: live.state !== null ? STATE_LABELS[live.state] : READING -> live.state !== null ? live.state : READING` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again shows state 4 as Settled: stake returned to the staker (+1 more) |
+| 472 | PledgeView: nothing shown before the first state answer | `src/views/PledgeView.tsx: live.state !== null ? STATE_LABELS[live.state] : READING -> live.state !== null ? STATE_LABELS[live.state] : ""` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again says it is reading, not nothing, until the first state answer arrives (+5 more) |
+| 473 | labels: the two settled states swapped | `src/views/stateLabels.ts: SettledToStaker: "Settled: stake returned to the staker" -> SettledToStaker: "Settled: stake sent to the beneficiary"` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again shows state 4 as Settled: stake returned to the staker |
+| 474 | PageHeading: the title not set | `src/views/PageHeading.tsx:     document.title = title;\n -> (deleted)` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again says it is reading while the pledge itself has not been answered, ... (+10 more) |
+| 475 | PageHeading: focus not moved | `src/views/PageHeading.tsx:     if (navigated) ref.current?.focus();\n -> (deleted)` | unit suite without build.test.ts | killed | each page sets the title and moves focus to its heading moves the title and the focus when the route changes (+5 more) |
+| 476 | PageHeading: title and focus only on the first mount | `src/views/PageHeading.tsx: }, [title, navigated]); -> }, []);` | unit suite without build.test.ts | killed | a page heading sets the title and takes focus follows a new title on the same heading, as when a route changes without remounting it |
+| 477 | Views: the unknown-pledge text changed | `src/views/Views.tsx: "This pledge does not exist. Check the link." -> "This page does not exist."` | unit suite without build.test.ts | killed | the shell shows the view for each route shows the not-found view for a pledge id the contract does not recognize, in the words of section... |
+| 478 | App: a nav link to a route that does not exist | `src/App.tsx: href: "#/about", label: "About" -> href: "#/abouts", label: "About"` | unit suite without build.test.ts | killed | the header and footer links the brand to the home page and the nav only to routes that exist |
+| 479 | App: every nav link marked as the current page | `src/App.tsx: aria-current={route.name === item.route ? "page" : undefined} -> aria-current="page"` | unit suite without build.test.ts | killed | the header and footer on #/ marks exactly the SatStake link as the current page (+4 more) |
+| 480 | App: the footer does not name the network | `src/App.tsx: SatStake runs on {network.name}. -> SatStake runs on Arc.` | unit suite without build.test.ts | killed | the header and footer has a footer on every page that names the network |
+| 481 | App: no notice for a token that could not be read | `src/App.tsx: if (check.status === "ok") return null; -> if (check.status !== "mismatch") return null;` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names a token that could not be read, and clears the notice when a later read matches (+2 more) |
+| 482 | App: the notice does not name the token | `src/App.tsx: ${check.token.symbol} cannot be used -> This token cannot be used` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token whose decimals differ, and only that token (+5 more) |
+| 483 | App: the network error omits what is turned off | `src/App.tsx: const consequence = "Sending transactions is turned off, and this page checks again eve... -> const consequence = "";` | unit suite without build.test.ts | killed | the network error follows the most recent check, in plain words explains a chain mismatch without jargon, naming both chains and the cons... (+1 more) |
+| 484 | App: the network error uses jargon | `src/App.tsx: This site could not reach the network, -> No RPC endpoint answered,` | unit suite without build.test.ts | killed | the network error follows the most recent check, in plain words explains an unanswered check without jargon |
+| 485 | csp: connect-src also allows the site itself | `src/config/csp.ts: 'connect-src ${network.rpcUrls.join(" ")}' -> 'connect-src 'self' ${network.rpcUrls.join(" ")}'` | unit suite without build.test.ts | killed | the Content-Security-Policy limits connect-src to the configured RPC URLs allows exactly the testnet RPC URLs to be connected to, in the ... (+2 more) |
+| 486 | csp: default-src open to the site itself | `src/config/csp.ts: "default-src 'none'" -> "default-src 'self'"` | unit suite without build.test.ts | killed | the Content-Security-Policy limits connect-src to the configured RPC URLs loads scripts and styles only from the site itself and refuses ... |
+| 487 | csp: inline scripts allowed | `src/config/csp.ts: "script-src 'self'" -> "script-src 'self' 'unsafe-inline'"` | unit suite without build.test.ts | killed | the Content-Security-Policy limits connect-src to the configured RPC URLs loads scripts and styles only from the site itself and refuses ... (+1 more) |
+| 488 | vite.config: the policy is injected into the development server only | `vite.config.ts: apply: "build", -> apply: "serve",` | src/build.test.ts -t "LLR-FE-073" | killed | the built page carries the policy and loads nothing from elsewhere has a policy meta tag, ahead of every script and stylesheet, equal to ... |
+| 489 | vite.config: the policy is injected after the scripts | `vite.config.ts: injectTo: "head-prepend" -> injectTo: "body"` | src/build.test.ts -t "LLR-FE-073" | killed | the built page carries the policy and loads nothing from elsewhere has a policy meta tag, ahead of every script and stylesheet, equal to ... |
+| 490 | vite.config: the policy built from the testnet whatever the target | `vite.config.ts: content: contentSecurityPolicy(network) -> content: contentSecurityPolicy(networks.testnet)`; `vite.config.ts: import { selectNetwork } from "./src/config/networks.ts"; -> import { networks, selectNetwork } from "./src/config/networks.ts";` | src/build.test.ts -t "LLR-FE-073" | SURVIVED (equivalent while only the testnet builds; on mainnet the effect would fail closed) |  |
+| 491 | styles: muted text lightened below AA in the light theme | `src/styles.css: --muted: #4d4d4d; -> --muted: #999999;` | unit suite without build.test.ts | killed | text contrast meets WCAG 2.1 AA in both themes light: --muted on --bg is at least 4.5 to 1 |
+| 492 | styles: dark link colour darkened below AA | `src/styles.css: --link: #8ab4ff; -> --link: #3355aa;` | unit suite without build.test.ts | killed | text contrast meets WCAG 2.1 AA in both themes dark: --link on --bg is at least 4.5 to 1 |
+| 493 | styles: focus outline 1 px | `src/styles.css: outline: 3px solid var(--focus); -> outline: 1px solid var(--focus);` | unit suite without build.test.ts | killed | keyboard focus is visible and layouts hold from 360 to 1440 px styles :focus-visible with an outline of at least 2 px using the focus token |
+| 494 | styles: light colour scheme only | `src/styles.css: color-scheme: light dark; -> color-scheme: light;` | unit suite without build.test.ts | killed | the theme follows the system setting declares both colour schemes and a dark block under prefers-color-scheme |
+| 495 | styles: a stylesheet import | `src/styles.css: :root {\n  color-scheme -> @import "https://fonts.example/x.css";\n:root {\n  color-scheme` | unit suite without build.test.ts | killed | the style sheet loads nothing from elsewhere and uses system fonts has no import, no font file, and no url() |
+| 496 | styles: a web font family first | `src/styles.css: font-family: system-ui, -> font-family: Inter, system-ui,` | unit suite without build.test.ts | killed | the style sheet loads nothing from elsewhere and uses system fonts sets a system font stack that starts with system-ui and ends in a gene... |
+| 497 | styles: a fixed 400 px width | `src/styles.css:   min-height: 100vh; ->   min-height: 100vh;\n  width: 400px;` | unit suite without build.test.ts | killed | keyboard focus is visible and layouts hold from 360 to 1440 px keeps the content in a column no wider than the viewport, with no fixed wi... |
+| 498 | main: the style sheet not imported | `src/main.tsx: import "./styles.css";\n -> (deleted)` | src/build.test.ts -t "LLR-FE-073" | killed | the built page carries the policy and loads nothing from elsewhere loads every script and stylesheet from a relative path, with no inline... |
+| 499 | styles: words no longer wrap | `src/styles.css: overflow-wrap: anywhere; -> (deleted)` | unit suite without build.test.ts | killed | keyboard focus is visible and layouts hold from 360 to 1440 px wraps long words, so an address or a transaction hash cannot push the page... |
+| 500 | tsconfig: strict mode off | `tsconfig.json: "strict": true, -> "strict": false,` | src/build.test.ts -t "has strict mode on" | killed | TypeScript strict, ESLint with no any has strict mode on |
+| 501 | package.json: a dependency given a range | `package.json: "viem": "2.57.2" -> "viem": "^2.57.2"` | src/build.test.ts -t "pins every dependency" | killed | TypeScript strict, ESLint with no any pins every dependency to an exact version |
+| 502 | abi: an ABI written by hand instead of the artifact | `src/abi.ts: export const satStakeAbi = abi as Abi; -> export const satStakeAbi = [{ type: "function", name: "x", inputs: [], outputs: [], sta...` | src/build.test.ts -t "LLR-FE-081" | killed | the contract ABI comes from the Foundry artifact is identical to the abi field of out/SatStake.sol/SatStake.json (+2 more) |
+| 503 | eslint: no-explicit-any switched off | `eslint.config.js: "@typescript-eslint/no-explicit-any": "error" -> "@typescript-eslint/no-explicit-any": "off"` | src/build.test.ts -t "explicit any" | killed | TypeScript strict, ESLint with no any makes ESLint report an explicit any as an error |
+| 504 | transport: a 429 or 5xx status not raised before the body is read | `src/chain/transport.ts: if (isRetryableStatus(response.status)) { -> if (false as boolean) {` | unit suite without build.test.ts | killed | reads go through a fallback transport over the configured URLs in order an HTTP status from the endpoint, through the real http transport... (+4 more) |
+| 505 | transport: the status check not installed on the http transport | `src/chain/transport.ts: , onFetchResponse: rejectRetryableStatus(url) } ->  }` | unit suite without build.test.ts | killed | reads go through a fallback transport over the configured URLs in order an HTTP status from the endpoint, through the real http transport... (+4 more) |
+| 506 | transport: a rejected fetch not marked as no response | `src/chain/transport.ts: throw new NoResponseError("the request received no HTTP response", { cause }); -> throw cause;` | unit suite without build.test.ts | killed | reads go through a fallback transport over the configured URLs in order an HTTP status from the endpoint, through the real http transport... (+2 more) |
+| 507 | retry: an HTTP error with no status retried, as a bad body would be | `src/chain/retry.ts: if (current instanceof NoResponseError) return true; -> if (current instanceof NoResponseError \|\| (current instanceof HttpRequestError && curre...` | unit suite without build.test.ts | killed | which failures are retried does not retry a failure after an HTTP response arrived, such as an unparsable body, or one with no marker (+1 more) |
+| 508 | health: a failed decimals() read taken as the configured value | `src/chain/health.ts: client.readContract({ address: token.address, abi: erc20Abi, functionName: "decimals" }), -> client.readContract({ address: token.address, abi: erc20Abi, functionName: "decimals" }...` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token when only decimals() cannot be read (+1 more) |
+| 509 | health: a failed symbol() read taken as the configured value | `src/chain/health.ts: client.readContract({ address: token.address, abi: erc20Abi, functionName: "symbol" }), -> client.readContract({ address: token.address, abi: erc20Abi, functionName: "symbol" })....` | unit suite without build.test.ts | killed | a notice names a token whose creation is disabled names the token when only symbol() cannot be read (+1 more) |
+| 510 | live: a state answer applied only if its poll is the latest started | `src/chain/usePledgeLive.ts: (value) => {\n          if (!active \|\| poll < stateApplied) return; -> (value) => {\n          if (!active \|\| poll !== started) return;` | unit suite without build.test.ts | killed | an older answer that arrives late never replaces a newer one still shows an answer when every read takes longer than the poll interval |
+| 511 | live: a block answer applied only if its poll is the latest started | `src/chain/usePledgeLive.ts: const arrived = clock.mark();\n          if (!active \|\| poll < blockApplied) return; -> const arrived = clock.mark();\n          if (!active \|\| poll !== started) return;` | unit suite without build.test.ts | killed | an older answer that arrives late never replaces a newer one still shows an answer when every read takes longer than the poll interval |
+| 512 | live: a late block failure reported over a newer success | `src/chain/usePledgeLive.ts: (error: unknown) => {\n          if (!active \|\| poll < blockApplied) return; -> (error: unknown) => {\n          if (!active) return;` | unit suite without build.test.ts | killed | an older answer that arrives late never replaces a newer one does not report a block failure of the first poll that arrives after the sec... |
+| 513 | live: a late state failure reported over a newer success | `src/chain/usePledgeLive.ts: (error: unknown) => {\n          if (!active \|\| poll < stateApplied) return; -> (error: unknown) => {\n          if (!active) return;` | unit suite without build.test.ts | killed | an older answer that arrives late never replaces a newer one does not report a failure of the first poll that arrives after the second po... |
+| 514 | live: nothing read while disabled is ignored | `src/chain/usePledgeLive.ts:     if (!enabled) return;\n -> (deleted)` | unit suite without build.test.ts | killed | the pledge page re-reads state and the latest block every 4 seconds reads stateOf and the latest block when the page opens, then every 4 ... (+3 more) |
+| 515 | PledgeView: a failed live poll shows no error | `src/views/PledgeView.tsx: const failed = pledge.error !== null \|\| live.error !== null; -> const failed = pledge.error !== null;` | unit suite without build.test.ts | killed | a failed poll shows an error beside the last state, and the reading message becomes the state keeps the last state on screen and shows th... (+1 more) |
+| 516 | PledgeView: the reading message dropped once a read has failed with no state | `src/views/PledgeView.tsx: live.state !== null ? STATE_LABELS[live.state] : READING -> live.state !== null ? STATE_LABELS[live.state] : failed ? "" : READING` | unit suite without build.test.ts | killed | a failed poll shows an error beside the last state, and the reading message becomes the state shows the error beside the reading message ... (+2 more) |
+| 517 | PledgeView: the status element replaced when its text changes | `src/views/PledgeView.tsx: <p role="status">{status}</p> -> <p role="status" key={status}>{status}</p>` | unit suite without build.test.ts | killed | a failed poll shows an error beside the last state, and the reading message becomes the state updates one status element from the reading... |
+| 518 | PledgeView: the heading withheld until the pledge has been read | `src/views/PledgeView.tsx:       <PageHeading title={'Pledge #${id.toString()} \| SatStake'}>Pledge #{id.toString()... ->       {!pledge.isPending && <PageHeading title={'Pledge #${id.toString()} \| SatStake'}>...` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again says it is reading while the pledge itself has not been answered, ... (+2 more) |
+| 519 | PledgeView: live reads start before the pledge is known to exist | `src/views/PledgeView.tsx: usePledgeLive(reads, id, pledge.isSuccess) -> usePledgeLive(reads, id, true)` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again says it is reading while the pledge itself has not been answered, ... (+1 more) |
+| 520 | useNavigated: every address counts as a navigation | `src/useHashRoute.ts: if (window.location.hash !== loadedAt.current) changed.current = true; -> changed.current = true;` | unit suite without build.test.ts | killed | focus and title on the first page load and on the swap to not found sets the title but leaves the focus alone on the first page load (+2 more) |
+| 521 | useNavigated: the page counts as navigated from the start | `src/useHashRoute.ts: const changed = useRef(false); -> const changed = useRef(true);` | unit suite without build.test.ts | killed | focus and title on the first page load and on the swap to not found sets the title but leaves the focus alone on the first page load (+2 more) |
+| 522 | App: the token-notice container replaced when the notice count changes | `src/App.tsx: <div role="status" aria-label="Token notices"> -> <div role="status" aria-label="Token notices" key={notices.length}>` | unit suite without build.test.ts | killed | status changes are announced through containers that are already on the page keeps one token-notice status container mounted from the fir... |
+| 523 | App: the network error names another interval | `src/App.tsx: every 30 seconds -> every minute` | unit suite without build.test.ts | killed | the network error follows the most recent check, in plain words explains a chain mismatch without jargon, naming both chains and the cons... (+1 more) |
+| 524 | csp: img-src missing | `src/config/csp.ts:     "img-src 'self'",\n -> (deleted)` | unit suite without build.test.ts | killed | the Content-Security-Policy limits connect-src to the configured RPC URLs loads scripts and styles only from the site itself and refuses ... |
+| 525 | csp: img-src allows data URIs | `src/config/csp.ts: "img-src 'self'" -> "img-src 'self' data:"` | unit suite without build.test.ts | killed | the Content-Security-Policy limits connect-src to the configured RPC URLs loads scripts and styles only from the site itself and refuses ... (+1 more) |
+| 526 | index.html: favicon link removed | `index.html:     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />\n -> (deleted)` | src/build.test.ts -t "LLR-FE-073" | killed | the built page carries the policy and loads nothing from elsewhere links a favicon from the site itself, so the browser asks nowhere else... |
+| 527 | favicon: an external reference inside the SVG | `public/favicon.svg: <rect width="32" -> <image href="https://x.example/a.png"/><rect width="32"` | src/build.test.ts -t "LLR-FE-073" | killed | the built page carries the policy and loads nothing from elsewhere links a favicon from the site itself, so the browser asks nowhere else... |
+| 528 | PageHeading: context default says not navigated | `src/views/PageHeading.tsx: createContext(true) -> createContext(false)` | unit suite without build.test.ts | killed | a page heading sets the title and takes focus sets the document title and focuses the heading when it mounts (+1 more) |
+| 529 | PledgeView: pledge-not-found check dropped from the error alert (a missing pledge shows the alert) | `src/views/PledgeView.tsx: if (pledge.error && isPledgeNotFound(pledge.error)) return <PledgeNotFoundView />; -> if (false as boolean) return <PledgeNotFoundView />;` | unit suite without build.test.ts | killed | the shell shows the view for each route shows the not-found view for a pledge id the contract does not recognize, in the words of section... (+3 more) |
+| 530 | App: the brand link never marked as the current page | `src/App.tsx: aria-current={route.name === "home" ? "page" : undefined} -> aria-current={undefined}` | unit suite without build.test.ts | killed | the header and footer on #/ marks exactly the SatStake link as the current page |
+| 531 | App: only the mine link ever marked (the reviewer's mutant) | `src/App.tsx: aria-current={route.name === item.route ? "page" : undefined} -> aria-current={route.name === "mine" && item.route === "mine" ? "page" : undefined}` | unit suite without build.test.ts | killed | the header and footer on #/create marks exactly the Create link as the current page (+1 more) |
+| 532 | App: the brand link always marked | `src/App.tsx: aria-current={route.name === "home" ? "page" : undefined} -> aria-current="page"` | unit suite without build.test.ts | killed | the header and footer on #/create marks exactly the Create link as the current page (+3 more) |
+| 533 | PledgeView: the pledge title does not name the pledge | `src/views/PledgeView.tsx: title={'Pledge #${id.toString()} \| SatStake'} -> title="SatStake"` | unit suite without build.test.ts | killed | the pledge page in plain words, and a failed first read is tried again says it is reading while the pledge itself has not been answered, ... (+5 more) |
+| 534 | PledgeView: the reading message shown only before any failure, and the alert only after a state | `src/views/PledgeView.tsx: {failed && <p role="alert">{RETRYING}</p>} -> {failed && live.state !== null && <p role="alert">{RETRYING}</p>}` | unit suite without build.test.ts | killed | the shell shows the view for each route does not take a failed read for a missing pledge (+4 more) |

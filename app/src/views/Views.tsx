@@ -1,0 +1,46 @@
+import { PageHeading } from "./PageHeading";
+
+/** The wording of 05 section 2.2 for PledgeNotFound. */
+export const PLEDGE_NOT_FOUND_MESSAGE = "This pledge does not exist. Check the link.";
+
+/** @trace LLR-FE-013 */
+export function HomeView() {
+  return <PageHeading title="SatStake">SatStake</PageHeading>;
+}
+
+/** @trace LLR-FE-013 */
+export function CreateView() {
+  return <PageHeading title="Create a pledge | SatStake">Create a pledge</PageHeading>;
+}
+
+/** @trace LLR-FE-013 */
+export function MineView() {
+  return <PageHeading title="My pledges | SatStake">My pledges</PageHeading>;
+}
+
+/** @trace LLR-FE-013 */
+export function AboutView() {
+  return <PageHeading title="About SatStake">About SatStake</PageHeading>;
+}
+
+/** @trace LLR-FE-013 */
+export function NotFoundView() {
+  return (
+    <>
+      <PageHeading title="Page not found | SatStake">Page not found</PageHeading>
+      <p>This page does not exist.</p>
+      <a href="#/">Go to the home page</a>
+    </>
+  );
+}
+
+/** @trace LLR-FE-013 */
+export function PledgeNotFoundView() {
+  return (
+    <>
+      <PageHeading title="Pledge not found | SatStake">Pledge not found</PageHeading>
+      <p>{PLEDGE_NOT_FOUND_MESSAGE}</p>
+      <a href="#/">Go to the home page</a>
+    </>
+  );
+}
