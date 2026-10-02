@@ -1,7 +1,8 @@
 import { getPublicClient } from "wagmi/actions";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { selectNetwork } from "../config/networks";
-import { createAppConfig } from "./wagmi";
+import { announce, FakeWallet } from "../test/fakeWallet";
+import { addChainParameter, createAppConfig } from "./wagmi";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -113,5 +114,45 @@ describe("LLR-FE-073 the client makes no request the configuration does not name
   it("has CCIP Read turned off, so an offchain lookup URL from a contract is never fetched", () => {
     const client = getPublicClient(createAppConfig(selectNetwork("testnet")));
     expect(client?.ccipRead).toBe(false);
+  });
+});
+
+describe("LLR-FE-020 the configuration discovers injected wallets over EIP-6963", () => {
+  const stops: (() => void)[] = [];
+  const configs: ReturnType<typeof createAppConfig>[] = [];
+  const make = () => {
+    const config = createAppConfig(selectNetwork("testnet"));
+    configs.push(config);
+    return config;
+  };
+  afterEach(() => {
+    for (const stop of stops.splice(0)) stop();
+    for (const config of configs.splice(0)) config._internal.mipd?.destroy();
+    window.localStorage.clear();
+  });
+
+  it("has discovery switched on, so an announced wallet becomes a connector", () => {
+    const wallet = new FakeWallet({ chainId: 5042002, accounts: ["0x1111111111111111111111111111111111111111"] });
+    stops.push(announce(wallet, "Alpha Wallet", "test.alpha").stop);
+    const config = make();
+    expect(config._internal.mipd).toBeDefined();
+    expect(config.connectors.map((c) => c.id)).toContain("test.alpha");
+    expect(config.connectors.find((c) => c.id === "test.alpha")?.name).toBe("Alpha Wallet");
+  });
+
+  it("holds the window.ethereum connector for the fallback, and nothing else when no wallet announces itself", () => {
+    expect(make().connectors.map((c) => c.id)).toEqual(["injected"]);
+  });
+});
+
+describe("LLR-FE-022 the parameters for adding the network to a wallet", () => {
+  it("carry the configured chain name, every RPC URL in order, the explorer, and USDC with 18 decimals", () => {
+    const network = { ...selectNetwork("testnet"), rpcUrls: ["https://first.example", "https://second.example"] };
+    expect(addChainParameter(network)).toEqual({
+      chainName: network.name,
+      rpcUrls: ["https://first.example", "https://second.example"],
+      blockExplorerUrls: [network.explorerUrl],
+      nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+    });
   });
 });

@@ -1,6 +1,6 @@
 # 06 Verification and Traceability Plan
 
-Version 1.8, 2026-09-29. Defines how every requirement is shown to be met, how code and tests point back to requirements, and how that linkage is checked by machine. Modelled on DO-178C objectives (requirements-based testing, bidirectional traceability, structural coverage, independence through tooling) and scaled to a single-contract project.
+Version 1.9, 2026-10-02. Defines how every requirement is shown to be met, how code and tests point back to requirements, and how that linkage is checked by machine. Modelled on DO-178C objectives (requirements-based testing, bidirectional traceability, structural coverage, independence through tooling) and scaled to a single-contract project.
 
 ## 1. Document chain
 
@@ -104,7 +104,7 @@ For each LLR group:
 
 A group is done when steps 1 to 5 are complete.
 
-Groups in order: SC build and data; SC allowlist; SC create; SC verdict; SC settle; SC views; SC invariants and ABI surface; DP testnet; VV-005 live run; FE configuration and reading; FE wallet; FE create; FE pledge page; FE other views; DP mainnet and seed; SB.
+Groups in order: SC build and data; SC allowlist; SC create; SC verdict; SC settle; SC views; SC invariants and ABI surface; DP testnet; VV-005 live run; FE configuration and reading; FE wallet; FE create; FE pledge page and other views; DP mainnet and seed; SB.
 
 ## 9. Journey acceptance (LLR-VV-009, 010)
 
@@ -129,3 +129,4 @@ The submission is ready when all of the following hold: CI green; `trace-check -
 | 1.6 | 2026-09-27 | Section 5 describes the hostile mock that LLR-SC-003 needs, to match LLR v1.7. |
 | 1.7 | 2026-09-27 | Section 5: the hostile mock can also take an account's balance during a transfer, to match LLR v1.9. |
 | 1.8 | 2026-09-29 | Section 3, condition 4: state how LLR-SC-070 to 075 are satisfied. Condition 4 enumerated the absence requirements and was silent on the invariant requirements, which equally have no single implementing line, so the checker demanded a source reference the document did not say how to give. Found by the independent reviewer at the "SC invariants and ABI surface" group; the tagging it describes is what that group did. |
+| 1.9 | 2026-10-02 | Section 8: "FE pledge page" and "FE other views" become one group. Every group costs an implementer handoff and a review round, and at about 1.5 days per frontend group the walkthrough would land near the October 10 limit with no slack. The steps of section 8 are unchanged for the merged group. |

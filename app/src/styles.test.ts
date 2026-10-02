@@ -59,6 +59,12 @@ describe("LLR-FE-072 text contrast meets WCAG 2.1 AA in both themes", () => {
     it(`${name}: the focus ring is at least 3 to 1 against the page`, () => {
       expect(contrast(t["--focus"] as string, t["--bg"] as string)).toBeGreaterThanOrEqual(3);
     });
+
+    // WCAG 1.4.11: the border that marks a control is a graphic the user needs to find it.
+    it(`${name}: the border of a control is at least 3 to 1 against the page`, () => {
+      expect(t["--control-border"], "--control-border").toBeDefined();
+      expect(contrast(t["--control-border"] as string, t["--bg"] as string)).toBeGreaterThanOrEqual(3);
+    });
   }
 
   it("measures contrast correctly: black on white is 21 to 1 and equal colours are 1 to 1", () => {
@@ -86,6 +92,56 @@ describe("LLR-FE-072 keyboard focus is visible and layouts hold from 360 to 1440
     for (const m of css.matchAll(/(?<![-\w])(min-width|width):\s*(\d+)px/g)) {
       expect(Number(m[2]), m[0]).toBeLessThan(360);
     }
+  });
+
+  it("lets the wallet buttons wrap and gives every button a touch-sized height", () => {
+    const list = /\.wallet-bar ul\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(list).toMatch(/flex-wrap:\s*wrap/);
+    const button = /(?<![-\w.])button\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(button).toMatch(/min-height:\s*2\.75rem/);
+  });
+
+  it("draws a button's border in the control colour, and keeps the decorative border for rules", () => {
+    const button = /(?<![-\w.])button\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(button).toMatch(/border:\s*1px solid var\(--control-border\)/);
+    expect(button).toMatch(/font-size:\s*1rem/);
+  });
+
+  it("marks a pending control by more than colour: a dashed border, muted text, and a not-allowed cursor", () => {
+    const rule = /button\[aria-disabled="true"\]\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(rule).toMatch(/border-style:\s*dashed/);
+    expect(rule).toMatch(/color:\s*var\(--muted\)/);
+    expect(rule).toMatch(/cursor:\s*not-allowed/);
+    expect(css).not.toMatch(/button:disabled/);
+  });
+
+  it("lays the wallet bar out as one wrapping row of muted small text, with the notices on a row of their own", () => {
+    const bar = /\.wallet-bar\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(bar).toMatch(/display:\s*flex/);
+    expect(bar).toMatch(/flex-wrap:\s*wrap/);
+    expect(bar).toMatch(/align-items:\s*center/);
+    expect(bar).toMatch(/justify-content:\s*space-between/);
+    expect(bar).toMatch(/font-size:\s*0\.875rem/);
+    expect(bar).toMatch(/color:\s*var\(--muted\)/);
+    const paragraphs = /\.wallet-bar p\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(paragraphs).toMatch(/margin:\s*0\s*;/);
+    const area = /\.notice-area\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(area).toMatch(/flex-basis:\s*100%/);
+  });
+
+  it("gives the other-network state the notice colours, which are checked for contrast above", () => {
+    const rule = /\.wallet-status-action\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(rule).toMatch(/background:\s*var\(--banner-notice-bg\)/);
+    expect(rule).toMatch(/color:\s*var\(--banner-notice-fg\)/);
+  });
+
+  it("has no paragraph margin inside a notice", () => {
+    expect(/\.notice p\s*\{([^}]*)\}/.exec(css)?.[1] ?? "").toMatch(/margin:\s*0\s*;/);
+  });
+
+  it("holds the wallet area to the same column as the header", () => {
+    const group = /([^{}]*)\{[^}]*max-width:\s*44rem/.exec(css)?.[1] ?? "";
+    expect(group).toContain(".wallet-bar");
   });
 
   it("wraps long words, so an address or a transaction hash cannot push the page sideways", () => {

@@ -1,5 +1,5 @@
 import { type Transport, defineChain } from "viem";
-import { createConfig } from "wagmi";
+import { createConfig, injected } from "wagmi";
 import type { NetworkConfig, SelectedNetwork } from "../config/networks";
 import { createReadTransport } from "./transport";
 
@@ -15,7 +15,7 @@ export function chainFor(network: NetworkConfig) {
   });
 }
 
-/** @trace LLR-FE-003 LLR-FE-073 */
+/** @trace LLR-FE-003 LLR-FE-020 LLR-FE-073 */
 export function createAppConfig(
   network: SelectedNetwork,
   transport: Transport = createReadTransport(network.rpcUrls),
@@ -24,10 +24,29 @@ export function createAppConfig(
   return createConfig({
     chains: [chain],
     transports: { [chain.id]: transport },
-    // No wallet is connected in this build, so there is nothing to discover.
-    multiInjectedProviderDiscovery: false,
+    // EIP-6963 gives one connector per wallet that announces itself, including ones that announce late.
+    multiInjectedProviderDiscovery: true,
+    // The window.ethereum fallback. It has no rdns, so wagmi never drops it beside an announced wallet; the
+    // wallet bar hides it in that case. It also listens for no wallet events until it has been used.
+    connectors: [injected()],
     // A contract can answer a read with a URL for the client to fetch (EIP-3668). The Content-Security-Policy
     // allows only the configured RPCs, so the lookup is off rather than left to fail in the browser.
     ccipRead: false,
   });
+}
+
+/**
+ * What wallet_addEthereumChain carries beyond the chain id. Without it wagmi would send only the first RPC
+ * URL, so a wallet added on the first URL alone would have no fallback when that URL is down.
+ *
+ * @trace LLR-FE-022
+ */
+export function addChainParameter(network: NetworkConfig) {
+  const chain = chainFor(network);
+  return {
+    chainName: chain.name,
+    rpcUrls: [...network.rpcUrls],
+    blockExplorerUrls: [network.explorerUrl],
+    nativeCurrency: chain.nativeCurrency,
+  };
 }

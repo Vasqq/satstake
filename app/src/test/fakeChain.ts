@@ -110,6 +110,7 @@ export class FakeChain {
 
     switch (method) {
       case "eth_chainId":
+        await this.latency?.(record);
         return numberToHex(this.chainId);
       case "eth_getBlockByNumber": {
         const block = {

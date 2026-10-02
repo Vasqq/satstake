@@ -11,6 +11,7 @@ import { useHashRoute, useNavigated } from "./useHashRoute";
 import { NavigatedContext } from "./views/PageHeading";
 import { PledgeView } from "./views/PledgeView";
 import { AboutView, CreateView, HomeView, MineView, NotFoundView } from "./views/Views";
+import { WalletBar } from "./wallet/WalletBar";
 
 const NAV: { route: Route["name"]; href: string; label: string }[] = [
   { route: "create", href: "#/create", label: "Create" },
@@ -77,6 +78,7 @@ function Shell({ client, network }: { client: PublicClient; network: SelectedNet
   return (
     <NavigatedContext.Provider value={navigated}>
       <Header route={route} />
+      <WalletBar network={network} />
       {error && (
         <p className="banner banner-error" role="alert">
           {error}
@@ -103,6 +105,12 @@ function Shell({ client, network }: { client: PublicClient; network: SelectedNet
   );
 }
 
+/**
+ * Every read goes through the client of the configured chain, which never depends on a wallet, so each view
+ * renders the same with no wallet connected.
+ *
+ * @trace LLR-FE-021
+ */
 function ChainShell({ network }: { network: SelectedNetwork }) {
   const client = usePublicClient({ chainId: network.chainId });
   if (!client) return null;
