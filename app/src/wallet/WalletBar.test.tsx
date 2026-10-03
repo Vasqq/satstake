@@ -95,7 +95,7 @@ describe("LLR-FE-020 with no wallet at all, the application says a browser walle
     mountApp();
     expect(within(bar()).getByText(NO_WALLET)).toBeTruthy();
     expect(within(bar()).queryByRole("button")).toBeNull();
-    expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe("SatStake");
+    expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe("Lock Bitcoin against a promise.");
   });
 
   it("does not say it when a wallet is found", async () => {
@@ -239,7 +239,7 @@ describe("LLR-FE-020 the connected account is shown in shortened form and follow
 
 describe("LLR-FE-021 every read-only view renders fully without a connected wallet", () => {
   const views: [string, string][] = [
-    ["#/", "SatStake"],
+    ["#/", "Lock Bitcoin against a promise."],
     ["#/create", "Create a pledge"],
     ["#/mine", "My pledges"],
     ["#/about", "About SatStake"],

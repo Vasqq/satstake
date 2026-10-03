@@ -53,7 +53,7 @@ afterEach(() => {
 describe("LLR-FE-013 the shell shows the view for each route", () => {
   it("shows one view per documented route", async () => {
     const cases: [string, string][] = [
-      ["#/", "SatStake"],
+      ["#/", "Lock Bitcoin against a promise."],
       ["#/create", "Create a pledge"],
       ["#/mine", "My pledges"],
       ["#/about", "About SatStake"],
@@ -118,7 +118,7 @@ describe("LLR-FE-013 the shell shows the view for each route", () => {
 
   it("changes view when the hash changes", async () => {
     setup("#/");
-    expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe("SatStake");
+    expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe("Lock Bitcoin against a promise.");
     act(() => {
       window.location.hash = "#/about";
     });
@@ -503,7 +503,7 @@ describe("LLR-FE-072 each page sets the title and moves focus to its heading", (
 
   it("moves the title and the focus when the route changes", async () => {
     setup("#/");
-    await screen.findByRole("heading", { name: "SatStake", level: 1 });
+    await screen.findByRole("heading", { name: "Lock Bitcoin against a promise.", level: 1 });
     act(() => {
       window.location.hash = "#/about";
     });

@@ -4,21 +4,6 @@ import { PageHeading } from "./PageHeading";
 export const PLEDGE_NOT_FOUND_MESSAGE = "This pledge does not exist. Check the link.";
 
 /** @trace LLR-FE-013 */
-export function HomeView() {
-  return <PageHeading title="SatStake">SatStake</PageHeading>;
-}
-
-/** @trace LLR-FE-013 */
-export function MineView() {
-  return <PageHeading title="My pledges | SatStake">My pledges</PageHeading>;
-}
-
-/** @trace LLR-FE-013 */
-export function AboutView() {
-  return <PageHeading title="About SatStake">About SatStake</PageHeading>;
-}
-
-/** @trace LLR-FE-013 */
 export function NotFoundView() {
   return (
     <>

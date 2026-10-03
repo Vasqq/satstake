@@ -12,7 +12,10 @@ import { CreateView } from "./create/CreateView";
 import { useHashRoute, useNavigated } from "./useHashRoute";
 import { NavigatedContext } from "./views/PageHeading";
 import { PledgeView } from "./views/PledgeView";
-import { AboutView, HomeView, MineView, NotFoundView } from "./views/Views";
+import { AboutView } from "./views/AboutView";
+import { HomeView } from "./views/HomeView";
+import { MineView } from "./views/MineView";
+import { NotFoundView } from "./views/Views";
 import { WalletBar } from "./wallet/WalletBar";
 
 const NAV: { route: Route["name"]; href: string; label: string }[] = [
@@ -97,11 +100,11 @@ function Shell({ client, network }: { client: PublicClient; network: SelectedNet
         ))}
       </div>
       <main>
-        {route.name === "home" && <HomeView />}
+        {route.name === "home" && <HomeView reads={reads} network={network} />}
         {route.name === "create" && (
           <CreateView client={client} reads={reads} network={network} health={health} onCreated={setCreated} />
         )}
-        {route.name === "mine" && <MineView />}
+        {route.name === "mine" && <MineView reads={reads} network={network} />}
         {route.name === "about" && <AboutView />}
         {route.name === "pledge" && (
           <PledgeView
