@@ -1,9 +1,9 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { type Connector, useConnect, useConnection, useSwitchChain } from "wagmi";
 import { addChainParameter } from "../chain/wagmi";
 import type { SelectedNetwork } from "../config/networks";
 import { shortAddress } from "./address";
-import { RequestNotice } from "./failure";
+import { RequestNotice, useConnectionFailure } from "./failure";
 
 // The id wagmi gives the connector for window.ethereum, as set up in createAppConfig.
 const FALLBACK_ID = "injected";
@@ -23,12 +23,7 @@ export function WalletBar({ network }: { network: SelectedNetwork }) {
   const { switchChain, isPending: switching } = useSwitchChain();
   const statusRef = useRef<HTMLParagraphElement>(null);
 
-  // A notice belongs to the connection it was about. The key is read in the first render after the error
-  // arrives, which is after the failed attempt has settled the connection, and the notice goes when it changes.
-  const key = `${connection.status}|${connection.address ?? ""}|${connection.chainId ?? ""}`;
-  const [failure, setFailure] = useState<{ error: unknown; key: string | null } | null>(null);
-  if (failure !== null && failure.key === null) setFailure({ error: failure.error, key });
-  else if (failure !== null && failure.key !== key) setFailure(null);
+  const failure = useConnectionFailure();
 
   // Wallets that announce themselves are listed by name; window.ethereum is offered only when none does.
   const announced = connectors.filter((c) => c.id !== FALLBACK_ID); // LLR-FE-020
@@ -61,17 +56,17 @@ export function WalletBar({ network }: { network: SelectedNetwork }) {
 
   function pick(connector: Connector) {
     if (busy) return;
-    setFailure(null);
+    failure.clear();
     // The wallet is asked for accounts here and nowhere else, so nothing is requested before this click.
-    connect({ connector }, { onError: (error) => setFailure({ error, key: null }), onSuccess: moveFocus }); // LLR-FE-020
+    connect({ connector }, { onError: failure.fail, onSuccess: moveFocus }); // LLR-FE-020
   }
 
   function switchNetwork() {
     if (switching) return; // LLR-FE-022
-    setFailure(null);
+    failure.clear();
     switchChain(
       { chainId: network.chainId, addEthereumChainParameter: addChainParameter(network) }, // LLR-FE-022
-      { onError: (error) => setFailure({ error, key: null }), onSuccess: moveFocus },
+      { onError: failure.fail, onSuccess: moveFocus },
     );
   }
 
@@ -111,7 +106,7 @@ export function WalletBar({ network }: { network: SelectedNetwork }) {
           browser. You can read every page without one.
         </p>
       )}
-      <RequestNotice error={failure?.error ?? null} label="Wallet notices" />
+      <RequestNotice error={failure.error} label="Wallet notices" />
     </section>
   );
 }

@@ -4492,3 +4492,725 @@ it is equivalent.
 | 654 | source: signAuthorization planted in a comment in WalletBar | `src/wallet/WalletBar.tsx: import { useRef, useState } from "react"; -> import { useRef, useState } from "react"; // signAuthorization` | src/wallet src/noSigning.test.tsx src/chain/wagmi.test.ts | killed | no file of the application names a signing API, as a call, a hook, or a string finds none in any of them |
 | 655 | source: wallet_grantPermissions planted as a string in App.tsx | `src/App.tsx: const NAV: { -> const GRANT = "wallet_grantPermissions";\nconst NAV: {` | src/wallet src/noSigning.test.tsx src/chain/wagmi.test.ts | killed | no file of the application names a signing API, as a call, a hook, or a string finds none in any of them |
 | 656 | bar: a permission revoke the scan cannot see, sent when a wallet is picked | `src/wallet/WalletBar.tsx: connect({ connector }, { onError: (error) => setFailure({ error, key: null }), onSucces... -> connect({ connector }, { onError: (error) => setFailure({ error, key: null }), onSucces...` | src/wallet src/noSigning.test.tsx src/chain/wagmi.test.ts | killed | the application never asks a wallet to sign a message or typed data (the requests a wallet is sent) sends only account access, chain quer... |
+
+## FE create, 2026-10-02 (05 v1.14)
+
+Requirements: LLR-FE-030 to 037, with LLR-FE-060 pulled forward, and the carry-forwards from "FE wallet":
+LLR-FE-023 (the write gate on every write control, with its reasons beside it), LLR-FE-006 (creation off per
+token), LLR-FE-061 and 062 (notices removed on a new request or a connection change). Journeys UJ-04, UJ-10 to UJ-18.
+Tests: `app/src/create/{amount,deadline,validate,flow}.test.ts`, `app/src/create/CreateView.test.tsx`,
+`app/src/chain/errors.test.ts`; additions to `app/src/wallet/failure.test.tsx`, `app/src/styles.test.ts`,
+`app/src/noSigning.test.tsx` (a full create in the runtime drive, `eth_sendTransaction` now required), and
+`app/src/chain/reads.test.ts` (see the change to that scan below). Helpers: `app/src/test/fakeWorld.ts` (wallet and
+chain acting together: a sent transaction is decoded, mined at once, and its receipt put on the chain),
+`app/src/test/createHarness.tsx`, and `FakeWallet.onSend`, `FakeChain` balances, allowances, code, receipts.
+
+Change to an earlier group's test, made before red: the LLR-FE-010 scan forbade the names `parseEventLogs`,
+`decodeEventLog`, and `getTransactionReceipt` in every file, as a proxy for "never read logs". LLR-FE-037 requires
+decoding `PledgeCreated` from the creation receipt, which is one receipt the application was handed and not a
+search of the chain's logs. The names are now forbidden everywhere except `create/flow.ts` (a new test pins that
+exactly one file names them), and every node-side log, filter, and subscription name stays forbidden everywhere.
+The allowed `functionName` list gained `balanceOf`, `allowance`, `approve`, `createPledge`.
+
+### Red
+
+Method: `app/src/chain/errors.ts`, `app/src/create/amount.ts`, `deadline.ts`, `validate.ts`, and `flow.ts` exist
+as inert stubs with the final signatures (each returns the value that is wrong for every positive case: `null`,
+`{ ok: false }`, `{ valid: false }`, or throws "not implemented"); `CreateView` is still the heading-only view from the
+previous group, so the page has no form. Run from `app/`:
+`npm test -- src/create src/chain/errors.test.ts src/chain/reads.test.ts src/wallet/failure.test.tsx src/noSigning.test.tsx src/styles.test.ts`.
+The tests that pass against the stubs are negative-direction ones (a malformed amount is refused, a panic maps to no
+message, a preset needs no check) that an inert stub already satisfies; the mutation table flips each.
+All 86 tests of `CreateView.test.tsx` and the runtime drive of `noSigning.test.tsx` fail for one reason: the form is
+absent (`Unable to find a label with the text of: Promise`). Every other failure is the stub's wrong answer or
+`not implemented`. An earlier run of the same command had 21
+`TypeError` failures in `errors.test.ts`; they were a defect in the test (a viem wrapper that needs call arguments),
+fixed before this run.
+
+passed 125, failed 215, total 340
+
+```
+LLR-FE-074 the application never asks a wallet to sign a message or typed data (the requests a wallet is sent) sends only account access, chain queries, network switch or add, and transactions, across every wallet path :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-072 the form's controls and messages are as findable and as readable as the buttons styles the text fields, the select, and the text area together :: AssertionError: expected '' to contain 'select'
+LLR-FE-072 the form's controls and messages are as findable and as readable as the buttons draws their border in the control colour, so the field can be found :: AssertionError: expected '' to match /border:\s*1px solid var\(--control-bo…/
+LLR-FE-072 the form's controls and messages are as findable and as readable as the buttons gives them a touch-sized height, the page's text size, and the width of the column :: AssertionError: expected '' to match /min-height:\s*2\.75rem/
+LLR-FE-072 the form's controls and messages are as findable and as readable as the buttons frames a field's failure in the error colours and its warning in the notice colours, both checked for contrast above :: AssertionError: expected '' to match /background:\s*var\(--banner-error-bg\)/
+LLR-FE-072 the form's controls and messages are as findable and as readable as the buttons takes no room for a message that is not there, though its container stays in the page to be announced :: AssertionError: expected '' to match /padding:\s*0/
+LLR-FE-060 every custom error in the contract ABI has the message of section 2.2 maps each ABI error that section 2.2 lists to the words of its row :: AssertionError: expected [ 'AlreadySettled', …(18) ] to deeply equal []
+LLR-FE-060 every custom error in the contract ABI has the message of section 2.2 gives the token revert the words of its row :: AssertionError: expected '' to be 'The token issuer blocked this transfe…' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of AlreadySettled when a send fails with it :: AssertionError: expected null to be 'This pledge has already been settled.' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of DeadlineTooFar when a send fails with it :: AssertionError: expected null to be 'The deadline must be within one year.…' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of DeadlineTooSoon when a send fails with it :: AssertionError: expected null to be 'The deadline must be at least one min…' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of NotActive when a send fails with it :: AssertionError: expected null to be 'A verdict has already been recorded f…' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of NotReferee when a send fails with it :: AssertionError: expected null to be 'Only this pledge\'s referee can recor…' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of NotSettleable when a send fails with it :: AssertionError: expected null to be 'This pledge cannot be settled until t…' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of PartyIsContract when a send fails with it :: AssertionError: expected null to be 'The SatStake contract cannot be a par…' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of PartyIsStaker when a send fails with it :: AssertionError: expected null to be 'You cannot be your own referee or ben…' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of PledgeNotFound when a send fails with it :: AssertionError: expected null to be 'This pledge does not exist. Check the…' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of PromiseEmpty when a send fails with it :: AssertionError: expected null to be 'Write the promise you are making.' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of PromiseTooLong when a send fails with it :: AssertionError: expected null to be 'Shorten the promise to 280 bytes or f…' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of ReentrancyGuardReentrantCall when a send fails with it :: AssertionError: expected null to be 'This request called SatStake again be…' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of RefereeIsBeneficiary when a send fails with it :: AssertionError: expected null to be 'The referee and the beneficiary must …' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of SafeERC20FailedOperation when a send fails with it :: AssertionError: expected null to be 'The token refused the transfer, so no…' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of TokenNotAllowed when a send fails with it :: AssertionError: expected null to be 'This token is not accepted. Choose ci…' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of UnexpectedTransferAmount when a send fails with it :: AssertionError: expected null to be 'The token transferred a different amo…' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of VerdictWindowClosed when a send fails with it :: AssertionError: expected null to be 'The deadline has passed, so a verdict…' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of ZeroAddress when a send fails with it :: AssertionError: expected null to be 'Enter a valid address for the referee…' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the message of ZeroAmount when a send fails with it :: AssertionError: expected null to be 'Enter an amount above zero.' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised finds the error however deep in the cause chain it sits :: AssertionError: expected null to be 'The deadline must be at least one min…' // Object.is equality
+LLR-FE-060 a failed request shows the message of the error the contract raised shows the token's message for a revert string, which SatStake never raises itself :: AssertionError: expected null to be 'The token issuer blocked this transfe…' // Object.is equality
+LLR-FE-010 reads go through the six view functions only in the source names the receipt and event-decoding functions in the file that reads the creation receipt, and nowhere else :: AssertionError: expected [] to deeply equal [ 'create/flow.ts' ]
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field has a labelled control for every field, in a form with a name :: TestingLibraryElementError: Unable to find an accessible element with the role "form" and name "New pledge"
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field offers the configured tokens by symbol :: TestingLibraryElementError: Unable to find a label with the text of: Token
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows no failure on a form nobody has touched, and submit is disabled :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Promise beside it for {"promise":""} :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Promise beside it for {"promise":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Promise beside it for {"promise":"éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Amount beside it for {"amount":"0"} :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Amount beside it for {"amount":"1,5"} :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Amount beside it for {"amount":"1.1234567"} :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Amount beside it for {"amount":"100.000001"} :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Referee address beside it for {"referee":"0x12"} :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Referee address beside it for {"referee":"0xAb12AB12Ab12AB12ab12Ab12ab12aB12AB12aB12"} :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Referee address beside it for {"referee":"0x3Ae26b15B9085ddB223FfEb503B4f713e682Cac4"} :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Beneficiary address beside it for {"beneficiary":""} :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Beneficiary address beside it for {"beneficiary":"0xAb12AB12Ab12AB12ab12Ab12ab12aB12AB12aB12"} :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Beneficiary address beside it for {"beneficiary":"0x2222222222222222222222222222222222222222"} :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows a failure for the deadline when none is chosen :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows no failure beside a field that is correct, and does not mark it invalid :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field keeps submit disabled until every check passes, and enables it when the last one does :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field names the fields still to complete beside the submit control, and only those :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 the create form lays out its fields and shows each failure beside its own field announces each failure in a region that is in the page before the failure, and links it to its control :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 a wallet with no tokens cannot start a pledge, and is told why (UJ-04) explains a zero balance at once, keeps submit disabled, and raises no wallet prompt :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-030 a wallet with no tokens cannot start a pledge, and is told why (UJ-04) explains it before anything is typed :: Error: Unable to find a label with the text of: Amount
+LLR-FE-030 a wallet with no tokens cannot start a pledge, and is told why (UJ-04) shows the balance of the chosen token in that token's units, and follows the token :: Error: Unable to find a label with the text of: Amount
+LLR-FE-030 a wallet with no tokens cannot start a pledge, and is told why (UJ-04) says the balance could not be read, and keeps submit disabled, when the read fails :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-031 the deadline is a preset or a custom date and time, judged against chain time offers the four presets and a custom choice, as radio buttons in one group :: TestingLibraryElementError: Unable to find an accessible element with the role "group" and name "Deadline"
+LLR-FE-031 the deadline is a preset or a custom date and time, judged against chain time shows the date and time field only for the custom choice :: TestingLibraryElementError: Unable to find an accessible element with the role "radio" and name "Custom"
+LLR-FE-031 the deadline is a preset or a custom date and time, judged against chain time rejects a custom time less than 90 seconds from chain time and accepts one two minutes on :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-031 the deadline is a preset or a custom date and time, judged against chain time judges a custom time against chain time and not the device's clock :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-031 the deadline is a preset or a custom date and time, judged against chain time sends a custom deadline as the Unix time of the date and time chosen :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-031 the deadline is a preset or a custom date and time, judged against chain time computes the 2 minutes preset from chain time read after the approval has confirmed :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-031 the deadline is a preset or a custom date and time, judged against chain time computes the 1 day preset from chain time read after the approval has confirmed :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-031 the deadline is a preset or a custom date and time, judged against chain time computes the 7 days preset from chain time read after the approval has confirmed :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-031 the deadline is a preset or a custom date and time, judged against chain time computes the 30 days preset from chain time read after the approval has confirmed :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-031 the deadline is a preset or a custom date and time, judged against chain time computes it from a block read after the button was pressed, when no approval is needed :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-032 amounts are converted with the token's own decimals, never the native balance or 18 converts a USDC amount with 6 decimals, in the approval and in the creation :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-032 amounts are converted with the token's own decimals, never the native balance or 18 converts a cirBTC amount with 8 decimals, and approves and pledges that token :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-032 amounts are converted with the token's own decimals, never the native balance or 18 reads the allowance of the chosen token from the contract the pledge goes to :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-033 creation is preceded by an approval of exactly the amount, only when the allowance is short asks the wallet twice, approval first and creation second, with the form's values :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-033 creation is preceded by an approval of exactly the amount, only when the allowance is short skips the approval and asks the wallet once when the allowance already covers the amount (UJ-13) :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-033 creation is preceded by an approval of exactly the amount, only when the allowance is short approves exactly the amount when the allowance is one unit short, and never an unlimited one :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-033 creation is preceded by an approval of exactly the amount, only when the allowance is short shows progress for both steps, with the step that is waiting for the wallet :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-033 creation is preceded by an approval of exactly the amount, only when the allowance is short shows the creation alone when no approval is needed :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-033 creation is preceded by an approval of exactly the amount, only when the allowance is short shows that it is waiting for the network while a step is being confirmed :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-033 creation is preceded by an approval of exactly the amount, only when the allowance is short puts nothing in the progress area before a request and clears it when a request fails :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-033 every send names the configured chain, so the wallet's chain is read when it is sent does not send an approval when the wallet moved to another network without telling the page :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-033 every send names the configured chain, so the wallet's chain is read when it is sent does not send the creation when the wallet moves after the approval was confirmed :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-034 submission requires the statement about the referee and the beneficiary to be ticked states that the referee alone decides and that a broken or missed promise pays the beneficiary for good :: TestingLibraryElementError: Unable to find an accessible element with the role "checkbox" and name "I understand that the referee alone decides whethe
+LLR-FE-034 submission requires the statement about the referee and the beneficiary to be ticked keeps submit disabled with everything else correct until the box is ticked, and says what to do :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-034 submission requires the statement about the referee and the beneficiary to be ticked untick disables it again :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-035 the form warns, without blocking, when the referee or beneficiary has deployed code warns beside the referee, still allows creation, and creates :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-035 the form warns, without blocking, when the referee or beneficiary has deployed code warns beside the beneficiary, and says it may be unable to act on the stake :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-035 the form warns, without blocking, when the referee or beneficiary has deployed code is not an error: the field is not marked invalid and the warning is announced politely :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-035 the form warns, without blocking, when the referee or beneficiary has deployed code does not warn for an address with no code, and asks the chain only about an address that is well formed :: TestingLibraryElementError: Unable to find a label with the text of: Referee address
+LLR-FE-036 while a transaction from the form is pending, submit is disabled and a second press does nothing (UJ-16) ignores presses while the wallet's prompt is open, and creates exactly once :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-036 while a transaction from the form is pending, submit is disabled and a second press does nothing (UJ-16) ignores presses while the approval is being confirmed, and while the creation is :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-036 while a transaction from the form is pending, submit is disabled and a second press does nothing (UJ-16) answers two presses made before the page can render in between with one request :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-036 while a transaction from the form is pending, submit is disabled and a second press does nothing (UJ-16) is enabled again after a request fails, so the staker can try once more :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-037 after creation the page goes to the pledge, decoded from the receipt, and offers a copy-link control goes to the pledge page of the identifier in the receipt's event :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-037 after creation the page goes to the pledge, decoded from the receipt, and offers a copy-link control offers a control that copies the address of the pledge page, and says whether it worked :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-037 after creation the page goes to the pledge, decoded from the receipt, and offers a copy-link control says when the link could not be copied :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-037 after creation the page goes to the pledge, decoded from the receipt, and offers a copy-link control moves focus to the new page's heading, since the button pressed is gone :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-037 after creation the page goes to the pledge, decoded from the receipt, and offers a copy-link control offers the copy-link control for that pledge only, and not on a pledge page visited another way :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-037 after creation the page goes to the pledge, decoded from the receipt, and offers a copy-link control stays on the form, and says that something went wrong, when the receipt has no PledgeCreated event :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-023 every write control uses the write gate, with its reasons beside the control is disabled with the reason beside it when no wallet is connected, and raises no prompt :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-023 every write control uses the write gate, with its reasons beside the control is disabled with the reason beside it when the wallet is on another network, though the form is complete :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-023 every write control uses the write gate, with its reasons beside the control is disabled with the reason beside it when the network check found another chain :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-023 every write control uses the write gate, with its reasons beside the control becomes enabled when the wallet is switched, with the reason gone :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-023 every write control uses the write gate, with its reasons beside the control reads the token and network checks once, since the page uses the shell's checks and not a second set :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-006 creation in a token is off while its reading does not match, and on in another disables submit and says so beside the token field when the chosen token reads differently :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-006 creation in a token is off while its reading does not match, and on in another keeps it off for a token whose reading could not be completed :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-060 a failure the contract or the token reported is shown with the message of section 2.2 shows the message of a contract error the wallet returned, and keeps every value :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-060 a failure the contract or the token reported is shown with the message of section 2.2 shows the token's message when the token refuses the approval, and sends no creation :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-060 a failure the contract or the token reported is shown with the message of section 2.2 shows the contract's message for a token that refused the transfer without a reason :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-060 a failure the contract or the token reported is shown with the message of section 2.2 styles a mapped failure as a failure, and offers no raw error to copy for it :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-061 a rejection in the wallet keeps the form and shows the neutral message (UJ-14) shows the neutral message with no failure styling when the approval is refused, and requests nothing more :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-061 a rejection in the wallet keeps the form and shows the neutral message (UJ-14) keeps the exact allowance when the creation is refused after the approval, and retries with one prompt :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-061 a rejection in the wallet keeps the form and shows the neutral message (UJ-14) removes the message when a new request starts :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-061 a rejection in the wallet keeps the form and shows the neutral message (UJ-14) removes the message when the wallet's chain changes :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-061 a rejection in the wallet keeps the form and shows the neutral message (UJ-14) removes the message when the wallet's account changes :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-062 any other failure says nothing was changed and offers the raw error (UJ-15) shows the message and a control to copy the error when the wallet fails in some other way :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-062 any other failure says nothing was changed and offers the raw error (UJ-15) explains a creation that was mined and reverted after the approval, keeps the exact allowance, and retries with one prompt :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-062 any other failure says nothing was changed and offers the raw error (UJ-15) explains a token that blocked the creation after the approval, and keeps the allowance (UJ-15) :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-072 the form is operable by keyboard and its changes are announced has the status regions in the page from the first render, so what fills them is announced :: TestingLibraryElementError: Unable to find an accessible element with the role "status" and name "Pledge progress"
+LLR-FE-072 the form is operable by keyboard and its changes are announced uses native controls throughout, which a keyboard reaches in order and operates :: TestingLibraryElementError: Unable to find an accessible element with the role "form" and name "New pledge"
+LLR-FE-072 the form is operable by keyboard and its changes are announced lays the controls out in the order a person fills them in :: TestingLibraryElementError: Unable to find a label with the text of: Promise
+LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals accepts 1 at 6 decimals as 1000000n :: AssertionError: expected { ok: false, reason: 'syntax' } to deeply equal { ok: true, value: 1000000n }
+LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals accepts 0 at 6 decimals as 0n :: AssertionError: expected { ok: false, reason: 'syntax' } to deeply equal { ok: true, value: 0n }
+LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals accepts 10.5 at 6 decimals as 10500000n :: AssertionError: expected { ok: false, reason: 'syntax' } to deeply equal { ok: true, value: 10500000n }
+LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals accepts 0.000001 at 6 decimals as 1n :: AssertionError: expected { ok: false, reason: 'syntax' } to deeply equal { ok: true, value: 1n }
+LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals accepts 12345678901234567890 at 6 decimals as 12345678901234567890000000n :: AssertionError: expected { ok: false, reason: 'syntax' } to deeply equal { ok: true, …(1) }
+LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals accepts 1.5 at 8 decimals as 150000000n :: AssertionError: expected { ok: false, reason: 'syntax' } to deeply equal { ok: true, value: 150000000n }
+LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals accepts 0.00000001 at 8 decimals as 1n :: AssertionError: expected { ok: false, reason: 'syntax' } to deeply equal { ok: true, value: 1n }
+LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals accepts 21 at 8 decimals as 2100000000n :: AssertionError: expected { ok: false, reason: 'syntax' } to deeply equal { ok: true, value: 2100000000n }
+LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals accepts 007 at 6 decimals as 7000000n :: AssertionError: expected { ok: false, reason: 'syntax' } to deeply equal { ok: true, value: 7000000n }
+LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals accepts .5 at 6 decimals as 500000n :: AssertionError: expected { ok: false, reason: 'syntax' } to deeply equal { ok: true, value: 500000n }
+LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals accepts 5. at 6 decimals as 5000000n :: AssertionError: expected { ok: false, reason: 'syntax' } to deeply equal { ok: true, value: 5000000n }
+LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals accepts 1.50 at 6 decimals as 1500000n :: AssertionError: expected { ok: false, reason: 'syntax' } to deeply equal { ok: true, value: 1500000n }
+LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals converts with the decimals of the token it is given and never with 18 :: AssertionError: expected { ok: false, reason: 'syntax' } to deeply equal { ok: true, value: 1000000n }
+LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals refuses an empty entry :: AssertionError: expected { ok: false, reason: 'syntax' } to deeply equal { ok: false, reason: 'empty' }
+LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals refuses one more fractional digit than the token has, even when it is a zero :: AssertionError: expected { ok: false, reason: 'syntax' } to deeply equal { ok: false, reason: 'precision' }
+LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals accepts exactly as many fractional digits as the token has :: AssertionError: expected { ok: false, reason: 'syntax' } to deeply equal { ok: true, value: 123456n }
+LLR-FE-031 the deadline input offers four presets and a custom date and time offers 2 minutes, 1 day, 7 days, and 30 days, in that order, and nothing else :: AssertionError: expected [] to deeply equal [ [ '2 minutes', 120n ], …(3) ]
+LLR-FE-031 the deadline input offers four presets and a custom date and time computes a preset deadline as the chain time it is given plus the preset's seconds :: AssertionError: expected 0n to be 1789500620n // Object.is equality
+LLR-FE-031 a custom deadline earlier than chain time plus 90 seconds is rejected states the two limits: 90 seconds ahead and one year (365 days) ahead :: AssertionError: expected 0n to be 90n // Object.is equality
+LLR-FE-031 a custom deadline earlier than chain time plus 90 seconds is rejected rejects 89 seconds ahead and accepts 90 and 91 :: AssertionError: expected 'invalid' to be 'tooSoon' // Object.is equality
+LLR-FE-031 a custom deadline earlier than chain time plus 90 seconds is rejected rejects a time already past, and the chain time itself :: AssertionError: expected 'invalid' to be 'tooSoon' // Object.is equality
+LLR-FE-031 a custom deadline earlier than chain time plus 90 seconds is rejected accepts exactly 365 days ahead and rejects one second more :: AssertionError: expected 'invalid' to be 'ok' // Object.is equality
+LLR-FE-031 a custom deadline earlier than chain time plus 90 seconds is rejected says it cannot judge before chain time is known, and that nothing was entered when it was not :: AssertionError: expected 'invalid' to be 'noClock' // Object.is equality
+LLR-FE-031 the custom date and time is read as the visitor's local time reads a local date and time to the Unix second it names there :: AssertionError: expected null to be 1791045000n // Object.is equality
+LLR-FE-033 the allowance is read first, and approval is requested only when it is short, for exactly the amount approves, waits for the approval receipt, and only then requests creation :: Error: not implemented
+LLR-FE-033 the allowance is read first, and approval is requested only when it is short, for exactly the amount skips the approval when the allowance already covers the amount, and asks the wallet once :: Error: not implemented
+LLR-FE-033 the allowance is read first, and approval is requested only when it is short, for exactly the amount approves when the allowance is one unit short, and skips it when it is one unit over :: Error: not implemented
+LLR-FE-033 the allowance is read first, and approval is requested only when it is short, for exactly the amount approves exactly the amount and never more, whatever part of it is already allowed :: Error: not implemented
+LLR-FE-033 the allowance is read first, and approval is requested only when it is short, for exactly the amount does not request creation until the approval receipt has arrived :: AssertionError: expected [] to deeply equal [ Array(3) ]
+LLR-FE-033 the allowance is read first, and approval is requested only when it is short, for exactly the amount stops at a refused approval with the wallet's own error, and requests nothing more :: Error: expected Error: not implemented to be Error: User rejected the request. { code: … } // Object.is equality
+LLR-FE-033 the allowance is read first, and approval is requested only when it is short, for exactly the amount stops at an approval that was mined and reverted, and requests no creation :: Error: expected [Function] to throw error matching /approval.*reverted/i but got 'not implemented'
+LLR-FE-033 the allowance is read first, and approval is requested only when it is short, for exactly the amount passes on the wallet's own error when creation is refused, after the approval :: Error: expected Error: not implemented to be Error: User rejected the request. { code: … } // Object.is equality
+LLR-FE-033 the allowance is read first, and approval is requested only when it is short, for exactly the amount fails when the creation was mined and reverted :: Error: expected [Function] to throw error matching /creation.*reverted/i but got 'not implemented'
+LLR-FE-033 the allowance is read first, and approval is requested only when it is short, for exactly the amount reads the allowance again on every run, so a retry after a failure skips an approval that stood :: Error: expected [Function] to throw error including 'x' but got 'not implemented'
+LLR-FE-033 progress is shown for both steps walks the approval and the creation through the wallet and the network, in order :: Error: not implemented
+LLR-FE-033 progress is shown for both steps shows only the creation when the approval is not needed :: Error: not implemented
+LLR-FE-031 a preset deadline is computed from chain time read just before the creation request, after any approval reads chain time after the approval receipt and adds the preset to it :: Error: not implemented
+LLR-FE-031 a preset deadline is computed from chain time read just before the creation request, after any approval reads chain time once, and not before the approval, when no approval is needed :: Error: not implemented
+LLR-FE-031 a preset deadline is computed from chain time read just before the creation request, after any approval sends a custom deadline as it was chosen :: Error: not implemented
+LLR-FE-037 the pledge identifier is decoded from the PledgeCreated event of the creation receipt returns the identifier the receipt's event carries :: Error: not implemented
+LLR-FE-037 the pledge identifier is decoded from the PledgeCreated event of the creation receipt finds the event among the token's own logs :: Error: not implemented
+LLR-FE-037 the pledge identifier is decoded from the PledgeCreated event of the creation receipt ignores the same event from any other address, even when it comes first :: Error: not implemented
+LLR-FE-037 the pledge identifier is decoded from the PledgeCreated event of the creation receipt matches the contract's address without regard to letter case :: Error: not implemented
+LLR-FE-037 the pledge identifier is decoded from the PledgeCreated event of the creation receipt fails when the receipt holds no PledgeCreated from the contract :: AssertionError: expected [Function] to throw error matching /PledgeCreated/ but got 'not implemented'
+LLR-FE-037 the pledge identifier is decoded from the PledgeCreated event of the creation receipt fails the creation when its receipt lacks the event, rather than guessing an identifier :: Error: expected [Function] to throw error matching /PledgeCreated/ but got 'not implemented'
+LLR-FE-030 the create form passes a complete, correct entry has no error and is valid :: AssertionError: expected { errors: {}, valid: false } to deeply equal { errors: {}, valid: true }
+LLR-FE-030 the promise is measured in UTF-8 bytes (LLR-SC-026) counts bytes, not characters :: AssertionError: expected +0 to be 1 // Object.is equality
+LLR-FE-030 the promise is measured in UTF-8 bytes (LLR-SC-026) asks for a promise when there is none :: AssertionError: expected undefined to be 'Write the promise you are making.' // Object.is equality
+LLR-FE-030 the promise is measured in UTF-8 bytes (LLR-SC-026) accepts 280 bytes and refuses 281 :: AssertionError: expected undefined to be 'Shorten the promise to 280 bytes or f…' // Object.is equality
+LLR-FE-030 the promise is measured in UTF-8 bytes (LLR-SC-026) refuses text that is short in characters and long in bytes :: AssertionError: expected undefined to be 'Shorten the promise to 280 bytes or f…' // Object.is equality
+LLR-FE-030 the token must be one the contract accepts (LLR-SC-021) and one the application has confirmed refuses a token that is not on the configured list :: AssertionError: expected undefined to be 'This token is not accepted. Choose ci…' // Object.is equality
+LLR-FE-030 the token must be one the contract accepts (LLR-SC-021) and one the application has confirmed refuses a configured token whose reading does not match, and names it :: AssertionError: expected undefined to be 'USDC cannot be used for new pledges r…' // Object.is equality
+LLR-FE-030 the token must be one the contract accepts (LLR-SC-021) and one the application has confirmed accepts either configured token, with its own decimals :: AssertionError: expected { errors: {}, valid: false } to deeply equal { errors: {}, valid: true }
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance says to enter an amount above zero for "" :: AssertionError: expected undefined to be 'Enter an amount above zero.' // Object.is equality
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance says to enter an amount above zero for "0" :: AssertionError: expected undefined to be 'Enter an amount above zero.' // Object.is equality
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance says to enter an amount above zero for "0.0" :: AssertionError: expected undefined to be 'Enter an amount above zero.' // Object.is equality
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance says to enter an amount above zero for "0.000000" :: AssertionError: expected undefined to be 'Enter an amount above zero.' // Object.is equality
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance says to enter an amount above zero for "00" :: AssertionError: expected undefined to be 'Enter an amount above zero.' // Object.is equality
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance says to enter an amount above zero for ".0" :: AssertionError: expected undefined to be 'Enter an amount above zero.' // Object.is equality
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance says what an amount is made of for "1,5" :: AssertionError: expected undefined to be 'Use digits and at most one decimal po…' // Object.is equality
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance says what an amount is made of for "-1" :: AssertionError: expected undefined to be 'Use digits and at most one decimal po…' // Object.is equality
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance says what an amount is made of for "1e6" :: AssertionError: expected undefined to be 'Use digits and at most one decimal po…' // Object.is equality
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance says what an amount is made of for " 1" :: AssertionError: expected undefined to be 'Use digits and at most one decimal po…' // Object.is equality
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance says what an amount is made of for "1.2.3" :: AssertionError: expected undefined to be 'Use digits and at most one decimal po…' // Object.is equality
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance says what an amount is made of for "abc" :: AssertionError: expected undefined to be 'Use digits and at most one decimal po…' // Object.is equality
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance says what an amount is made of for "." :: AssertionError: expected undefined to be 'Use digits and at most one decimal po…' // Object.is equality
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance says how many places the token has when there are more :: AssertionError: expected undefined to be 'USDC has 6 decimal places. Remove the…' // Object.is equality
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance accepts an amount equal to the balance and refuses one smallest unit above it :: AssertionError: expected undefined to be 'Your balance is 2 USDC, which is less…' // Object.is equality
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance states the balance in the token's own units, with its symbol :: AssertionError: expected undefined to be 'Your balance is 1.5 USDC, which is le…' // Object.is equality
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance explains a balance of zero in plain words, whatever has been typed (UJ-04) :: AssertionError: expected undefined to be 'You have no USDC in this wallet, so t…' // Object.is equality
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance does not compare with a balance it has not read, and says why the amount cannot be checked :: AssertionError: expected { errors: {}, valid: false } to deeply equal { …(2) }
+LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance reports a malformed amount before it says the balance is unread :: AssertionError: expected undefined to be 'Use digits and at most one decimal po…' // Object.is equality
+LLR-FE-030 the referee and the beneficiary are addresses, not zero, not the contract, not the staker (LLR-SC-023) refuses "" as an address, beside the field it was typed in :: AssertionError: expected undefined to be 'Enter a valid address for the referee…' // Object.is equality
+LLR-FE-030 the referee and the beneficiary are addresses, not zero, not the contract, not the staker (LLR-SC-023) refuses "0x123" as an address, beside the field it was typed in :: AssertionError: expected undefined to be 'Enter a valid address for the referee…' // Object.is equality
+LLR-FE-030 the referee and the beneficiary are addresses, not zero, not the contract, not the staker (LLR-SC-023) refuses "not an address" as an address, beside the field it was typed in :: AssertionError: expected undefined to be 'Enter a valid address for the referee…' // Object.is equality
+LLR-FE-030 the referee and the beneficiary are addresses, not zero, not the contract, not the staker (LLR-SC-023) refuses "0x222222222222222222222222222222222222222" as an address, beside the field it was typed in :: AssertionError: expected undefined to be 'Enter a valid address for the referee…' // Object.is equality
+LLR-FE-030 the referee and the beneficiary are addresses, not zero, not the contract, not the staker (LLR-SC-023) refuses "0x22222222222222222222222222222222222222220" as an address, beside the field it was typed in :: AssertionError: expected undefined to be 'Enter a valid address for the referee…' // Object.is equality
+LLR-FE-030 the referee and the beneficiary are addresses, not zero, not the contract, not the staker (LLR-SC-023) refuses "2222222222222222222222222222222222222222" as an address, beside the field it was typed in :: AssertionError: expected undefined to be 'Enter a valid address for the referee…' // Object.is equality
+LLR-FE-030 the referee and the beneficiary are addresses, not zero, not the contract, not the staker (LLR-SC-023) refuses " 0x2222222222222222222222222222222222222222" as an address, beside the field it was typed in :: AssertionError: expected undefined to be 'Enter a valid address for the referee…' // Object.is equality
+LLR-FE-030 the referee and the beneficiary are addresses, not zero, not the contract, not the staker (LLR-SC-023) refuses a mixed-case address whose checksum is wrong, and accepts the same address in one case :: AssertionError: expected undefined to be 'Enter a valid address for the referee…' // Object.is equality
+LLR-FE-030 the referee and the beneficiary are addresses, not zero, not the contract, not the staker (LLR-SC-023) refuses the zero address for either party, with the same words :: AssertionError: expected undefined to be 'Enter a valid address for the referee…' // Object.is equality
+LLR-FE-030 the referee and the beneficiary are addresses, not zero, not the contract, not the staker (LLR-SC-023) refuses the SatStake contract as either party, in any letter case :: AssertionError: expected undefined to be 'The SatStake contract cannot be a par…' // Object.is equality
+LLR-FE-030 the referee and the beneficiary are addresses, not zero, not the contract, not the staker (LLR-SC-023) refuses the connected account as either party, in any letter case :: AssertionError: expected undefined to be 'You cannot be your own referee or ben…' // Object.is equality
+LLR-FE-030 the referee and the beneficiary are addresses, not zero, not the contract, not the staker (LLR-SC-023) checks the zero address, then the contract, then the staker, as the contract does :: AssertionError: expected {} to deeply equal { …(2) }
+LLR-FE-030 the referee and the beneficiary differ (LLR-SC-024) says so beside the beneficiary when both are the same address, in any letter case :: AssertionError: expected {} to deeply equal { Object (beneficiary) }
+LLR-FE-030 the referee and the beneficiary differ (LLR-SC-024) says nothing about the pair while either address has a fault of its own :: AssertionError: expected {} to deeply equal { …(2) }
+LLR-FE-030 the deadline is chosen, and a custom one is judged against chain time (LLR-SC-025) asks for a deadline when none is chosen :: AssertionError: expected undefined to be 'Choose a deadline.' // Object.is equality
+LLR-FE-030 the deadline is chosen, and a custom one is judged against chain time (LLR-SC-025) asks for a date and time when the custom entry is empty or unreadable :: AssertionError: expected undefined to be 'Pick a date and time.' // Object.is equality
+LLR-FE-030 the deadline is chosen, and a custom one is judged against chain time (LLR-SC-025) refuses a custom time less than 90 seconds from chain time, and accepts one at 120 seconds :: AssertionError: expected undefined to be 'The deadline must be at least 90 seco…' // Object.is equality
+LLR-FE-030 the deadline is chosen, and a custom one is judged against chain time (LLR-SC-025) refuses a custom time more than a year from chain time :: AssertionError: expected undefined to be 'The deadline must be within one year.…' // Object.is equality
+LLR-FE-030 the deadline is chosen, and a custom one is judged against chain time (LLR-SC-025) judges against the chain time it is given, whatever the device's clock says :: AssertionError: expected undefined to be 'The deadline must be at least 90 seco…' // Object.is equality
+LLR-FE-030 the deadline is chosen, and a custom one is judged against chain time (LLR-SC-025) says it is waiting for chain time rather than judging a custom time without it :: AssertionError: expected { errors: {}, valid: false } to deeply equal { …(2) }
+LLR-FE-030 the deadline is chosen, and a custom one is judged against chain time (LLR-SC-025) does not need chain time for a preset :: AssertionError: expected { errors: {}, valid: false } to deeply equal { errors: {}, valid: true }
+LLR-FE-030 submission stays unavailable until every check passes reports every failing field at once, each beside its own field :: AssertionError: expected [] to deeply equal [ 'acknowledged', 'amount', …(4) ]
+LLR-FE-030 submission stays unavailable until every check passes becomes valid only when the last fault is fixed, whichever it is :: AssertionError: expected false to be true // Object.is equality
+LLR-FE-030 submission stays unavailable until every check passes requires the acknowledgement of the trust statement (LLR-FE-034) :: AssertionError: expected { errors: {}, valid: false } to deeply equal { …(2) }
+LLR-FE-060 a failure the contract reported shows the message of its error and not the general one shows the words of section 2.2 for the error, in the failure style :: TestingLibraryElementError: Unable to find an element with the text: Write the promise you are making.. This could be because the text is broken up by
+LLR-FE-060 a failure the contract reported shows the message of its error and not the general one offers no raw error to copy for an error it can explain :: AssertionError: expected <button type="button"></button> to be null
+LLR-FE-060 a failure the contract reported shows the message of its error and not the general one replaces the message in the same status container when the error changes :: AssertionError: expected 'Something went wrong. Nothing was cha…' to be 'Write the promise you are making.' // Object.is equality
+```
+
+### Red, re-run (fresh implementer)
+
+Same command: passed 172, failed 168, total 340, one unhandled rejection from the `flow.ts` stub. The previous
+implementer had already replaced three stubs with code before it stopped, so these 47 tests of the recorded 215 now
+pass with no change to any test: 16 of `amount.test.ts`, 8 of `deadline.test.ts`, and 23 of `errors.test.ts`
+(the `LLR-FE-060` mapping rows). Still red for the reasons recorded above:
+all 86 of `CreateView.test.tsx` (form absent), 21 of `flow.test.ts` (`not implemented`), 51 of
+`validate.test.ts` (inert result), 5 of `styles.test.ts`, 3 of `failure.test.tsx`, 1 of `noSigning.test.tsx`,
+1 of `reads.test.ts`. No test changed since the record; their red was observed against the inert stubs above and
+the amount, deadline, and errors modules are covered by the mutation pass below.
+
+### Green
+
+Implemented in `create/validate.ts`, `create/flow.ts`, `create/CreateView.tsx`, `create/CopyLink.tsx`, `wallet/failure.tsx`
+(the mapped message and `useConnectionFailure`, which `WalletBar` now uses too), `App.tsx`, `styles.css`.
+`npm test` from `app/`: passed 627, skipped 9 (the live tests), failed 0.
+
+Two tests were changed after red, both defects in the test and neither weakening what it checks. (1)
+`CreateView.test.tsx` LLR-FE-023 "is disabled with the reason beside it when no wallet is connected": the assertion
+for "Connect a wallet to act." ran in the same tick as `fill()`, when wagmi's reconnect attempt had not settled and
+the gate's reason is "Waiting for your wallet to connect." (`gate.test.tsx` pins that text); it is now inside
+`waitFor`, and a probe showed the reason does settle to the expected text. (2) LLR-FE-062 "shows the message and a
+control to copy the error": it looked for the copy button inside the status region, while `failure.test.tsx`
+("keeps the copy button outside the live region") requires it outside; it now looks in the notice area that holds both.
+
+### Mutations 660 to 750
+
+Runner `cache/mutate.mjs` (gitignored), rows in `cache/mutations-create.mjs`: one edit to a source file, then
+`npx vitest run` over the whole unit suite (live and build tests excluded), restore, and a hash of the whole source
+tree before and after. Logic only: amount parsing, deadline judgement, validation order and messages, error mapping,
+the flow, and the gates and guards in `CreateView`; no markup, copy, or styles. 90 rows: 89 killed, 0 survived, 1
+equivalent (732). The first full run (91 rows, `TREE RESTORED (hash equal)`) left 11 survivors. Their dispositions:
+
+- 688, 690, 697 (letter case of the staker, the referee against the beneficiary, and a token address): the
+  addresses in the tests were all digits, which have no case, so the comparison was never exercised. New tests
+  "LLR-FE-030 addresses are compared without regard to letter case" (3 tests, `validate.test.ts`) use lettered
+  addresses and kill all three.
+- 694, 695 (valid without a known staker, valid without a read balance): the one test gave both as missing at once.
+  New test "is not valid for want of either one alone" kills both.
+- 713 (a name such as `constructor` found on `Object`): new test "does not take the name of a property every object
+  has for the name of an error" (`errors.test.ts`) kills it.
+- 728 (promise trimmed before it is sent), 734 (token failure shown only after the field is touched), 735 (token
+  failure shown before the first reading): new `CreateView.test.tsx` tests "sends the promise exactly as it was
+  typed, spaces included", "says so beside the token field before anything in the form has been touched", and "says
+  nothing about a token before its first reading has come back". Each is red against its mutant.
+- 732 (balance read enabled with no wallet): equivalent. With no wallet there is no address to encode, viem fails
+  before a request is sent, and the balance state is `none` whatever the query reports.
+- 725 (the account the form was checked against dropped from the write): survived, and the investigation showed
+  the argument guarded nothing. wagmi checks it against its own stored list of the connection's accounts, which only
+  an `accountsChanged` event updates, and that event also re-renders the page; a test that changed the wallet's
+  account silently still sent the transaction with the argument present. The argument is removed from the code (no
+  requirement asks for it), the test written to cover it is removed, and the row is retired; 725 is unused.
+- Row 724 (writes do not name the chain) was re-run against the final line, `const send = { chainId: ... }`.
+
+The rows ran against the tree before the `account` argument was removed and the new tests were added; the re-runs
+above ran against the final tree. The final `npm test` (below) passes on it. Mutant copies were kept in
+`cache/mutants/` and deleted after; no mutant text is left in `app/src`.
+
+New tests after green, all recorded as red against a mutant above: `flow.test.ts` "asks again while the node does
+not have the receipt yet, and returns it once it does" and "does not wait out any other error: a node that fails is
+reported" (mutants 708 and 709); the nine named in the dispositions.
+
+| # | Mutation | Edit | Where run | Result | Killed by |
+|---|---|---|---|---|---|
+| 660 | amount: more than one decimal point accepted | `src/create/amount.ts: (?:\.(\d*))?$/ -> (?:\.(\d*))*$/` | whole unit suite | killed | LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals refuses two decimal p... |
+| 661 | amount: an empty entry no longer reported as empty | `src/create/amount.ts: if (text === "") return { ok: false, reason: "empty" }; -> (deleted)` | whole unit suite | killed | LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals refuses an empty entry |
+| 662 | amount: a lone decimal point accepted | `src/create/amount.ts: whole.length + fraction.length === 0 -> whole.length + fraction.length < 0` | whole unit suite | killed | LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals refuses a decimal poi... |
+| 663 | amount: exactly as many fractional digits as the token has refused | `src/create/amount.ts: fraction.length > decimals -> fraction.length >= decimals` | whole unit suite | killed | LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Amount beside it for {"amount":"100... |
+| 664 | amount: one fractional digit too many accepted | `src/create/amount.ts: fraction.length > decimals -> fraction.length > decimals + 1` | whole unit suite | killed | LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Amount beside it for {"amount":"1.1... |
+| 665 | deadline: the lead time is 60 seconds | `src/create/deadline.ts: MIN_LEAD_SECONDS = 90n -> MIN_LEAD_SECONDS = 60n` | whole unit suite | killed | LLR-FE-031 the deadline is a preset or a custom date and time, judged against chain time rejects a custom time less than 90 seconds from chain time... |
+| 666 | deadline: the longest lead is 366 days | `src/create/deadline.ts: MAX_LEAD_SECONDS = 365n * 86_400n -> MAX_LEAD_SECONDS = 366n * 86_400n` | whole unit suite | killed | LLR-FE-031 a custom deadline earlier than chain time plus 90 seconds is rejected states the two limits: 90 seconds ahead and one year (365 days) ahead |
+| 667 | deadline: the 1 day preset is 86000 seconds | `src/create/deadline.ts: seconds: 86_400n } -> seconds: 86_000n }` | whole unit suite | killed | LLR-FE-031 the deadline is a preset or a custom date and time, judged against chain time computes the 1 day preset from chain time read after the a... |
+| 668 | deadline: a preset is one second past chain time plus the offset | `src/create/deadline.ts: return chainNow + seconds; -> return chainNow + seconds + 1n;` | whole unit suite | killed | LLR-FE-031 the deadline is a preset or a custom date and time, judged against chain time computes the 2 minutes preset from chain time read after t... |
+| 669 | deadline: a date without a time is read | `src/create/deadline.ts: T\d{2}:\d{2}(?::\d{2})?$/ -> (?:T\d{2}:\d{2}(?::\d{2})?)?$/` | whole unit suite | killed | LLR-FE-031 the custom date and time is read as the visitor's local time refuses anything that is not a local date and time, including a date alone,... |
+| 670 | deadline: exactly 90 seconds ahead refused | `src/create/deadline.ts: timestamp < chainNow + MIN_LEAD_SECONDS -> timestamp <= chainNow + MIN_LEAD_SECONDS` | whole unit suite | killed | LLR-FE-031 a custom deadline earlier than chain time plus 90 seconds is rejected rejects 89 seconds ahead and accepts 90 and 91 |
+| 671 | deadline: exactly one year ahead refused | `src/create/deadline.ts: timestamp > chainNow + MAX_LEAD_SECONDS -> timestamp >= chainNow + MAX_LEAD_SECONDS` | whole unit suite | killed | LLR-FE-031 a custom deadline earlier than chain time plus 90 seconds is rejected accepts exactly 365 days ahead and rejects one second more |
+| 672 | deadline: an unreadable entry not reported before the clock | `src/create/deadline.ts: if (timestamp === null) return "invalid"; -> (deleted)` | whole unit suite | killed | LLR-FE-031 a custom deadline earlier than chain time plus 90 seconds is rejected says it cannot judge before chain time is known, and that nothing ... |
+| 673 | deadline: no clock reported as ok | `src/create/deadline.ts: if (chainNow === null) return "noClock"; -> (deleted)` | whole unit suite | killed | LLR-FE-031 a custom deadline earlier than chain time plus 90 seconds is rejected says it cannot judge before chain time is known, and that nothing ... |
+| 674 | validate: 281 bytes allowed | `src/create/validate.ts: MAX_PROMISE_BYTES = 280 -> MAX_PROMISE_BYTES = 281` | whole unit suite | killed | LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Promise beside it for {"promise":"a... |
+| 675 | validate: the promise measured in characters | `src/create/validate.ts: return new TextEncoder().encode(text).length; -> return text.length;` | whole unit suite | killed | LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Promise beside it for {"promise":"é... |
+| 676 | validate: an empty promise accepted | `src/create/validate.ts: if (bytes === 0) return MESSAGES.promiseEmpty; -> if (bytes < 0) return MESSAGES.promiseEmpty;` | whole unit suite | killed | LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Promise beside it for {"promise":""} |
+| 677 | validate: exactly 280 bytes refused | `src/create/validate.ts: if (bytes > MAX_PROMISE_BYTES) -> if (bytes >= MAX_PROMISE_BYTES)` | whole unit suite | killed | LLR-FE-030 the promise is measured in UTF-8 bytes (LLR-SC-026) accepts 280 bytes and refuses 281 |
+| 678 | validate: the zero-balance explanation dropped | `src/create/validate.ts: if (balance.status === "ok" && balance.value === 0n) return `You ha... -> if (false as boolean) return `You have no` | whole unit suite | killed | LLR-FE-030 a wallet with no tokens cannot start a pledge, and is told why (UJ-04) explains a zero balance at once, keeps submit disabled, and raise... |
+| 679 | validate: the precision message counts 18 places | `src/create/validate.ts: has ${token.decimals} decimal places -> has 18 decimal places` | whole unit suite | killed | LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Amount beside it for {"amount":"1.1... |
+| 680 | validate: a zero amount that parses is accepted | `src/create/validate.ts: if (parsed.value === 0n) return MESSAGES.zeroAmount; -> (deleted)` | whole unit suite | killed | LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Amount beside it for {"amount":"0"} |
+| 681 | validate: an amount equal to the balance refused | `src/create/validate.ts: parsed.value > balance.value -> parsed.value >= balance.value` | whole unit suite | killed | LLR-FE-030 the token must be one the contract accepts (LLR-SC-021) and one the application has confirmed accepts either configured token, with its ... |
+| 682 | validate: an unread balance not reported | `src/create/validate.ts: if (balance.status === "loading") return MESSAGES.balanceLoading; -> (deleted)` | whole unit suite | killed | LLR-FE-030 the amount is above zero (LLR-SC-022), well formed, and not above the balance does not compare with a balance it has not read, and says ... |
+| 683 | validate: a failed balance read not reported | `src/create/validate.ts: if (balance.status === "error") return MESSAGES.balanceError; -> (deleted)` | whole unit suite | killed | LLR-FE-030 a wallet with no tokens cannot start a pledge, and is told why (UJ-04) says the balance could not be read, and keeps submit disabled, wh... |
+| 684 | validate: the balance written with 18 decimals | `src/create/validate.ts: formatUnits(balance.value, token.decimals) -> formatUnits(balance.value, 18)` | whole unit suite | killed | LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Amount beside it for {"amount":"100... |
+| 685 | validate: the checksum of a mixed-case address not checked | `src/create/validate.ts: if (!isAddress(text) \|\| -> if (!isAddress(text, { strict: false }) \|\|` | whole unit suite | killed | LLR-FE-030 the referee and the beneficiary are addresses, not zero, not the contract, not the staker (LLR-SC-023) refuses a mixed-case address whos... |
+| 686 | validate: the zero address accepted | `src/create/validate.ts:  \|\| text.toLowerCase() === ZERO_ADDRESS -> (deleted)` | whole unit suite | killed | LLR-FE-030 the referee and the beneficiary are addresses, not zero, not the contract, not the staker (LLR-SC-023) refuses the zero address for eith... |
+| 687 | validate: the contract compared case-sensitively | `src/create/validate.ts: text.toLowerCase() === context.network.contract.toLowerCase() -> text === context.network.contract` | whole unit suite | killed | LLR-FE-030 the referee and the beneficiary are addresses, not zero, not the contract, not the staker (LLR-SC-023) refuses the SatStake contract as ... |
+| 688 | validate: the staker compared case-sensitively | `src/create/validate.ts: text.toLowerCase() === context.staker.toLowerCase() -> text === context.staker` | whole unit suite | killed | LLR-FE-030 addresses are compared without regard to letter case refuses the connected account in any letter case, as either party |
+| 689 | validate: the pair reported over a fault of an address | `src/create/validate.ts: referee === undefined && beneficiary === undefined &&  -> (deleted)` | whole unit suite | killed | LLR-FE-030 the referee and the beneficiary differ (LLR-SC-024) says nothing about the pair while either address has a fault of its own |
+| 690 | validate: the pair compared case-sensitively | `src/create/validate.ts: values.referee.toLowerCase() === values.beneficiary.toLowerCase() -> values.referee === values.beneficiary` | whole unit suite | killed | LLR-FE-030 addresses are compared without regard to letter case refuses the same address twice, however each is cased |
+| 691 | validate: no deadline chosen not reported | `src/create/validate.ts: if (choice.kind === "none") return MESSAGES.noDeadline; -> (deleted)` | whole unit suite | killed | LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows a failure for the deadline when none is chosen |
+| 692 | validate: too soon and too far swapped | `src/create/validate.ts: case "tooSoon":\n      return MESSAGES.tooSoon; -> case "tooSoon":\n      return MESSAGES.tooFar;` | whole unit suite | killed | LLR-FE-031 the deadline is a preset or a custom date and time, judged against chain time rejects a custom time less than 90 seconds from chain time... |
+| 693 | validate: the acknowledgement not required | `src/create/validate.ts: if (!values.acknowledged) -> if (false as boolean)` | whole unit suite | killed | LLR-FE-030 the create form lays out its fields and shows each failure beside its own field keeps submit disabled until every check passes, and enab... |
+| 694 | validate: valid without a known staker | `src/create/validate.ts: && context.staker !== undefined && context.balance.status -> && context.balance.status` | whole unit suite | killed | LLR-FE-030 the create form passes a complete, correct entry is not valid for want of either one alone, though no field is at fault |
+| 695 | validate: valid without a read balance | `src/create/validate.ts:  && context.balance.status === "ok"; // LLR-FE-030 -> ; // LLR-FE-030` | whole unit suite | killed | LLR-FE-030 the create form passes a complete, correct entry is not valid for want of either one alone, though no field is at fault |
+| 696 | validate: a token whose reading differs is accepted | `src/create/validate.ts: else if (!context.tokenEnabled) -> else if (false as boolean)` | whole unit suite | killed | LLR-FE-006 creation in a token is off while its reading does not match, and on in another disables submit and says so beside the token field when t... |
+| 697 | validate: the token compared case-sensitively | `src/create/validate.ts: t.address.toLowerCase() === values.token.toLowerCase() -> t.address === values.token` | whole unit suite | killed | LLR-FE-030 addresses are compared without regard to letter case finds the configured token by its address in any letter case |
+| 698 | flow: approval skipped when the allowance equals the amount is lost (<=) | `src/create/flow.ts: (await io.allowance()) < input.amount -> (await io.allowance()) <= input.amount` | whole unit suite | killed | LLR-FE-033 creation is preceded by an approval of exactly the amount, only when the allowance is short skips the approval and asks the wallet once ... |
+| 699 | flow: an unlimited approval | `src/create/flow.ts: await io.approve(input.amount); -> await io.approve(2n ** 256n - 1n);` | whole unit suite | killed | LLR-FE-032 amounts are converted with the token's own decimals, never the native balance or 18 converts a USDC amount with 6 decimals, in the appro... |
+| 700 | flow: a reverted approval goes on to the creation | `src/create/flow.ts: (await io.receipt(approval)).status !== "success" -> false as boolean` | whole unit suite | killed | LLR-FE-033 every send names the configured chain, so the wallet's chain is read when it is sent does not send the creation when the wallet moves af... |
+| 701 | flow: a reverted creation taken as success | `src/create/flow.ts: if (receipt.status !== "success") throw -> if (false as boolean) throw` | whole unit suite | killed | LLR-FE-033 the allowance is read first, and approval is requested only when it is short, for exactly the amount fails when the creation was mined a... |
+| 702 | flow: chain time read before the approval | `src/create/flow.ts: const approving = (await io.allowance()) < input.amount; // LLR-FE-033 -> const early = await io.chainTime();\n  const approving = (await io.a... (+1 edit)` | whole unit suite | killed | LLR-FE-031 the deadline is a preset or a custom date and time, judged against chain time computes the 2 minutes preset from chain time read after t... |
+| 703 | flow: a custom deadline recomputed as a preset | `src/create/flow.ts: input.deadline.kind === "preset" ? -> input.deadline.kind !== "preset" ?` | whole unit suite | killed | LLR-FE-074 the application never asks a wallet to sign a message or typed data (the requests a wallet is sent) sends only account access, chain que... |
+| 704 | flow: an event from any address accepted | `src/create/flow.ts: if (log.address.toLowerCase() !== contract.toLowerCase()) continue;... -> (deleted)` | whole unit suite | killed | LLR-FE-037 the pledge identifier is decoded from the PledgeCreated event of the creation receipt ignores the same event from any other address, eve... |
+| 705 | flow: the contract address compared case-sensitively | `src/create/flow.ts: log.address.toLowerCase() !== contract.toLowerCase() -> log.address !== contract` | whole unit suite | killed | LLR-FE-037 the pledge identifier is decoded from the PledgeCreated event of the creation receipt matches the contract's address without regard to l... |
+| 706 | flow: a receipt with no event gives identifier 0 | `src/create/flow.ts: throw new Error("The creation receipt holds no PledgeCreated event ... -> return 0n;` | whole unit suite | killed | LLR-FE-037 after creation the page goes to the pledge, decoded from the receipt, and offers a copy-link control stays on the form, and says that so... |
+| 707 | flow: the progress after approval forgets the approval | `src/create/flow.ts: onProgress(progressOf(approving ? "done" : null, "confirming")); -> onProgress(progressOf(null, "confirming"));` | whole unit suite | killed | LLR-FE-033 progress is shown for both steps walks the approval and the creation through the wallet and the network, in order |
+| 708 | flow: a receipt not yet there is an error | `src/create/flow.ts: if (!(error instanceof TransactionReceiptNotFoundError)) throw error; -> throw error;` | whole unit suite | killed | LLR-FE-033 the receipt of a sent transaction is asked for until the node has it asks again while the node does not have the receipt yet, and return... |
+| 709 | flow: any receipt error is waited out | `src/create/flow.ts: if (!(error instanceof TransactionReceiptNotFoundError)) throw error; -> (deleted)` | whole unit suite | killed | LLR-FE-033 the receipt of a sent transaction is asked for until the node has it does not wait out any other error: a node that fails is reported |
+| 710 | errors: a token's revert string has no message | `src/chain/errors.ts: if (name === "Error") return TOKEN_REVERT_MESSAGE; // LLR-FE-060 -> (deleted)` | whole unit suite | killed | LLR-FE-060 a failed request shows the message of the error the contract raised shows the token's message for a revert string, which SatStake never ... |
+| 711 | errors: a revert with no error name explained as the token's | `src/chain/errors.ts: if (name === undefined) return null; -> if (name === undefined) return TOKEN_REVERT_MESSAGE;` | whole unit suite | killed | LLR-FE-060 a failed request shows the message of the error the contract raised shows nothing for a panic, an unknown error, an empty revert, or a f... |
+| 712 | errors: a value that is not a viem error is walked | `src/chain/errors.ts: if (!(error instanceof BaseError)) return null; -> (deleted)` | whole unit suite | killed | LLR-FE-060 a failed request shows the message of the error the contract raised shows nothing for a panic, an unknown error, an empty revert, or a f... |
+| 713 | errors: any inherited property name has a message | `src/chain/errors.ts: Object.hasOwn(ERROR_MESSAGES, name) ? (ERROR_MESSAGES[name] ?? null... -> (ERROR_MESSAGES[name] ?? null)` | whole unit suite | killed | LLR-FE-060 a failed request shows the message of the error the contract raised does not take the name of a property every object has for the name o... |
+| 714 | notice: an explained error still offers the raw error | `src/wallet/failure.tsx: const failed = shown && !rejected && explained === null; -> const failed = shown && !rejected;` | whole unit suite | killed | LLR-FE-060 a failure the contract or the token reported is shown with the message of section 2.2 shows the message of a contract error the wallet r... |
+| 715 | notice: a failure is kept when the connection changes | `src/wallet/failure.tsx: else if (failure !== null && failure.key !== key) setFailure(null);... -> (deleted)` | whole unit suite | killed | LLR-FE-061 a rejection in the wallet keeps the form and shows the neutral message (UJ-14) removes the message when the wallet's chain changes |
+| 716 | notice: clear does nothing | `src/wallet/failure.tsx: clear: () => setFailure(null), -> clear: () => {},` | whole unit suite | killed | LLR-FE-061 a rejection in the wallet keeps the form and shows the neutral message (UJ-14) removes the message when a new request starts |
+| 717 | notice: an explained error not styled as a failure | `src/wallet/failure.tsx: explained !== null && <p className="notice notice-failure"> -> explained !== null && <p className="notice">` | whole unit suite | killed | LLR-FE-060 a failure the contract or the token reported is shown with the message of section 2.2 styles a mapped failure as a failure, and offers n... |
+| 718 | page: submit available without the write gate | `src/create/CreateView.tsx: const canSubmit = gate.enabled && ready && !busy; -> const canSubmit = ready && !busy;` | whole unit suite | killed | LLR-FE-023 every write control uses the write gate, with its reasons beside the control is disabled with the reason beside it when the wallet is on... |
+| 719 | page: submit available while a request is pending | `src/create/CreateView.tsx: const canSubmit = gate.enabled && ready && !busy; -> const canSubmit = gate.enabled && ready;` | whole unit suite | killed | LLR-FE-036 while a transaction from the form is pending, submit is disabled and a second press does nothing (UJ-16) ignores presses while the walle... |
+| 720 | page: no guard against two presses before a render | `src/create/CreateView.tsx: if (inFlight.current \|\| !canSubmit \|\| -> if (!canSubmit \|\|` | whole unit suite | killed | LLR-FE-036 while a transaction from the form is pending, submit is disabled and a second press does nothing (UJ-16) answers two presses made before... |
+| 721 | page: the guard is never released after a failure | `src/create/CreateView.tsx: inFlight.current = false;\n      setBusy(false); -> setBusy(false);` | whole unit suite | killed | LLR-FE-061 a rejection in the wallet keeps the form and shows the neutral message (UJ-14) keeps the exact allowance when the creation is refused af... |
+| 722 | page: the old notice kept when a new request starts | `src/create/CreateView.tsx: failure.clear(); // LLR-FE-061 -> (deleted)` | whole unit suite | killed | LLR-FE-061 a rejection in the wallet keeps the form and shows the neutral message (UJ-14) removes the message when a new request starts |
+| 723 | page: a failure is not shown | `src/create/CreateView.tsx: failure.fail(error); -> (deleted)` | whole unit suite | killed | LLR-FE-033 creation is preceded by an approval of exactly the amount, only when the allowance is short puts nothing in the progress area before a r... |
+| 724 | page: writes do not name the chain | `src/create/CreateView.tsx: const send = { chainId: network.chainId } as const; -> const send = {} as const;` | whole unit suite | killed | LLR-FE-033 every send names the configured chain, so the wallet's chain is read when it is sent does not send an approval when the wallet moved to ... |
+| 726 | page: the approval goes to the token, not to the contract | `src/create/CreateView.tsx: args: [network.contract, exact], // LLR-FE-033 -> args: [token.address, exact], // LLR-FE-033` | whole unit suite | killed | LLR-FE-033 creation is preceded by an approval of exactly the amount, only when the allowance is short asks the wallet twice, approval first and cr... |
+| 727 | page: referee and beneficiary swapped in the creation | `src/create/CreateView.tsx: getAddress(referee), getAddress(beneficiary) -> getAddress(beneficiary), getAddress(referee)` | whole unit suite | killed | LLR-FE-033 creation is preceded by an approval of exactly the amount, only when the allowance is short asks the wallet twice, approval first and cr... |
+| 728 | page: the promise is trimmed before it is sent | `src/create/CreateView.tsx: deadlineSeconds, promise] -> deadlineSeconds, promise.trim()]` | whole unit suite | killed | LLR-FE-033 creation is preceded by an approval of exactly the amount, only when the allowance is short sends the promise exactly as it was typed, s... |
+| 729 | page: the second token is the default | `src/create/CreateView.tsx: token: network.tokens[0]!.address, -> token: network.tokens[1]!.address,` | whole unit suite | killed | LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Amount beside it for {"amount":"100... |
+| 730 | page: the balance is cached without the token | `src/create/CreateView.tsx: queryKey: ["balance", network.chainId, values.token.toLowerCase(), ... -> queryKey: ["balance", network.chainId, staker?.toLowerCase()],` | whole unit suite | killed | LLR-FE-030 a wallet with no tokens cannot start a pledge, and is told why (UJ-04) shows the balance of the chosen token in that token's units, and ... |
+| 731 | page: a failed balance read shown as loading | `src/create/CreateView.tsx: balanceQuery.isError\n        ? { status: "error" } -> false\n        ? { status: "error" }` | whole unit suite | killed | LLR-FE-030 a wallet with no tokens cannot start a pledge, and is told why (UJ-04) says the balance could not be read, and keeps submit disabled, wh... |
+| 732 | page: balance read with no wallet connected | `src/create/CreateView.tsx: enabled: staker !== undefined, -> enabled: true,` | whole unit suite | equivalent: with no wallet the query has no address to encode, viem fails before any request is sent, and the balance state is `none` whatever the query says |  |
+| 733 | page: a zero balance explained only after the field is touched | `src/create/CreateView.tsx: (field === "amount" && zeroBalance) -> false` | whole unit suite | killed | LLR-FE-030 a wallet with no tokens cannot start a pledge, and is told why (UJ-04) explains it before anything is typed |
+| 734 | page: the token failure shown only after the field is touched | `src/create/CreateView.tsx: touched.has(field) \|\| field === "token" \|\| -> touched.has(field) \|\|` | whole unit suite | killed | LLR-FE-006 creation in a token is off while its reading does not match, and on in another says so beside the token field before anything in the for... |
+| 735 | page: the token failure shown before the first reading | `src/create/CreateView.tsx: if (health.tokens === null) delete errors.token; -> (deleted)` | whole unit suite | killed | LLR-FE-006 creation in a token is off while its reading does not match, and on in another says nothing about a token before its first reading has c... |
+| 736 | page: chain time unknown | `src/create/CreateView.tsx: chainNow: clock.now(), -> chainNow: null,` | whole unit suite | killed | LLR-FE-031 the deadline is a preset or a custom date and time, judged against chain time rejects a custom time less than 90 seconds from chain time... |
+| 737 | page: code asked of an address that is not well formed | `src/create/CreateView.tsx: enabled: wellFormed, -> enabled: true,` | whole unit suite | killed | LLR-FE-035 the form warns, without blocking, when the referee or beneficiary has deployed code does not warn for an address with no code, and asks ... |
+| 738 | page: the referee's warning shown for the beneficiary's code | `src/create/CreateView.tsx: warning={refereeHasCode ? WARNINGS.referee : ""} -> warning={beneficiaryHasCode ? WARNINGS.referee : ""}` | whole unit suite | killed | LLR-FE-035 the form warns, without blocking, when the referee or beneficiary has deployed code warns beside the referee, still allows creation, and... |
+| 739 | page: an address with no code warned about | `src/create/CreateView.tsx: (await client.getCode({ address: text as Address })) !== undefined -> (await client.getCode({ address: text as Address })) === undefined` | whole unit suite | killed | LLR-FE-035 the form warns, without blocking, when the referee or beneficiary has deployed code warns beside the referee, still allows creation, and... |
+| 740 | page: every failure shown at once | `src/create/CreateView.tsx: const visible = touched.has(field) \|\| -> const visible = true \|\|` | whole unit suite | killed | LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows no failure on a form nobody has touched, and submi... |
+| 741 | page: a change does not count as touching the field | `src/create/CreateView.tsx: setValues((previous) => ({ ...previous, [field]: value }));\n    tou... -> setValues((previous) => ({ ...previous, [field]: value }));` | whole unit suite | killed | LLR-FE-030 a wallet with no tokens cannot start a pledge, and is told why (UJ-04) says the balance could not be read, and keeps submit disabled, wh... |
+| 742 | page: the created pledge not reported to the shell | `src/create/CreateView.tsx: onCreated(id); -> (deleted)` | whole unit suite | killed | LLR-FE-037 after creation the page goes to the pledge, decoded from the receipt, and offers a copy-link control offers a control that copies the ad... |
+| 743 | page: navigates to the next identifier | `src/create/CreateView.tsx: window.location.assign(`#/p/${id.toString()}`); -> window.location.assign(`#/p/${(id + 1n).toString()}`);` | whole unit suite | killed | LLR-FE-037 after creation the page goes to the pledge, decoded from the receipt, and offers a copy-link control goes to the pledge page of the iden... |
+| 744 | page: progress left on screen after a failure | `src/create/CreateView.tsx:       setBusy(false);\n      setProgress(null); ->       setBusy(false);` | whole unit suite | killed | LLR-FE-033 creation is preceded by an approval of exactly the amount, only when the allowance is short puts nothing in the progress area before a r... |
+| 745 | page: submit available when the form has a fault | `src/create/CreateView.tsx: const ready = check.valid && parsed?.ok === true -> const ready = parsed?.ok === true` | whole unit suite | killed | LLR-FE-030 the create form lays out its fields and shows each failure beside its own field shows the failure of Promise beside it for {"promise":""} |
+| 746 | page: creation enabled for every token | `src/create/CreateView.tsx: tokenEnabled: health.creationEnabled(values.token), // LLR-FE-006 -> tokenEnabled: true, // LLR-FE-006` | whole unit suite | killed | LLR-FE-006 creation in a token is off while its reading does not match, and on in another disables submit and says so beside the token field when t... |
+| 747 | page: the approval label shows the raw units | `src/create/CreateView.tsx: `Approve ${formatUnits(amount, token.decimals)} ${token.symbol}` -> `Approve ${amount.toString()} ${token.symbol}`` | whole unit suite | killed | LLR-FE-033 creation is preceded by an approval of exactly the amount, only when the allowance is short shows progress for both steps, with the step... |
+| 748 | shell: the copy-link control offered on any pledge page after a creation | `src/App.tsx: {created === route.id && <CopyLink id={route.id} />} -> {created !== null && <CopyLink id={route.id} />}` | whole unit suite | killed | LLR-FE-037 after creation the page goes to the pledge, decoded from the receipt, and offers a copy-link control offers the copy-link control for th... |
+| 749 | page: the copied link drops the pledge | `src/create/CopyLink.tsx: #/p/${id.toString()}`); -> #/p/`);` | whole unit suite | killed | LLR-FE-037 after creation the page goes to the pledge, decoded from the receipt, and offers a copy-link control offers a control that copies the ad... |
+| 750 | page: a failed copy reported as copied | `src/create/CopyLink.tsx: setResult("failed"); -> setResult("copied");` | whole unit suite | killed | LLR-FE-037 after creation the page goes to the pledge, decoded from the receipt, and offers a copy-link control says when the link could not be copied |
+
+### The five commands
+
+From `app/`: `npm test` passed 637, skipped 9 (live), failed 0; `npm run lint` clean; `npm run typecheck` clean;
+`npm run build:testnet` built (the existing chunk-size warning only). From the worktree root:
+`node tools/trace-check.mjs`: `OK. 86/112 LLRs referenced, 7/55 journeys passing.`
+
+## Review fixes: FE create, 2026-10-02 (05 v1.15)
+
+Two independent reviews of the "FE create" group found defects; 05 v1.15 changed LLR-FE-012, 030, 031, 033, 035, 036,
+037, 045, 060, 062 and 072 first. Scope: items A to I of the fix brief. Method per batch: tests from the requirement
+text, red observed, record, then code. Suite command from `app/`: `npx vitest run --exclude src/build.test.ts` (622
+passing before any change). Support code changed before red: `app/src/test/fakeChain.ts` answers
+`eth_getTransactionByHash` and a block with its transactions in full, and can fail every receipt read
+(`receiptError`); `app/src/test/fakeWorld.ts` registers each mined transaction with a sender and nonce and can replace
+the next creation the way a wallet's speed-up does (`replaceNextCreate`). No behaviour of the application changed.
+
+### Batch 1 (items A and B): receipts after a hash, kept approval, progress wording. Red
+
+`flow.test.ts`: the two `waitForReceipt` tests are deleted with the function. New, with the failure reason of each:
+
+| Test | Failure |
+|---|---|
+| LLR-FE-033 asks the client to wait for the hash, with a timeout of 180000 ms and replacement detection left on | `receiptOf is not a function` (not yet written) |
+| LLR-FE-033 passes on the failure of the wait as it is | same |
+| LLR-FE-062 reports an unreadable receipt as an unconfirmed creation that carries the hash and the cause | `CreationUnconfirmedError` not exported, so the `instanceof` check cannot hold |
+| LLR-FE-062 reports a receipt with no PledgeCreated event the same way | same |
+| LLR-FE-062 does not report a creation that was mined and reverted as unconfirmed | same (a negative check that can only fail on the missing class) |
+| LLR-FE-062 does not report a refused creation as unconfirmed | same |
+| LLR-FE-062 does not report an unreadable approval receipt as an unconfirmed creation | passes already: the approval path was never special (kept as a boundary) |
+
+`CreateView.test.tsx` (14 failing of 103 in the file):
+
+| Test | Failure |
+|---|---|
+| LLR-FE-033 numbered progress for both steps, with the step waiting for the wallet | page says `Approve 1.5 USDC: Waiting for your wallet.` |
+| LLR-FE-033 the creation alone, unnumbered, when no approval is needed | page says `Create the pledge: Waiting for your wallet.` |
+| LLR-FE-033 waiting for the network while a step is being confirmed | `Create the pledge: Waiting for the network to confirm.` |
+| LLR-FE-033 says before the first prompt that the wallet may ask twice | the element after the button holds `Still to complete: ...` |
+| LLR-FE-033 keeps the confirmed approval step when the creation is refused | progress area is empty after the failure |
+| LLR-FE-033 the same when the creation was mined and reverted | progress area is empty |
+| LLR-FE-033 names the token's own symbol and the amount in its own units | progress area is empty |
+| LLR-FE-033 removes the statement when a new attempt starts | progress area is empty before the retry (the statement never appeared) |
+| LLR-FE-033 goes to the pledge of the replacement's event when the wallet's hash never mines | `#/create` is still the hash: the old poller waits for a receipt of a hash that never mines |
+| LLR-FE-062 says the pledge was sent, with the hash and a link to My pledges (5 tests: also no copy button, no second submit, no-event receipt, account change) | the sentence is not found; the page says `Something went wrong. Nothing was changed.` |
+| LLR-FE-033 says nothing of an approval when the approval was refused, and when none was needed | pass already (boundaries) |
+| LLR-FE-062 does not say it for a creation mined and reverted, nor for an unreadable approval receipt | pass already (boundaries) |
+
+The scan in `chain/reads.test.ts` that confines receipt and event-decoding names to `create/flow.ts` now also names
+`waitForTransactionReceipt` (the old poller's `getTransactionReceipt` is gone from the file).
+
+### Batch 1. Green
+
+`receiptOf` (viem's wait, timeout 180000, replacement following left on) and `CreationUnconfirmedError` in
+`create/flow.ts`; `RequestNotice` takes `children` so the unconfirmed message sits in the one "Create notices"
+region; the page keeps the confirmed approval step and its sentence after a creation failure, shows the unconfirmed
+message with hash and a `#/mine` link and offers no submit, and says the wallet may ask twice under the button.
+One test needed a change after green (a test defect, not a code one): "removes the statement when a new attempt
+starts" looked for the progress area after a successful retry had already left the page; it now holds the wallet
+prompt open. Full suite: 641 passed, 0 failed (9 live skipped, `build.test.ts` excluded here and run by `npm test`).
+
+### Batch 2 (items C and D): gas reserve, balance states, when failures appear, submit while disabled. Red
+
+Support code: `FakeChain.balanceError` fails `balanceOf` only. `validate.test.ts` tests of the whole result now compare
+`{ errors, valid }` (a new `summary` helper) because the result gains `atOnce`; its default context gains `feeBalance`.
+Changed existing expectations: the zero-balance and unreadable-balance sentences, the loading balance (no longer an
+error), a malformed amount against a balance that failed to read (the read failure now comes first), and the
+acknowledgement's name in the to-complete line.
+
+`validate.test.ts`: 17 failing of 82.
+
+| Test | Failure |
+|---|---|
+| zero balance sentence (UJ-04) | old sentence `... so there is nothing to lock.` |
+| a balance still loading is not a failure and keeps the form invalid | `amount: "Reading your balance."` is still an error |
+| a balance that could not be read, whatever was typed, at once | old sentence; also no `atOnce` |
+| a USDC amount leaving exactly 0.05 passes, one unit more fails | no reserve check: `undefined` for the leave sentence |
+| the whole USDC balance is refused with the leave sentence | same |
+| a balance below the reserve, whatever the amount | same |
+| the reserve fault is not shown at once | `atOnce` undefined |
+| another token needs USDC 49,999 fail and 50,000 pass | no fee check |
+| the missing fee balance at once, before an amount is typed | `Enter an amount above zero.` instead |
+| the selected token's zero balance is named first | old sentence |
+| another token while the USDC balance loads is not valid, not a failure | form valid |
+| a USDC balance that could not be read, form invalid | no error |
+| another token with no read USDC balance is invalid | form valid |
+| reserve from the USDC token's own decimals (8 decimals gives 5,000,000 units) | no reserve check |
+| three `atOnce` tests (token, empty balance, nothing for typed faults) | `atOnce` undefined |
+| pass already, kept as boundaries | a USDC stake reads its own balance and not `feeBalance`; a USDC stake does not need a separate fee balance |
+
+`CreateView.test.tsx`: 25 failing of 131 (first run of the file timed out on one cold start, 25 s, which is load and
+not the code; the second run is the one recorded).
+
+| Test | Failure |
+|---|---|
+| zero balance and unreadable balance wordings (2 changed) | old sentences |
+| USDC amount below the reserve refused beside the amount | no failure shown |
+| another token needs 0.05 USDC, said at once | no failure shown |
+| a wallet with none of the token | old sentence |
+| a balance still being read is a hint, not a failure | the amount's error element holds `Reading your balance.` |
+| a balance that could not be read, at once, again every 5 seconds | old sentence |
+| four text fields: nothing while typed in, failure on blur, then every change | the failure is already shown while typing |
+| a custom deadline still being chosen | `Pick a date and time.` shown on choosing Custom |
+| submit while disabled shows every failure (1) and moves focus (9 tests) | no failure shown; focus stays on `body` |
+| to-complete wording (3 tests) and the acknowledgement's name (1 changed) | the help holds the prompt hint and the old labels; no `Checking the tokens.` |
+| pass already, kept as boundaries | the ERC-20 balance of USDC is read for another token; USDC read once; exactly 0.05 USDC for another token passes; unticking shows the failure on change; leaving the radios unchosen reports; no focus move when the form is complete |
+
+### Batch 2. Green
+
+`validate.ts`: `feeBalance` in the context, the 0.05 USDC reserve from the USDC token's own decimals (`parseUnits`),
+the new zero, unreadable, need and leave sentences, a loading balance that is no failure, and `atOnce`. The page:
+`useBalance` reads the selected token and USDC (one cache entry for a USDC stake) and re-reads a failed read every 5 s;
+failures show on blur, on change for the choice and tick controls, and at once for `atOnce`; the deadline is left
+when focus leaves its fieldset; activating a disabled submit marks every field left and focuses the first at fault;
+the to-complete line omits a disabled token and names the acknowledgement; `Checking the tokens.` before the first
+reading. Two tests changed after green because the requirement moved under them: "accepts an amount equal to the
+balance" now uses cirBTC (the whole USDC balance is refused for the reserve), and "judges a custom time against
+chain time" blurs the date field before looking for its failure. Full suite: 687 passed, 0 failed.
+
+### Batch 3 (items E and F): deadline re-checks, chain-time mark and retry, date bounds, read-only while pending. Red
+
+Support code: `FakeChain.blockError` fails `eth_getBlockByNumber` only. Tests that need time to pass with nothing to
+redraw the page fake only `performance` (the monotonic clock `ChainClock` reads); the 5 s retry tests fake the timer
+functions with `shouldAdvanceTime`. Changed existing test: the 5 s balance retry now advances 3 s then 3 s (a slow
+machine could put 4 s past the 5 s mark). The test that pressed submit "while the approval is being confirmed, and
+while the creation is" is split in two and the second half now holds the creation's wallet prompt and its receipt
+after a confirmed approval, pressing submit in each wait.
+
+24 failing of 315 in `app/src/create`.
+
+| Test | Failure |
+|---|---|
+| deadline.test: bounds for four chain times, min and max, and both accepted by the check (9) | `deadlineBounds is not a function` |
+| flow.test: checks first of all, before the allowance; exactly 90 s ahead passes, 89 fails (2) | `DeadlineCheckError` undefined; the run does not throw |
+| flow.test: checks again after the approval, none sent when it fails; twice with and without approval (3) | log has no `clock` entries |
+| flow.test: tooFar and no clock; the error names the deadline (2) | run does not throw |
+| validate.test: clock read failed, at once, custom chosen | message is `Pick a date and time.` or the wait |
+| page: submit re-check, re-check after approval, removal on change (3) | the creation went ahead and the page left for the pledge, so the deadline group is gone |
+| page: chain-time mark at arrival | submit stays disabled: a 60 s read was counted as 60 s of chain time, so a deadline 120 s ahead read 60 s ahead |
+| page: chain time unreadable says so and retries every 5 s | the deadline's error element is empty |
+| page: min and max on the date field | `min` is null |
+| page: every field read-only while pending | all fields still editable |
+| pass already, kept as boundaries | preset unaffected by a failed clock read; no bounds before chain time; fields editable again after a refusal; presses ignored during approval confirm; the creation-wait press test (it also passed before the change: the busy flag was already held for the whole run, so it is kept as the guard for the mutant that releases it) |
+
+### Batch 3. Green
+
+`deadlineBounds` (minute-precision bounds moved inward), `customDeadlineMessage` and the failed-clock message with
+priority over "Pick a date and time" in `validate.ts`; `DeadlineCheckError` and `assertDeadlineInRange` (at the start
+of `runCreate` and again after the approval, before the creation) in `flow.ts`, with `FlowIO.clockNow`; the page takes
+the chain-time mark after the block arrives, re-reads a failed chain time every 5 s, sets `min` and `max` and the
+"In your local time." hint, shows a failed re-check beside the deadline (not as a request failure) and clears it when
+the deadline changes or a new attempt starts, and sets text fields `readOnly` and choice controls `disabled` while
+busy. One gap found at green by the page test, not by the unit tests: with Custom chosen and no date typed the
+failed-clock message lost to `Pick a date and time.`; the failed clock now takes priority, and a validate test pins it
+(added after green for that reason). Full `src/create`: 316 passed, 0 failed.
+
+### Batch 4 (items G, H, I): sats, the constructor-only exclusion, copy and design. Red
+
+New or changed: `app/src/format.test.ts` (new), `chain/errors.test.ts` (name and comment only), `noSigning.test.tsx`
+(`wallet_sendTransaction` allowed: sending a transaction), `styles.test.ts`, `create/CreateView.test.tsx` (the four
+"Copy link" lookups now use the button's new name). The shared `ACK_TEXT` constant in the harness is changed with the
+code, not before: a literal-text test carries the red, so the other 250 tests that tick the box are not red for one reason.
+
+20 failing tests and one suite that cannot load, of 750.
+
+| Test | Failure |
+|---|---|
+| format.test (9 sizes and the grouping test) | suite cannot load: `./format` does not exist |
+| styles: no paragraph margin in `.hint` or `.notice-area` | rule absent |
+| styles: primary button colours; its not-available look | `.button-primary` rules absent |
+| styles: field in error has a 2 px error-colour border | no `[aria-invalid="true"]` rule |
+| styles: submit area has no `gap` and spaces non-empty children | the rule has `gap` |
+| styles: copy confirmation keeps its height | `.copy-status` absent |
+| styles: error colour 3 to 1 on the page, both themes; `--bg` on `--link` 4.5 to 1 | pass already: the existing tokens satisfy both (kept as boundaries) |
+| LLR-FE-034 acknowledgement worded as decided | old sentence |
+| intro under the heading | the next element is the form |
+| promise hint and byte count; referee and beneficiary hints | no hint text |
+| submit has the primary class | class empty |
+| LLR-FE-045 balance and valid amount in sats (2) | `Your balance: 1.5 cirBTC.` with no sats |
+| LLR-FE-035 referee, beneficiary warnings and hidden-on-failure (3) | old sentences |
+| LLR-FE-037 text, button and confirmation in order after the status line | no element after the pledge's status line |
+| LLR-FE-037 copy, copy failure, copy-link only for that pledge (3, renamed button) | no button of the new name |
+| H: errors test name and comment | no red: a name and a comment only |
+| noSigning: `wallet_sendTransaction` allowed | no red: an addition to an allowed list, and the list still holds no signing method |
+
+### Batch 4. Green
+
+`app/src/format.ts` (`formatSats`, singular for 1), hints as linked containers (promise with a live byte count, balance
+with sats for cirBTC, a valid amount in sats, referee, beneficiary), the intro, the acknowledgement and the two
+warnings in the decided words (a warning is hidden while its field shows a failure), `button-primary` on submit,
+`CopyLink` reworded and moved into a slot of `PledgeView` right after its status line (confirmation after the button,
+height kept), and the CSS (primary button and its not-available look, 2 px error border, `.hint p, .notice-area p`,
+no gap on the submit area with spacing from non-empty children). Two changes after green, both test or style
+completions and not behaviour: the not-available rule for the primary button was missing from the stylesheet (the
+styles test caught it), and the older balance test now expects the balance with its sats. Full suite from `app/`:
+`npm test` 766 passed, 9 skipped (live), 0 failed; `npm run lint` and `npm run typecheck` clean.
+
+### Mutation pass 751 to 817 (logic only; runner `cache/mutate.mjs`, mutant copies under `cache/` only)
+
+| # | Mutant | Result |
+|---|---|---|
+| 751 | flow: the receipt wait ends after 18 seconds | killed |
+| 752 | flow: replacement detection switched off | killed |
+| 753 | flow: an unreadable creation receipt is not reported as unconfirmed | killed |
+| 754 | flow: a receipt with no event is not reported as unconfirmed | killed |
+| 755 | flow: a reverted creation is reported as unconfirmed | killed |
+| 756 | page: a confirmed approval is never kept on screen | killed |
+| 757 | page: the approval is kept on screen after an unconfirmed creation | killed after a test was added: does not keep the approval statement on screen when the creation was sent and its outcome is unknown (added) |
+| 758 | page: submit offered again after an unconfirmed creation | killed |
+| 759 | page: the unconfirmed creation also shows the raw-error notice | killed |
+| 760 | page: the kept step shows every step, not only the approval | killed |
+| 761 | flow: no check when submit is activated | killed |
+| 762 | flow: no check before the creation | killed |
+| 763 | flow: a preset is checked too | killed |
+| 764 | page: a failed re-check is also reported as a failed request | killed |
+| 765 | page: the failed re-check stays when a new attempt starts | equivalent: once a re-check has failed the deadline fails every later check (chain time only moves forward), so no attempt can start with the deadline unchanged; the message is cleared when the deadline changes (766) |
+| 766 | page: the failed re-check stays when the deadline changes | killed |
+| 767 | validate: the reserve is 0.04 USDC | killed |
+| 768 | validate: leaving exactly the reserve refused | killed |
+| 769 | validate: exactly 0.05 USDC for another token refused | killed |
+| 770 | validate: a USDC stake reads the fee balance instead of its own | killed |
+| 771 | validate: the reserve in a fixed 6 decimals | killed |
+| 772 | validate: valid without the fee balance read | killed |
+| 773 | validate: an unreadable balance not shown at once | killed |
+| 774 | validate: an empty balance not shown at once | killed |
+| 775 | validate: the missing fee balance not shown at once | killed |
+| 776 | validate: a USDC stake also needs the separate fee check | killed |
+| 777 | validate: another token also leaves the reserve from its own balance | killed |
+| 778 | validate: the token failure not shown at once | killed |
+| 779 | validate: a failed clock loses to the date prompt | killed |
+| 780 | validate: a failed clock not shown at once | killed |
+| 781 | page: every change counts as leaving the field | killed |
+| 782 | page: a choice or a tick never counts as leaving | killed |
+| 783 | page: choosing Custom leaves the deadline | killed |
+| 784 | page: moving inside the deadline leaves it | killed |
+| 785 | page: activating a disabled submit does not show the failures | killed |
+| 786 | page: activating a disabled submit moves no focus | killed |
+| 787 | page: focus goes to the last field at fault | killed |
+| 788 | page: focus for a custom deadline goes to the first radio | killed |
+| 789 | page: a switched-off token is listed as still to complete | killed |
+| 790 | page: nothing says the tokens are being checked | killed |
+| 791 | page: the chain-time mark taken before the request | killed |
+| 792 | page: a failed chain-time read is not retried | killed |
+| 793 | page: a failed balance read is not retried | killed |
+| 794 | page: the retry is every 10 seconds | killed |
+| 795 | page: a failed read is reported though chain time is known | equivalent: `checkForm` reads the flag only when chain time is null (`clockFailed && chainNow === null`), so passing it while time is known changes nothing |
+| 796 | date field: the minimum is the maximum | killed |
+| 797 | deadline: the minimum rounded down | killed |
+| 798 | deadline: the maximum rounded up | killed |
+| 799 | page: the promise editable while pending | killed |
+| 800 | page: the token editable while pending | killed |
+| 801 | page: the deadline choices editable while pending | killed |
+| 802 | page: the acknowledgement editable while pending | killed |
+| 803 | page: the date editable while pending | killed |
+| 804 | page: the amount editable while pending | killed |
+| 805 | page: the referee editable while pending | killed |
+| 806 | page: the beneficiary editable while pending | killed |
+| 807 | format: no grouping | killed |
+| 808 | format: one sat is plural | killed |
+| 809 | page: sats shown for every token | killed |
+| 810 | page: an amount of zero shown in sats | equivalent: an amount of 0 always has the failure `Enter an amount above zero`, so the `errors.amount === undefined` guard already hides its hint and `> 0n` is redundant |
+| 811 | page: an amount with a failure shown in sats | killed after a test was added: no amount in sats for an amount with a failure (added) |
+| 812 | page: the referee warning kept beside a failure | killed |
+| 813 | page: the beneficiary warning kept beside a failure | killed after a test was added: the beneficiary warning gives way to a failure (added) |
+| 814 | page: the byte count counts characters | killed |
+| 815 | shell: the copy link offered on any pledge page after a creation | killed |
+| 816 | page: the prompt-count hint stays during progress | killed after a test was added: the prompt-count hint goes once the steps are shown (added) |
+| 817 | page: the second step is not numbered | killed |
+
+67 mutants. First run: 60 killed, 7 survived (757, 765, 795, 810, 811, 813, 816). Four were gaps and got tests (757, 811, 813, 816), then died on rerun; three are equivalent as argued. The tree hash was compared before and after every run: restored, no mutant left on disk.
+
+### The five commands (after the mutation pass)
+
+From `app/`: `npm test` 770 passed, 9 skipped (live), 0 failed, over 28 files (one earlier run during the mutation
+runner's tail showed 4 failures while the machine was loaded and took 478 s; the rerun of the same tree with the JSON
+reporter is clean); `npm run lint` clean; `npm run typecheck` clean; `npm run build:testnet` built (the existing
+chunk-size warning only). From the worktree root: `node tools/trace-check.mjs`: `OK. 87/112 LLRs referenced, 7/55
+journeys passing.` (LLR-FE-045 is newly referenced.) `docs/ACCEPTANCE.md` rows UJ-04, UJ-10, UJ-12, UJ-14, UJ-15,
+UJ-16, UJ-17, UJ-18 name the tests that changed or were added; statuses are unchanged.
+
+The lead reran the suite alone, three times: 770 passed, 9 skipped, about 6.5 s each. Both slow runs (the 478 s one
+above, and one of the lead's at over 600 s that sat idle at 4.5% CPU) had other work running beside them, a mutation
+run or a parallel `build:testnet`. No test was found to be flaky.
+
+## Confirmation fixes: FE create, 2026-10-03 (05 v1.16)
+
+A narrow confirmation review (Opus) of the v1.15 logic found one Medium: the unconfirmed-creation message lived in
+`useConnectionFailure`, which a change of connection clears, so a wallet that locked itself, or an account switch and
+back, removed it and brought submit back with the form filled. 05 v1.16 says that message outlasts any connection
+change. Applied by the lead, test first.
+
+| Test | Red |
+|---|---|
+| LLR-FE-062 keeps the message and offers no second creation after the account changes and changes back (replaces "removes the message when the wallet's account changes", which pinned the defect) | `Unable to find an element with the text: Your pledge was sent, ...` after the round trip |
+| LLR-FE-033 asks the client to wait for the hash, with a timeout of 180000 ms, a 1 s poll, and replacement detection left on (changed) | `expected "vi.fn()" to be called with arguments: [ { …(3) } ]` |
+
+Green: the unconfirmed creation is its own state in `CreateView`, set only from the flow's `CreationUnconfirmedError`;
+`receiptOf` passes `pollingInterval: 1_000`. `src/create` 332 passed. The poll interval is an implementation choice of
+the wait LLR-FE-033 requires (the reviewer agreed): Arc makes about two blocks a second, and wagmi's 4 s default left
+each step seconds behind the chain.
+
+Mutations, same runner, rows in `cache/mutations-review.mjs`:
+
+| # | Mutation | Result |
+|---|---|---|
+| 818 | page: the unconfirmed creation held in the connection-cleared failure | killed (6 tests) |
+| 819 | page: submit offered again after an unconfirmed creation | killed (3 tests) |
+| 820 | flow: receipt wait at the client's default poll | killed |
+
+Tree hash equal after the run. Mutant 765's equivalence argument rested on "chain time only moves forward", which a
+refetch on window focus against a lagging RPC can break; the reviewer showed its only effect is a stale deadline
+message during a retried attempt, so it is reclassified as a survivor of cosmetic effect and listed in the pre-release
+sweep, not argued equivalent.

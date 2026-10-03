@@ -10,6 +10,8 @@ export const HEALTH_INTERVAL_MS = 30_000;
 // interval pauses while the page is hidden, which is query-core's default for a hidden page.
 const schedule = { staleTime: HEALTH_INTERVAL_MS, refetchInterval: HEALTH_INTERVAL_MS, retry: false } as const;
 
+export type Health = ReturnType<typeof useHealth>;
+
 /**
  * Runs the chain check and the token check on load and every 30 seconds while the page is visible. Each
  * answer replaces the last, so a failure turns writes and creation off and a later pass turns them back on.

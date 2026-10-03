@@ -42,6 +42,8 @@ describe("LLR-FE-072 text contrast meets WCAG 2.1 AA in both themes", () => {
     ["--fg", "--bg"],
     ["--muted", "--bg"],
     ["--link", "--bg"],
+    // The primary button is the page's background colour on the link colour.
+    ["--bg", "--link"],
     ["--banner-error-fg", "--banner-error-bg"],
     ["--banner-notice-fg", "--banner-notice-bg"],
   ];
@@ -54,6 +56,11 @@ describe("LLR-FE-072 text contrast meets WCAG 2.1 AA in both themes", () => {
       expect(t[fg], fg).toBeDefined();
       expect(t[bg], bg).toBeDefined();
       expect(contrast(t[fg] as string, t[bg] as string)).toBeGreaterThanOrEqual(4.5);
+    });
+
+    // WCAG 1.4.11: the border that marks a field in error is a graphic the user needs to find.
+    it(`${name}: the border of a field in error is at least 3 to 1 against the page`, () => {
+      expect(contrast(t["--banner-error-fg"] as string, t["--bg"] as string)).toBeGreaterThanOrEqual(3);
     });
 
     it(`${name}: the focus ring is at least 3 to 1 against the page`, () => {
@@ -135,8 +142,8 @@ describe("LLR-FE-072 keyboard focus is visible and layouts hold from 360 to 1440
     expect(rule).toMatch(/color:\s*var\(--banner-notice-fg\)/);
   });
 
-  it("has no paragraph margin inside a notice", () => {
-    expect(/\.notice p\s*\{([^}]*)\}/.exec(css)?.[1] ?? "").toMatch(/margin:\s*0\s*;/);
+  it("has no paragraph margin inside a hint or a notice area, so their lines sit together", () => {
+    expect(/\.hint p,\s*\.notice-area p\s*\{([^}]*)\}/.exec(css)?.[1] ?? "").toMatch(/margin:\s*0\s*;/);
   });
 
   it("holds the wallet area to the same column as the header", () => {
@@ -146,6 +153,76 @@ describe("LLR-FE-072 keyboard focus is visible and layouts hold from 360 to 1440
 
   it("wraps long words, so an address or a transaction hash cannot push the page sideways", () => {
     expect(css).toMatch(/overflow-wrap:\s*(anywhere|break-word)/);
+  });
+});
+
+describe("LLR-FE-072 the form's controls and messages are as findable and as readable as the buttons", () => {
+  const rule = (selector: RegExp) => new RegExp(`(?<![-\\w.])${selector.source}[^{}]*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
+  const fields = rule(/textarea/);
+
+  it("styles the text fields, the select, and the text area together", () => {
+    const selectors = /([^{}]*textarea[^{}]*)\{/.exec(css)?.[1] ?? "";
+    expect(selectors).toContain("select");
+    expect(selectors).toMatch(/input/);
+  });
+
+  it("draws their border in the control colour, so the field can be found", () => {
+    expect(fields).toMatch(/border:\s*1px solid var\(--control-border\)/);
+  });
+
+  it("gives them a touch-sized height, the page's text size, and the width of the column", () => {
+    expect(fields).toMatch(/min-height:\s*2\.75rem/);
+    expect(fields).toMatch(/font-size:\s*1rem/);
+    expect(fields).toMatch(/width:\s*100%/);
+  });
+
+  it("frames a field's failure in the error colours and its warning in the notice colours, both checked for contrast above", () => {
+    const failure = /\.field-error\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(failure).toMatch(/background:\s*var\(--banner-error-bg\)/);
+    expect(failure).toMatch(/color:\s*var\(--banner-error-fg\)/);
+    const warning = /\.field-warning\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(warning).toMatch(/background:\s*var\(--banner-notice-bg\)/);
+    expect(warning).toMatch(/color:\s*var\(--banner-notice-fg\)/);
+  });
+
+  it("takes no room for a message that is not there, though its container stays in the page to be announced", () => {
+    const empty = /\.field-error:empty[^{]*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(empty).toMatch(/padding:\s*0/);
+    expect(empty).not.toMatch(/display:\s*none/);
+    expect(css).not.toMatch(/\.field-(error|warning)[^{]*\{[^}]*display:\s*none/);
+  });
+});
+
+describe("LLR-FE-072 the primary action, a field in error, and the spacing of the submit area", () => {
+  it("draws the primary button in the link colour with the page colour for its text", () => {
+    const rule = /\.button-primary\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(rule).toMatch(/background:\s*var\(--link\)/);
+    expect(rule).toMatch(/color:\s*var\(--bg\)/);
+  });
+
+  it("gives the primary button that is not available the plain pending look, so muted text is never on the link colour", () => {
+    const rule = /\.button-primary\[aria-disabled="true"\]\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(rule).toMatch(/background:\s*transparent/);
+    expect(rule).toMatch(/color:\s*var\(--muted\)/);
+  });
+
+  it("draws a field in error with a 2 px border in the error colour, which is not told by colour alone", () => {
+    const rule = /([^{}]*\[aria-invalid="true"\][^{}]*)\{([^}]*)\}/.exec(css);
+    expect(rule?.[1]).toMatch(/input/);
+    expect(rule?.[1]).toMatch(/textarea/);
+    expect(rule?.[1]).toMatch(/select/);
+    expect(rule?.[2]).toMatch(/border:\s*2px solid var\(--banner-error-fg\)/);
+  });
+
+  it("spaces the submit area from its content, so a container with nothing in it takes no room", () => {
+    const area = /\.submit-area\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(area).not.toMatch(/\bgap:/);
+    const spaced = /\.submit-area\s*>\s*\*\s*\+\s*:not\(:empty\)\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(spaced).toMatch(/margin-top:\s*0\.5rem/);
+  });
+
+  it("keeps the room of the copy confirmation, so the button above it does not move when it is filled", () => {
+    expect(/\.copy-status\s*\{([^}]*)\}/.exec(css)?.[1] ?? "").toMatch(/min-height:\s*[\d.]+r?em/);
   });
 });
 

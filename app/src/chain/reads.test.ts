@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { HttpRequestError, createPublicClient } from "viem";
 import { selectNetwork } from "../config/networks";
@@ -139,8 +139,17 @@ describe("LLR-FE-010 reads go through the six view functions only", () => {
 
     it("names no log, filter, or event-subscription API", () => {
       const forbidden =
-        /getLogs|getContractEvents|getFilterLogs|getFilterChanges|createEventFilter|createContractEventFilter|createBlockFilter|createPendingTransactionFilter|watchEvent|watchContractEvent|watchBlocks|watchPendingTransactions|eth_getLogs|eth_newFilter|eth_newBlockFilter|eth_getFilter|eth_uninstallFilter|eth_subscribe|parseEventLogs|decodeEventLog|getTransactionReceipt/;
+        /getLogs|getContractEvents|getFilterLogs|getFilterChanges|createEventFilter|createContractEventFilter|createBlockFilter|createPendingTransactionFilter|watchEvent|watchContractEvent|watchBlocks|watchPendingTransactions|eth_getLogs|eth_newFilter|eth_newBlockFilter|eth_getFilter|eth_uninstallFilter|eth_subscribe/;
       for (const s of code) expect(s.text, s.path).not.toMatch(forbidden);
+    });
+
+    // LLR-FE-037 decodes PledgeCreated from the receipt of the creation the staker has just sent. That is one
+    // receipt the application was handed, not a search of the chain's logs, so only the file that reads it may
+    // name these.
+    it("names the receipt and event-decoding functions in the file that reads the creation receipt, and nowhere else", () => {
+      const receiptApis = /parseEventLogs|decodeEventLog|getTransactionReceipt|waitForTransactionReceipt/;
+      const naming = code.filter((s) => receiptApis.test(s.text)).map((s) => s.path.slice(srcDir.length + 1));
+      expect(naming).toEqual([join("create", "flow.ts")]);
     });
 
     it("names the function of every contract call as a literal, and only an allowed one", () => {
@@ -153,6 +162,12 @@ describe("LLR-FE-010 reads go through the six view functions only", () => {
         "totalLocked",
         "decimals",
         "symbol",
+        // The create flow reads the staker's balance and allowance of the stake token and sends two
+        // transactions (LLR-FE-030, 033). None of them is pledge data.
+        "balanceOf",
+        "allowance",
+        "approve",
+        "createPledge",
       ]);
       const mentions = code.flatMap((s) => [...s.text.matchAll(/\bfunctionName\b/g)].map(() => s.path));
       const literals = code.flatMap((s) => [...s.text.matchAll(/\bfunctionName:\s*"(\w+)"/g)].map((m) => m[1] as string));

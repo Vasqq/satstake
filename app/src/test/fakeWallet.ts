@@ -5,6 +5,13 @@ export interface WalletRequest {
   params?: unknown;
 }
 
+/** The transaction object of an eth_sendTransaction request. */
+export interface SentTransaction {
+  from: Address;
+  to: Address;
+  data: `0x${string}`;
+}
+
 type Listener = (...args: unknown[]) => void;
 
 export interface AnnouncedInfo {
@@ -36,6 +43,11 @@ export class FakeWallet {
   authorized: boolean;
   knownChains = new Set<number>();
   requests: WalletRequest[] = [];
+  /**
+   * What the wallet does with a transaction it is asked to send: returns the hash it would show the user.
+   * Unset, eth_sendTransaction fails with 4200 like any other method this wallet does not know.
+   */
+  onSend: ((tx: SentTransaction) => `0x${string}` | Promise<`0x${string}`>) | undefined;
   private failures = new Map<string, Error[]>();
   private holds = new Map<string, Promise<void>[]>();
   private listeners = new Map<string, Set<Listener>>();
@@ -133,6 +145,10 @@ export class FakeWallet {
         const id = hexToNumber((params as { chainId: `0x${string}` }[])[0]?.chainId ?? "0x0");
         this.changeChain(id);
         return null;
+      }
+      case "eth_sendTransaction": {
+        if (!this.onSend) throw walletError(4200, `The method ${method} is not supported.`);
+        return this.onSend((params as SentTransaction[])[0] as SentTransaction);
       }
       default:
         throw walletError(4200, `The method ${method} is not supported.`);

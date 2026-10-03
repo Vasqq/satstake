@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { fill, openCreate, ready, submit } from "./test/createHarness";
 import { FakeWallet, walletError } from "./test/fakeWallet";
 import { ACCOUNT, FOREIGN_CHAIN, OTHER_ACCOUNT, findConnected, mountApp, network, teardownWallets } from "./test/walletHarness";
 
@@ -17,6 +18,7 @@ const ALLOWED = new Set([
   "wallet_switchEthereumChain",
   "wallet_addEthereumChain",
   "eth_sendTransaction",
+  "wallet_sendTransaction",
 ]);
 
 const SIGNING_NAMES = [
@@ -95,6 +97,16 @@ describe("LLR-FE-074 the application never asks a wallet to sign a message or ty
     mountApp({ windowEthereum: injected });
     fireEvent.click(await screen.findByRole("button", { name: "Connect browser wallet" }));
     await findConnected(ACCOUNT);
+    teardownWallets();
+
+    // 5. A full create: the approval and the creation, each sent to the wallet as a transaction.
+    const creating = await openCreate();
+    wallets.push(creating.wallet);
+    fill();
+    await ready();
+    fireEvent.click(submit());
+    await waitFor(() => expect(creating.world.count("createPledge")).toBe(1));
+    expect(creating.world.count("approve")).toBe(1);
 
     return wallets;
   }
@@ -112,6 +124,7 @@ describe("LLR-FE-074 the application never asks a wallet to sign a message or ty
       "eth_requestAccounts",
       "wallet_switchEthereumChain",
       "wallet_addEthereumChain",
+      "eth_sendTransaction",
     ]) {
       expect(seen.has(required), required).toBe(true);
     }

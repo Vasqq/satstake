@@ -9,11 +9,6 @@ export function HomeView() {
 }
 
 /** @trace LLR-FE-013 */
-export function CreateView() {
-  return <PageHeading title="Create a pledge | SatStake">Create a pledge</PageHeading>;
-}
-
-/** @trace LLR-FE-013 */
 export function MineView() {
   return <PageHeading title="My pledges | SatStake">My pledges</PageHeading>;
 }

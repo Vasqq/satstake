@@ -164,6 +164,21 @@ button {
   cursor: pointer;
 }
 
+/* The one action a page is for. The page colour on the link colour is checked for contrast like any text. */
+.button-primary {
+  border-color: var(--link);
+  background: var(--link);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+/* Not available: the plain pending look, so muted text is never set on the link colour. */
+.button-primary[aria-disabled="true"] {
+  background: transparent;
+  border-color: var(--control-border);
+  color: var(--muted);
+}
+
 /* Pending is not told by colour alone: the border turns dashed and the cursor refuses. */
 button[aria-disabled="true"] {
   border-style: dashed;
@@ -186,7 +201,8 @@ button[aria-disabled="true"] {
   border-radius: 0.375rem;
 }
 
-.notice p {
+.hint p,
+.notice-area p {
   margin: 0;
 }
 
@@ -194,6 +210,135 @@ button[aria-disabled="true"] {
   border-color: transparent;
   background: var(--banner-error-bg);
   color: var(--banner-error-fg);
+}
+
+/* The create form. Fields share the button's control border, so a field can be found by its outline alone. */
+input:not([type="checkbox"], [type="radio"]),
+textarea,
+select {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--control-border);
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 1rem;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* A field in error is found by a heavier border as well as by its colour, which some people cannot tell apart. */
+input[aria-invalid="true"],
+textarea[aria-invalid="true"],
+select[aria-invalid="true"] {
+  border: 2px solid var(--banner-error-fg);
+}
+
+.field > label,
+legend {
+  font-weight: 600;
+}
+
+fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--gap);
+}
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding-block: 0.5rem;
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+/* The message containers are always in the page so a screen reader announces what fills them, and take no
+   room while empty. */
+.field-error {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  background: var(--banner-error-bg);
+  color: var(--banner-error-fg);
+}
+
+.field-warning {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  background: var(--banner-notice-bg);
+  color: var(--banner-notice-fg);
+}
+
+.field-error:empty,
+.field-warning:empty {
+  padding: 0;
+}
+
+/* Spacing comes from what is in the area and not from a gap, because the status containers are in the page
+   before they are filled and an empty one must not leave a space. */
+.submit-area {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.submit-area > * + :not(:empty) {
+  margin-top: 0.5rem;
+}
+
+/* The notice area holds an empty status element even when there is nothing to say, so it spaces its own content. */
+.submit-area > .notice-area {
+  margin-top: 0;
+}
+
+.submit-area .notice-area .notice {
+  margin-top: 0.5rem;
+}
+
+.copy-link {
+  margin-block: var(--gap);
+}
+
+.copy-link p {
+  margin: 0 0 0.5rem;
+}
+
+/* The room for "Link copied." is kept before there is anything to say, so the button above does not move. */
+.copy-status {
+  min-height: 1.55em;
+  margin-top: 0.5rem;
+}
+
+.progress ul {
+  margin: 0;
+  padding-left: 1.25rem;
 }
 
 .banner {

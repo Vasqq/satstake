@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { BaseError, UserRejectedRequestError } from "viem";
+import { type Abi, BaseError, ContractFunctionRevertedError, UserRejectedRequestError, encodeErrorResult } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { satStakeAbi } from "../abi";
 import { FAILED_MESSAGE, REJECTED_MESSAGE, RequestNotice, isUserRejection, rawErrorText } from "./failure";
 
 afterEach(() => {
@@ -215,5 +216,47 @@ describe("LLR-FE-062 the raw error text carries the message and every cause", ()
     loop.self = loop;
     expect(rawErrorText(loop)).toBe("[object Object]");
     expect(rawErrorText(10n)).toBe("10");
+  });
+});
+
+describe("LLR-FE-060 a failure the contract reported shows the message of its error and not the general one", () => {
+  const reverted = (errorName: string, args: unknown[] = []) =>
+    new BaseError("send failed", {
+      cause: new ContractFunctionRevertedError({
+        abi: satStakeAbi as Abi,
+        data: encodeErrorResult({ abi: satStakeAbi as Abi, errorName, args } as Parameters<typeof encodeErrorResult>[0]),
+        functionName: "createPledge",
+      }),
+    });
+
+  it("shows the words of section 2.2 for the error, in the failure style", () => {
+    render(<RequestNotice error={reverted("PromiseEmpty")} label="Notices" />);
+    const message = screen.getByText("Write the promise you are making.");
+    expect(message.className).toContain("notice-failure");
+    expect(screen.getByRole("status", { name: "Notices" }).textContent).not.toContain(FAILED_MESSAGE);
+  });
+
+  it("offers no raw error to copy for an error it can explain", () => {
+    render(<RequestNotice error={reverted("ZeroAmount")} label="Notices" />);
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("falls back to the general message for a revert it has no words for", () => {
+    render(<RequestNotice error={reverted("InvalidAllowlist")} label="Notices" />);
+    expect(screen.getByRole("status", { name: "Notices" }).textContent).toContain(FAILED_MESSAGE);
+    expect(screen.getByRole("button", { name: "Copy the error" })).toBeTruthy();
+  });
+
+  it("still treats a wallet rejection as a rejection", () => {
+    render(<RequestNotice error={coded(4001)} label="Notices" />);
+    expect(screen.getByRole("status", { name: "Notices" }).textContent).toBe(REJECTED_MESSAGE);
+  });
+
+  it("replaces the message in the same status container when the error changes", () => {
+    const { rerender } = render(<RequestNotice error={reverted("ZeroAmount")} label="Notices" />);
+    const box = screen.getByRole("status", { name: "Notices" });
+    rerender(<RequestNotice error={reverted("PromiseEmpty")} label="Notices" />);
+    expect(screen.getByRole("status", { name: "Notices" })).toBe(box);
+    expect(box.textContent).toBe("Write the promise you are making.");
   });
 });

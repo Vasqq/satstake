@@ -7,10 +7,12 @@ import { createReads } from "./chain/reads";
 import { useHealth } from "./chain/useHealth";
 import type { SelectedNetwork } from "./config/networks";
 import type { Route } from "./routes";
+import { CopyLink } from "./create/CopyLink";
+import { CreateView } from "./create/CreateView";
 import { useHashRoute, useNavigated } from "./useHashRoute";
 import { NavigatedContext } from "./views/PageHeading";
 import { PledgeView } from "./views/PledgeView";
-import { AboutView, CreateView, HomeView, MineView, NotFoundView } from "./views/Views";
+import { AboutView, HomeView, MineView, NotFoundView } from "./views/Views";
 import { WalletBar } from "./wallet/WalletBar";
 
 const NAV: { route: Route["name"]; href: string; label: string }[] = [
@@ -74,6 +76,8 @@ function Shell({ client, network }: { client: PublicClient; network: SelectedNet
   const error = networkError(health.network, network);
   const notices = (health.tokens ?? []).map(tokenNotice).filter((n): n is string => n !== null);
   const navigated = useNavigated();
+  // The pledge the visitor has just created, so its page offers the copy-link control and no other page does.
+  const [created, setCreated] = useState<bigint | null>(null);
 
   return (
     <NavigatedContext.Provider value={navigated}>
@@ -94,10 +98,19 @@ function Shell({ client, network }: { client: PublicClient; network: SelectedNet
       </div>
       <main>
         {route.name === "home" && <HomeView />}
-        {route.name === "create" && <CreateView />}
+        {route.name === "create" && (
+          <CreateView client={client} reads={reads} network={network} health={health} onCreated={setCreated} />
+        )}
         {route.name === "mine" && <MineView />}
         {route.name === "about" && <AboutView />}
-        {route.name === "pledge" && <PledgeView key={route.id.toString()} reads={reads} id={route.id} />}
+        {route.name === "pledge" && (
+          <PledgeView
+            key={route.id.toString()}
+            reads={reads}
+            id={route.id}
+            afterStatus={created === route.id ? <CopyLink id={route.id} /> : undefined}
+          />
+        )}
         {route.name === "notFound" && <NotFoundView />}
       </main>
       <Footer network={network} />

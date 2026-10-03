@@ -29,6 +29,23 @@ export interface FakeToken {
   symbol: string;
 }
 
+/** A receipt as a node returns it, before viem formats it. */
+export interface FakeReceipt {
+  status: "success" | "reverted";
+  from: Address;
+  to: Address;
+  logs: { address: Address; topics: Hex[]; data: Hex }[];
+}
+
+/** A transaction as a node holds it: pending until `mined`, and found by `from` and `nonce` when it is replaced. */
+export interface FakeTransaction {
+  from: Address;
+  to: Address;
+  input: Hex;
+  nonce: number;
+  mined: boolean;
+}
+
 export interface RequestRecord {
   method: string;
   functionName?: string;
@@ -57,6 +74,14 @@ export class FakeChain {
   pledges = new Map<bigint, FakePledge>();
   states = new Map<bigint, number>();
   tokens = new Map<string, FakeToken>();
+  /** Keyed by lower-cased token and account, so a read for an account nobody set up is 0. */
+  balances = new Map<string, bigint>();
+  /** Keyed by lower-cased token, owner, and spender. */
+  allowances = new Map<string, bigint>();
+  /** Lower-cased addresses that hold contract code. */
+  code = new Set<string>();
+  receipts = new Map<Hex, FakeReceipt>();
+  transactions = new Map<Hex, FakeTransaction>();
   contract: Address;
   requests: RequestRecord[] = [];
   /** Errors thrown for the next requests, one per request, oldest first. */
@@ -65,10 +90,18 @@ export class FakeChain {
   outage: Error | undefined;
   /** When set, every eth_call fails with it until cleared. */
   callError: Error | undefined;
+  /** When set, every eth_getBlockByNumber fails with it until cleared, as when the time of the network cannot be read. */
+  blockError: Error | undefined;
+  /** When set, every balanceOf call fails with it until cleared, while the other reads still answer. */
+  balanceError: Error | undefined;
   /** When set, every eth_call reverts with this contract error until cleared. */
   callRevert: { errorName: string; args?: unknown[] } | undefined;
   /** When set, every eth_call waits for it before answering. */
   gate: Promise<void> | undefined;
+  /** When set, every eth_getTransactionReceipt waits for it before answering, as when a transaction is not yet mined. */
+  receiptGate: Promise<void> | undefined;
+  /** When set, every eth_getTransactionReceipt fails with it, as when the endpoint breaks after a transaction was sent. */
+  receiptError: Error | undefined;
   /**
    * Called for each answered request once its answer is fixed, which is when a real node would have read
    * its state. The request returns after the promise it gets back, so a test can make one answer slow.
@@ -86,6 +119,22 @@ export class FakeChain {
 
   addToken(address: string, token: FakeToken): void {
     this.tokens.set(address.toLowerCase(), token);
+  }
+
+  setBalance(token: string, account: string, amount: bigint): void {
+    this.balances.set(`${token}:${account}`.toLowerCase(), amount);
+  }
+
+  balanceOf(token: string, account: string): bigint {
+    return this.balances.get(`${token}:${account}`.toLowerCase()) ?? 0n;
+  }
+
+  setAllowance(token: string, owner: string, spender: string, amount: bigint): void {
+    this.allowances.set(`${token}:${owner}:${spender}`.toLowerCase(), amount);
+  }
+
+  allowanceOf(token: string, owner: string, spender: string): bigint {
+    return this.allowances.get(`${token}:${owner}:${spender}`.toLowerCase()) ?? 0n;
   }
 
   count(method: string, functionName?: string): number {
@@ -113,16 +162,34 @@ export class FakeChain {
         await this.latency?.(record);
         return numberToHex(this.chainId);
       case "eth_getBlockByNumber": {
+        if (this.blockError) throw this.blockError;
+        // A block with its transactions in full is what viem reads to look for a replacement of a pending one.
+        const full = params?.[1] === true;
         const block = {
           number: "0x10",
           hash: "0x" + "ab".repeat(32),
           parentHash: "0x" + "cd".repeat(32),
           timestamp: numberToHex(this.blockTimestamp),
-          transactions: [],
+          transactions: full ? [...this.transactions].filter(([, tx]) => tx.mined).map(([hash, tx]) => this.formatTransaction(hash, tx)) : [],
           uncles: [],
         };
         await this.latency?.(record);
         return block;
+      }
+      case "eth_blockNumber":
+        return "0x10";
+      case "eth_getCode":
+        record.to = String(params?.[0] ?? "").toLowerCase();
+        return this.code.has(String((params?.[0] ?? "")).toLowerCase()) ? "0x6080604052" : "0x";
+      case "eth_getTransactionReceipt": {
+        if (this.receiptGate) await this.receiptGate;
+        if (this.receiptError) throw this.receiptError;
+        return this.formatReceipt((params?.[0] ?? "0x") as Hex);
+      }
+      case "eth_getTransactionByHash": {
+        const hash = (params?.[0] ?? "0x") as Hex;
+        const tx = this.transactions.get(hash);
+        return tx ? this.formatTransaction(hash, tx) : null;
       }
       case "eth_call": {
         if (this.callError) throw this.callError;
@@ -151,6 +218,18 @@ export class FakeChain {
     }
     if (functionName === "symbol") {
       return encodeFunctionResult({ abi: erc20Abi, functionName, result: token.symbol });
+    }
+    const args = (decodeFunctionData({ abi: erc20Abi, data }).args ?? []) as readonly string[];
+    if (functionName === "balanceOf") {
+      if (this.balanceError) throw this.balanceError;
+      return encodeFunctionResult({ abi: erc20Abi, functionName, result: this.balanceOf(tx.to as string, args[0] as string) });
+    }
+    if (functionName === "allowance") {
+      return encodeFunctionResult({
+        abi: erc20Abi,
+        functionName,
+        result: this.allowanceOf(tx.to as string, args[0] as string, args[1] as string),
+      });
     }
     throw new Error(`FakeChain does not answer token call ${functionName}`);
   }
@@ -183,6 +262,42 @@ export class FakeChain {
       default:
         throw new Error(`FakeChain does not answer ${decoded.functionName}`);
     }
+  }
+
+  private formatTransaction(hash: Hex, tx: FakeTransaction): unknown {
+    return {
+      hash,
+      from: tx.from,
+      to: tx.to,
+      input: tx.input,
+      nonce: numberToHex(tx.nonce),
+      value: "0x0",
+      gas: "0x5208",
+      gasPrice: "0x1",
+      type: "0x0",
+      blockHash: tx.mined ? "0x" + "ab".repeat(32) : null,
+      blockNumber: tx.mined ? "0x10" : null,
+      transactionIndex: tx.mined ? "0x0" : null,
+    };
+  }
+
+  private formatReceipt(hash: Hex): unknown {
+    const receipt = this.receipts.get(hash);
+    if (!receipt) return null;
+    const common = { blockHash: "0x" + "ab".repeat(32), blockNumber: "0x10", transactionHash: hash, transactionIndex: "0x0" };
+    return {
+      ...common,
+      from: receipt.from,
+      to: receipt.to,
+      contractAddress: null,
+      cumulativeGasUsed: "0x5208",
+      gasUsed: "0x5208",
+      effectiveGasPrice: "0x1",
+      logsBloom: "0x" + "00".repeat(256),
+      status: receipt.status === "success" ? "0x1" : "0x0",
+      type: "0x2",
+      logs: receipt.logs.map((log, index) => ({ ...common, ...log, logIndex: numberToHex(index), removed: false })),
+    };
   }
 
   private notFound(id: bigint): RpcRequestError {
