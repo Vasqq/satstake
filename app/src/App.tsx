@@ -107,6 +107,9 @@ function Shell({ client, network }: { client: PublicClient; network: SelectedNet
           <PledgeView
             key={route.id.toString()}
             reads={reads}
+            client={client}
+            network={network}
+            health={health}
             id={route.id}
             afterStatus={created === route.id ? <CopyLink id={route.id} /> : undefined}
           />

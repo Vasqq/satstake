@@ -168,6 +168,11 @@ describe("LLR-FE-010 reads go through the six view functions only", () => {
         "allowance",
         "approve",
         "createPledge",
+        // The pledge page sends a verdict or a settlement (LLR-FE-046), and replays a mined revert with the same
+        // function to find its error.
+        "markKept",
+        "markBroken",
+        "settle",
       ]);
       const mentions = code.flatMap((s) => [...s.text.matchAll(/\bfunctionName\b/g)].map(() => s.path));
       const literals = code.flatMap((s) => [...s.text.matchAll(/\bfunctionName:\s*"(\w+)"/g)].map((m) => m[1] as string));

@@ -52,6 +52,8 @@ export function pledgeCreatedLog(fields: {
  */
 export class FakeWorld {
   sent: Sent[] = [];
+  /** Verdict and settle transactions, kept apart from `sent` so the creation tests' tuple types stay narrow. */
+  acts: { functionName: "markKept" | "markBroken" | "settle"; id: bigint; hash: Hex; from: Address }[] = [];
   /** The identifier the next createPledge gets. Distinct from any pledge count, so a wrong source shows. */
   nextPledgeId = 42n;
   /** How each mined transaction ends, oldest first. Anything not listed succeeds. */
@@ -88,6 +90,12 @@ export class FakeWorld {
 
     if (to === this.chain.contract.toLowerCase()) {
       const decoded = decodeFunctionData({ abi: satStakeAbi, data: tx.data });
+      if (decoded.functionName === "markKept" || decoded.functionName === "markBroken" || decoded.functionName === "settle") {
+        const id = (decoded.args as readonly [bigint])[0];
+        this.acts.push({ functionName: decoded.functionName, id, hash, from: tx.from });
+        if (outcome === "success") this.act(decoded.functionName, id);
+        return this.record(hash, tx, outcome, []);
+      }
       if (decoded.functionName !== "createPledge") throw walletError(4200, `FakeWorld does not send ${decoded.functionName}`);
       const args = decoded.args as unknown as Extract<Sent, { functionName: "createPledge" }>["args"];
       this.sent.push({ to: tx.to, functionName: "createPledge", args, hash, from: tx.from });
@@ -100,6 +108,19 @@ export class FakeWorld {
       if (outcome === "success") this.chain.setAllowance(tx.to, tx.from, args[0], args[1]);
     }
 
+    return this.record(hash, tx, outcome, logs);
+  }
+
+  /** What a successful verdict or settlement leaves on the chain: the state `stateOf` then reports. */
+  private act(functionName: "markKept" | "markBroken" | "settle", id: bigint): void {
+    const state = this.chain.states.get(id);
+    if (functionName === "markKept") this.chain.states.set(id, 2);
+    else if (functionName === "markBroken") this.chain.states.set(id, 3);
+    else this.chain.states.set(id, state === 2 ? 4 : 5);
+  }
+
+  private record(hash: Hex, tx: SentTransaction, outcome: "success" | "reverted", logs: FakeReceipt["logs"]): Hex {
+    const to = tx.to.toLowerCase();
     const nonce = this.nonces.get(tx.from) ?? 0;
     this.nonces.set(tx.from, nonce + 1);
     const replaced = this.replaceNextCreate && to === this.chain.contract.toLowerCase();
