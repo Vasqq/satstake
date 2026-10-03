@@ -5284,3 +5284,83 @@ after both runs. 28 of 30 killed; two argued equivalent.
 Final, from `app/`: `npm test` 814 passed, 9 skipped (live), 0 failed, run alone; `npm run lint` and `npm run typecheck`
 clean; `npm run build:testnet` built (chunk-size warning only). From the root: `node tools/trace-check.mjs`:
 `OK. 89/113 LLRs referenced, 7/55 journeys passing.`
+
+### Home, about, my pledges
+
+Red, before any view code (`npx vitest run` on the new files; views are still headings only). The tests mount the whole
+app against `FakeChain` (extended with a per-account index and a record of each `pledgeIdsOf` window) and `FakeWallet`.
+
+| Suite | Tests red | Reason |
+|---|---|---|
+| HomeView (LLR-FE-070) | 15 of 16 (the NS quotation test passes: it only reads the document) | h1 reads "SatStake"; no create link, steps, proof panel, Sourcify link, finality sentence, or pledge count |
+| AboutView (LLR-FE-071) | 7 of 7 | h1 only; none of the brief's sections or sentences |
+| MineView (LLR-FE-050) | 21 of 22 (the title and heading test passes: they already existed) | no wallet message, list, pager, or read |
+| userStrings (LLR-FE-071) | 1 of 5 | scanner tests pass; "finds the application's sources" fails because HomeView.tsx, AboutView.tsx and MineView.tsx do not exist |
+| App (LLR-FE-013, 072) | 3 | the three assertions changed from heading "SatStake" to the NS sentence fail |
+
+The whole-source scan ("holds for every string in app/src") passes at once: no existing string holds U+2014 or a banned
+word. It was never red, so its discriminating evidence is the scanner's own tests (each string kind, each word, any
+case) and mutations 975 to 979 below.
+
+Green: `AboutView.tsx`, `HomeView.tsx`, `MineView.tsx` written, `Views.tsx` reduced to the two not-found views, three route lines
+in `App.tsx`, rules appended to `styles.css`. The new suites and the App suite pass. One test of mine failed first for a test
+defect (it read the status element before the wallet had finished reconnecting); it now waits, and also pins that the one
+status element is never replaced across connect and list.
+
+#### Mutation pass 930 to 980 (logic only; runner `cache/mutants/run.mjs`, originals under `cache/mutants/orig`, restored after each)
+
+First run: 45 mutants, 40 killed, 6 survived (945, 947, 948, 951, 956, 975), 976 not applied (my find string did not match the escape). Each survivor
+was a test gap; tests added, survivors rerun, all killed. Source restore verified by the suites below.
+
+| # | Mutant | Result |
+|---|---|---|
+| 930 | page offset counted from the page after | killed |
+| 931 | window end clamp `end > 0` | killed |
+| 932 | window offset floor 1 | killed |
+| 933 | limit always 20 | killed |
+| 934 | ids not reversed | killed |
+| 935 | page size 10 | killed |
+| 936 | Newer never disabled | killed |
+| 937 | Older disabled one page late | killed |
+| 938 | pager only from 3 pages | killed |
+| 939 | page count rounds without the minus one | killed (20 pledges showed a pager) |
+| 940 | list not keyed by account (no reset on account change) | killed |
+| 941 | no focus on the Showing line | killed |
+| 942 | retry every 10 s | killed |
+| 943 | retry only after success | killed |
+| 944 | empty message removed | killed |
+| 945 | create link shown while reading | first run SURVIVED; test now asserts no link and no empty message while reading; killed |
+| 946 | "pledge" singular wrong | killed |
+| 947 | "reconnecting" not treated as waiting | first run SURVIVED (no test set that status); test uses `config.setState`; killed |
+| 948 | list shown from an address alone, without status connected | first run SURVIVED; test asserts no cards while reconnecting; killed |
+| 949 | page of ids read when count is 0 | killed |
+| 950 | role read for no account | killed |
+| 951 | card fails only when its pledge read fails | first run SURVIVED; test with a pledge whose state reverts; killed |
+| 952 | ids query key without the page | killed |
+| 953 | ids failure not reported | killed |
+| 954 | reading message dropped while ids load | killed |
+| 955 | home count retried after success | killed |
+| 956 | home retry every 10 s | first run SURVIVED: failed calls are never decoded, so counting by function name saw none; test counts `eth_call` and checks 20 s of silence; killed |
+| 957 | home reading and failure texts swapped | killed |
+| 958 | home count 0 shown as reading | killed |
+| 959 | example link to another id | killed |
+| 960 | Sourcify URL without the chain | killed |
+| 961 | contract address not shown in full | killed |
+| 962 | home count query retries by default | killed |
+| 963 | home reads `pledgeCountOf` | killed |
+| 964 | banned word in the about text | killed by the whole-source scan |
+| 965 | U+2014 in JSX text | killed |
+| 966 | U+2014 in a template literal | killed |
+| 967 | banned word in a title string | killed |
+| 974 | scanner ignores string literals | killed |
+| 975 | "seamless" removed from the banned list | first run SURVIVED (the scanner test iterated the list it was given); a test pins the six words of the requirement; killed |
+| 976 | em dash constant is an en dash | killed |
+| 977 | scanner ignores JSX text | killed |
+| 978 | scanner ignores template heads | killed |
+| 979 | scan includes test files | killed |
+
+Not run, argued equivalent: `end > PAGE_SIZE` as `>=` (at 20 the offset is 0 either way); `gcTime: 0` (a cache lifetime, not
+observable in one mount).
+
+Final, from `app/`: `npm test` 867 passed, 9 skipped (live), run alone; `npm run lint` and `npm run typecheck` clean; `npm run build:testnet`
+built. From the root: `node tools/trace-check.mjs`: `OK. 92/113 LLRs referenced, 7/55 journeys passing.`

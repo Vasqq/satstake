@@ -73,6 +73,10 @@ export class FakeChain {
   blockTimestamp = 1_789_500_000n;
   pledges = new Map<bigint, FakePledge>();
   states = new Map<bigint, number>();
+  /** The ids each account takes part in, oldest first, keyed by lower-cased account, as the contract's per-address index. */
+  accountPledges = new Map<string, bigint[]>();
+  /** Each `pledgeIdsOf` read the contract answered, so a test can check the window the page asked for. */
+  pagedReads: { account: string; offset: bigint; limit: bigint }[] = [];
   tokens = new Map<string, FakeToken>();
   /** Keyed by lower-cased token and account, so a read for an account nobody set up is 0. */
   balances = new Map<string, bigint>();
@@ -253,10 +257,21 @@ export class FakeChain {
         if (state === undefined) throw this.notFound(id);
         return encodeFunctionResult({ abi: satStakeAbi, functionName: "stateOf", result: state });
       }
-      case "pledgeCountOf":
-        return encodeFunctionResult({ abi: satStakeAbi, functionName: "pledgeCountOf", result: 0n });
-      case "pledgeIdsOf":
-        return encodeFunctionResult({ abi: satStakeAbi, functionName: "pledgeIdsOf", result: [] });
+      case "pledgeCountOf": {
+        const ids = this.accountPledges.get(String(args[0]).toLowerCase()) ?? [];
+        return encodeFunctionResult({ abi: satStakeAbi, functionName: "pledgeCountOf", result: BigInt(ids.length) });
+      }
+      case "pledgeIdsOf": {
+        const [account, offset, limit] = args as [string, bigint, bigint];
+        this.pagedReads.push({ account: account.toLowerCase(), offset, limit });
+        const ids = this.accountPledges.get(account.toLowerCase()) ?? [];
+        // The contract clamps the window to what exists and returns nothing past the end.
+        return encodeFunctionResult({
+          abi: satStakeAbi,
+          functionName: "pledgeIdsOf",
+          result: ids.slice(Number(offset), Number(offset + limit)),
+        });
+      }
       case "totalLocked":
         return encodeFunctionResult({ abi: satStakeAbi, functionName: "totalLocked", result: 0n });
       default:
