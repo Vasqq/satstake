@@ -346,7 +346,7 @@ describe("LLR-FE-006 a notice names a token whose creation is disabled", () => {
   });
 });
 
-const pledgeStatus = () => within(screen.getByRole("main")).getByRole("status");
+const pledgeStatus = () => within(screen.getByRole("main")).getByRole("status", { name: "Pledge status" });
 const RETRYING = "Could not read this pledge. The site keeps trying while this page is open.";
 
 describe("LLR-FE-011 the pledge page in plain words, and a failed first read is tried again", () => {

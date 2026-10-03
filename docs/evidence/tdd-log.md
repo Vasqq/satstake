@@ -5364,3 +5364,134 @@ observable in one mount).
 
 Final, from `app/`: `npm test` 867 passed, 9 skipped (live), run alone; `npm run lint` and `npm run typecheck` clean; `npm run build:testnet`
 built. From the root: `node tools/trace-check.mjs`: `OK. 92/113 LLRs referenced, 7/55 journeys passing.`
+
+### Pledge page
+
+Spec: `docs/BRIEF_PLEDGE_AND_VIEWS.md` section 2, 05 v1.17 (LLR-FE-012, 040 to 044, 046). Mutation numbers 860 to 929.
+Red was run against inert stubs (empty strings, `null`, a `confirmed` outcome) for `countdown.ts`, `actions.ts`,
+`warning.ts` and `request.ts`, and against the unchanged `PledgeView` for the page tests, so each failure is an
+assertion and not a missing module. Test infrastructure added first: `FakeWorld` mines `markKept`, `markBroken` and
+`settle` (kept in `acts`, apart from `sent`), `test/dialogPolyfill.ts` (jsdom has no `showModal`), and
+`test/pledgeHarness.tsx`. `App.test.tsx`'s `pledgeStatus` now asks for the status named "Pledge status".
+
+Red, 2026-10-03: 124 of 188 fail, 64 pass (the older App tests and the "light" and "not shown" cases pass against stubs).
+
+| Tests (file) | Reason |
+|---|---|
+| LLR-FE-012 `formatRemaining` x6 (`countdown.test.ts`) | `expected '' to be '1 day 0 hours'` and the like |
+| LLR-FE-042 `planActions` x10 (`actions.test.ts`) | `expected { kind: 'none' } to deeply equal { kind: 'verdict' }` and the like |
+| LLR-FE-043 `deadlineWarning` x3 (`warning.test.ts`) | `expected null to be 'Less than 10 minutes left...'` |
+| LLR-FE-046 `runRequest` x7 (`request.test.ts`) | `expected 'confirmed' to be 'reverted'`, hash never reported |
+| LLR-FE-040, 072 pledge page styles x10 (`pledgeStyles.test.ts`) | no "Pledge page" section: `expected -1 to be greater than -1` |
+| LLR-FE-040, 041, 012, 043 page x33 (`PledgeDetails.test.tsx`) | no `dt` labels, no promise, badges, countdown or warning area: `Unable to find an element with the text: Stake` / `an accessible element with the role "status" and name "Deadline warning"` |
+| LLR-FE-042, 044, 046 page x49 (`PledgeActions.test.tsx`) | no action group, dialog or progress element: `Unable to find an accessible element with the role "group"` and the like |
+| LLR-FE-011 x6 (`App.test.tsx`) | status is not yet named: `Unable to find an accessible element with the role "status" and name "Pledge status"` |
+
+Green, 2026-10-03: `countdown.ts`, `actions.ts`, `warning.ts`, `request.ts`; `chain/useTick.ts` (one tick a second,
+nothing read); `usePledgeLive` gained `refresh`; `views/pledge/{BrokenDialog,PledgeActions,PledgeFacts}.tsx`;
+`PledgeView` rebuilt on them (props `client`, `network`, `health` from Shell; reading, polling, not-found and retry
+behaviour unchanged); a "Pledge page" block at the end of `styles.css`. Seven red-run assumptions needed correcting
+before green, none of them in the code: tests used native `disabled` where the stylesheet test and the create form use
+`aria-disabled`; NotActive and VerdictWindowClosed need their arguments; the "waiting for the wallet" test left a
+held `eth_accounts` that wagmi's process-wide reconnect lock kept for every later test (released in the test); a
+`functionName` held in a variable fails the LLR-FE-010 literal scan, so `CALLS` names each one and the scan's allow
+list gained `markKept`, `markBroken`, `settle`. Full suite: 945 passed, 9 skipped (live), 0 failed; lint and
+typecheck clean; `node tools/trace-check.mjs`: `OK. 93/113 LLRs referenced, 7/55 journeys passing.`
+
+Contrast (LLR-FE-072), measured from the tokens by a throwaway script, WCAG ratios, all above the 4.5 (text) and 3
+(frames) needed:
+
+| Pair | Light | Dark |
+|---|---|---|
+| warning text on warning background | 8.49 | 10.34 |
+| warning frame on page | 9.30 | 14.52 |
+| error text on error background | 8.14 | 9.53 |
+| state badge frames on page (muted, link, notice, error) | 8.45, 7.54, 9.30, 9.31 | 8.93, 8.97, 14.52, 11.02 |
+| role badge frame (control border) on page | 4.54 | 5.43 |
+| badge text on page | 17.40 | 15.86 |
+
+Tests added after the first mutation run (six survivors, now killed): double activation in one tick; a hold by the
+network check rather than the wallet (`chain.chainId = 5042`); a general failure removed on a chain change; the
+dialog polyfill now makes the page behind a modal refuse `focus()` and marks the dialog modal, and the Escape test
+asserts the event was cancelled.
+
+Mutations 860 to 929, logic only, rows in `cache/mutate-pledge.mjs` (gitignored; scratch under `cache/mutants/`),
+unit mutants against their own test file, page mutants against `PledgeActions.test.tsx` or the details and App tests.
+Source hash checked equal before and after every mutant. 70 of 70 killed after the six fixes; none argued equivalent.
+
+| # | Mutation | Result |
+|---|---|---|
+| 860 | countdown: zero reads as 0 seconds (`<= 0n` to `< 0n`) | killed |
+| 861 | countdown: exactly one day uses the hour form | killed |
+| 862 | countdown: exactly one hour uses the minute form | killed |
+| 863 | countdown: exactly one minute uses the second form | killed |
+| 864 | countdown: singular dropped | killed |
+| 865 | countdown: hours not reduced modulo the day | killed |
+| 866 | countdown: unsynced reads as passed | killed |
+| 867 | warning: warns at exactly 600 s | killed |
+| 868 | warning: warns at zero | killed |
+| 869 | warning: warns in every state | killed |
+| 870 | warning: referee gets the staker text | killed |
+| 871 | warning: everyone else is warned | killed |
+| 872 | warning: threshold 601 | killed |
+| 873 | matrix: unknown chain time offers a verdict | killed |
+| 874 | matrix: verdict offered to the staker | killed |
+| 875 | matrix: Withdraw offered to the referee | killed |
+| 876 | matrix: Claim offered to the staker | killed |
+| 877 | matrix: pending wallet treated as none | killed |
+| 878 | matrix: connect sentences swapped | killed |
+| 879 | matrix: settled pledges offer actions | killed |
+| 880 | matrix: Withdraw pays the beneficiary | killed |
+| 881 | matrix: send to beneficiary pays the staker | killed |
+| 882 | matrix: hint shown to the beneficiary | killed |
+| 883 | request: hash never reported | killed |
+| 884 | request: unreadable receipt reads as confirmed | killed |
+| 885 | request: receipt status inverted | killed |
+| 886 | request: failed replay escapes | killed |
+| 887 | request: replay result ignored | killed |
+| 888 | PledgeActions: in-flight guard removed | first run SURVIVED; killed by the same-tick double activation test |
+| 889 | PledgeActions: no re-read after confirmation | killed |
+| 890 | PledgeActions: previous result kept on a new request | killed |
+| 891 | PledgeActions: previous failure kept on a new request | killed |
+| 892 | PledgeActions: settle result always says beneficiary | killed |
+| 893 | PledgeActions: no `chainId` on the write | killed |
+| 894 | PledgeActions: pending does not refuse a click | killed |
+| 895 | PledgeActions: gate does not refuse a click | first run SURVIVED (a wrong wallet chain is stopped by `chainId` anyway); killed by the network-check test |
+| 896 | PledgeActions: every failure kept as a revert | first run SURVIVED; killed by the general-failure lifetime test |
+| 897 | PledgeActions: focus not moved to progress | killed |
+| 898 | PledgeActions: focus not moved to the result | killed |
+| 899 | PledgeActions: dialog stays open when the choice goes | killed |
+| 900 | PledgeActions: no focus on the status line after a page close | killed |
+| 901 | PledgeActions: focus not returned to Broken | killed |
+| 902 | PledgeActions: confirm sends nothing | killed |
+| 903 | PledgeActions: unconfirmed text not shown | killed |
+| 904 | PledgeActions: result hash not shown | killed |
+| 905 | PledgeActions: revert message not shown | killed |
+| 906 | PledgeActions: progress texts swapped | killed |
+| 907 | PledgeActions: controls not disabled while pending | killed |
+| 908 | PledgeActions: cancel treated as a page close | killed |
+| 909 | BrokenDialog: focus not on Cancel | killed |
+| 910 | BrokenDialog: dialog not closed before the caller acts | first run SURVIVED (jsdom has no inert page); killed once the polyfill refuses focus behind a modal |
+| 911 | BrokenDialog: `open` set instead of `showModal` | first run SURVIVED; killed by the modal mark |
+| 912 | BrokenDialog: Escape leaves the dialog open | first run SURVIVED; killed by the inert polyfill and the cancelled-event assertion |
+| 913 | PledgeView: past-deadline sentence never shown | killed |
+| 914 | PledgeView: deadline reached one second late | killed |
+| 915 | PledgeView: remaining inverted | killed |
+| 916 | PledgeView: wallet states swapped | killed |
+| 917 | PledgeView: no re-read after confirmation | killed |
+| 918 | PledgeView: warning never shown | killed |
+| 919 | PledgeView: no tick | killed |
+| 920 | useTick: every 2 seconds | killed |
+| 921 | usePledgeLive: `refresh` restarts nothing | killed |
+| 922 | PledgeFacts: no Time left for Expired | killed |
+| 923 | PledgeFacts: Expired counts the clock | killed |
+| 924 | PledgeFacts: no (you) mark | killed |
+| 925 | PledgeView: role never found | killed |
+| 926 | PledgeView: role badge capitalised | killed |
+| 927 | PledgeFacts: stake without symbol | killed |
+| 928 | PledgeActions: dialog amount without symbol | killed |
+| 929 | PledgeActions: dialog names the staker | killed |
+
+Final, from `app/`: `npm test` 948 passed, 9 skipped (live), 0 failed, run alone; `npm run lint` and
+`npm run typecheck` clean; `npm run build:testnet` built (chunk-size warning only). From the root:
+`node tools/trace-check.mjs`: `OK. 93/113 LLRs referenced, 7/55 journeys passing.`
