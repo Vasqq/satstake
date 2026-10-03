@@ -10,6 +10,8 @@ export interface Step {
 }
 export interface ReceiptLike {
   status: "success" | "reverted";
+  /** The block that mined the transaction. A node's receipt always has it; test doubles may leave it out. */
+  blockNumber?: bigint;
   logs: readonly { address: string; topics: readonly Hex[]; data: Hex }[];
 }
 export interface FlowIO {

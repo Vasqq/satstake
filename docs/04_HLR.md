@@ -1,6 +1,6 @@
 # 04 High-Level Requirements
 
-Version 1.2, 2026-09-24. Status: baselined. These requirements are the law of the project. Code that contradicts a requirement is a defect in the code. A requirement that proves wrong is changed here first, with a change-log entry, and only then in code.
+Version 1.3, 2026-10-03. Status: baselined. These requirements are the law of the project. Code that contradicts a requirement is a defect in the code. A requirement that proves wrong is changed here first, with a change-log entry, and only then in code.
 
 ## Conventions
 
@@ -70,3 +70,4 @@ Version 1.2, 2026-09-24. Status: baselined. These requirements are the law of th
 | 1.0 | 2026-09-24 | Baseline |
 | 1.1 | 2026-09-24 | Added HLR-042 (journey acceptance) and HLR-043 (test-first evidence) after review of the definition of done |
 | 1.2 | 2026-09-24 | Security children added to HLR-025 and HLR-030 |
+| 1.3 | 2026-10-03 | LLR-FE-046 added as a child of HLR-022 and HLR-024 (05 v1.17) |

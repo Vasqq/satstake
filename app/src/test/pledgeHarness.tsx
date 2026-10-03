@@ -82,7 +82,10 @@ export const advance = (ms: number) =>
     await vi.advanceTimersByTimeAsync(ms);
   });
 
-export const statusLine = () => screen.getByRole("status", { name: "Pledge status" });
+/** The live region of the pledge's status, which is not itself a focus target. */
+export const statusRegion = () => screen.getByRole("status", { name: "Pledge status" });
+/** The text inside it, which takes focus when the page moves focus to the status. */
+export const statusLine = () => statusRegion().querySelector("p") as HTMLElement;
 export const warningArea = () => screen.getByRole("status", { name: "Deadline warning" });
 export const progress = () => screen.getByRole("group", { name: "Transaction progress" });
 export const notices = () => screen.getByRole("status", { name: "Transaction notices" });

@@ -276,6 +276,25 @@ describe("LLR-FE-050 the list", () => {
     await screen.findByText("Promise number 26");
   });
 
+  it("moves focus to the Showing line only after the page has rendered it, and not when the view opens", async () => {
+    const focused: (string | null)[] = [];
+    const original = HTMLElement.prototype.focus;
+    const spy = vi.spyOn(HTMLElement.prototype, "focus").mockImplementation(function (this: HTMLElement, options) {
+      if (this.getAttribute("tabindex") === "-1" && /^Showing/.test(this.textContent ?? "")) focused.push(this.textContent);
+      original.call(this, options);
+    });
+    try {
+      await openMine((c) => seed(c, ACCOUNT, 45));
+      await screen.findByText("Promise number 46");
+      expect(focused).toEqual([]);
+      fireEvent.click(button("Older"));
+      await screen.findByText("Promise number 26");
+      expect(focused).toEqual(["Showing 21 to 40 of 45"]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("goes back to the first page and reads again when the connected account changes", async () => {
     const { chain, wallet } = await openMine((c) => {
       seed(c, ACCOUNT, 45);

@@ -51,8 +51,11 @@ describe("LLR-FE-040 an address or hash with a copy control and an explorer link
     render(address());
     const copy = screen.getByRole("button", { name: "Copy the referee's address" });
     expect(copy.textContent).toBe("Copy");
-    const view = screen.getByRole("link", { name: "View the referee on the explorer" });
-    expect(view.textContent).toBe("View on explorer");
+    const view = screen.getByRole("link", { name: "View on explorer, the referee" });
+    expect(view.textContent).toBe("View on explorer, the referee");
+    expect(view.getAttribute("aria-label")).toBeNull();
+    expect(view.firstChild?.textContent).toBe("View on explorer");
+    expect(view.querySelector(".visually-hidden")?.textContent).toBe(", the referee");
   });
 
   it("names each use by its own noun, so two on one page can be told apart", () => {
@@ -66,14 +69,14 @@ describe("LLR-FE-040 an address or hash with a copy control and an explorer link
     expect(screen.getByRole("button", { name: "Copy the referee's address" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Copy the staker's address" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Copy the transaction hash" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "View the referee on the explorer" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "View the staker on the explorer" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "View the transaction on the explorer" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "View on explorer, the referee" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "View on explorer, the staker" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "View on explorer, the transaction" })).toBeTruthy();
   });
 
   it("links an address to its explorer page in the same tab, without a referrer", () => {
     render(address());
-    const link = screen.getByRole("link", { name: "View the referee on the explorer" });
+    const link = screen.getByRole("link", { name: "View on explorer, the referee" });
     expect(link.getAttribute("href")).toBe(`${EXPLORER}/address/${ADDRESS}`);
     expect(link.getAttribute("target")).toBeNull();
     expect(link.getAttribute("rel")).toBe("noreferrer");
@@ -81,7 +84,7 @@ describe("LLR-FE-040 an address or hash with a copy control and an explorer link
 
   it("links a transaction to its explorer page in a new tab, without a referrer or an opener", () => {
     render(transaction());
-    const link = screen.getByRole("link", { name: "View the transaction on the explorer" });
+    const link = screen.getByRole("link", { name: "View on explorer, the transaction" });
     expect(link.getAttribute("href")).toBe(`${EXPLORER}/tx/${HASH}`);
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");

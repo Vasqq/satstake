@@ -49,6 +49,8 @@ export interface PledgeActionsProps {
   role: Role | null;
   wallet: "none" | "pending" | "connected";
   deadlineReached: boolean | null;
+  /** The same question asked again at the moment of a click, since the page's tick can be up to a second old. */
+  deadlineReachedNow: () => boolean | null;
   /** Called once a request is confirmed, so the page reads the state again at once. */
   onConfirmed: () => void;
   /** The status line, which takes focus when the dialog is closed by the page and not by the user. */
@@ -63,12 +65,16 @@ export interface PledgeActionsProps {
  * @trace LLR-FE-042 LLR-FE-044 LLR-FE-046
  */
 export function PledgeActions(props: PledgeActionsProps) {
-  const { id, network, client, gate, pledge, state, role, wallet, deadlineReached, onConfirmed, statusRef } = props;
+  const { id, network, client, gate, pledge, state, role, wallet, deadlineReached, deadlineReachedNow, onConfirmed, statusRef } =
+    props;
   const config = useConfig();
   const { address } = useConnection();
   const failure = useConnectionFailure();
   const [pending, setPending] = useState<{ action: Action; hash: Hex | null } | null>(null);
   const [result, setResult] = useState<Result | null>(null);
+  // The state the page showed when a request was confirmed. Until a poll shows another one the chain has not
+  // caught up with the request, and offering the same controls again would invite a second, refused request.
+  const [confirmedFrom, setConfirmedFrom] = useState<PledgeState | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const inFlight = useRef(false);
   const progress = useRef<HTMLDivElement>(null);
@@ -77,12 +83,15 @@ export function PledgeActions(props: PledgeActionsProps) {
   const closedByUser = useRef(false);
   const ids = useId();
 
-  const plan = state === null ? null : planActions({ state, role, wallet, deadlineReached });
+  const waitingForChain = confirmedFrom !== null && state === confirmedFrom; // LLR-FE-046
+  const plan = state === null || waitingForChain ? null : planActions({ state, role, wallet, deadlineReached });
   const verdictOffered = plan?.kind === "verdict";
+  const busy = pending !== null;
+  const gated = !gate.enabled;
 
-  // The page can take the choice away while the dialog is open: chain time reaches the deadline, or a poll
-  // shows another state. The dialog then closes and sends nothing.
-  if (dialogOpen && !verdictOffered) setDialogOpen(false);
+  // The page can take the choice away while the dialog is open: chain time reaches the deadline, a poll
+  // shows another state, or the write gate turns off. The dialog then closes and sends nothing.
+  if (dialogOpen && (!verdictOffered || gated)) setDialogOpen(false); // LLR-FE-044
   const wasOpen = useRef(false);
   useEffect(() => {
     if (wasOpen.current && !dialogOpen && !closedByUser.current) statusRef.current?.focus(); // LLR-FE-044
@@ -95,25 +104,41 @@ export function PledgeActions(props: PledgeActionsProps) {
     if (successText !== null) success.current?.focus(); // LLR-FE-072
   }, [successText]);
 
+  // The control that had focus is disabled once a request starts, so the progress element takes it. This runs
+  // after the render, so the line it holds is already in the status element when focus arrives.
+  useEffect(() => {
+    if (busy) progress.current?.focus(); // LLR-FE-046
+  }, [busy]);
+
   async function start(action: Action, goesTo?: "staker" | "beneficiary") {
     if (inFlight.current) return; // LLR-FE-046
     inFlight.current = true;
     failure.clear();
     setResult(null);
     setPending({ action, hash: null });
-    // The control that had focus is disabled from here on, so the progress element takes it.
-    progress.current?.focus(); // LLR-FE-046
     const request = { address: network.contract, abi: satStakeAbi, ...CALLS[action], args: [id] } as const;
     try {
       const outcome: RequestOutcome = await runRequest(
         {
           send: () => writeContract(config, { ...request, chainId: network.chainId }), // LLR-FE-046
           receipt: (hash) => receiptOf(client, hash),
-          explain: () =>
-            client.simulateContract({ ...request, account: address }).then(
-              () => null,
-              (error: unknown) => error,
-            ),
+          // The call is replayed in the parent of the block that mined it, with that block's time, so the
+          // reason named is the one the transaction met and not one that arose from the state since.
+          explain: async (mined) => {
+            if (mined.blockNumber === undefined) return null;
+            const block = await client.getBlock({ blockNumber: mined.blockNumber });
+            return client
+              .simulateContract({
+                ...request,
+                account: address,
+                blockNumber: mined.blockNumber - 1n, // LLR-FE-046
+                blockOverrides: { time: block.timestamp }, // LLR-FE-046
+              })
+              .then(
+                () => null,
+                (error: unknown) => error,
+              );
+          },
         },
         (hash) => setPending({ action, hash }),
       );
@@ -121,6 +146,7 @@ export function PledgeActions(props: PledgeActionsProps) {
       if (outcome.kind === "confirmed") {
         const text = action === "settle" ? `Done. The stake was sent to the ${goesTo ?? "beneficiary"}.` : SUCCESS_TEXT[action];
         setResult({ kind: "success", text, hash: outcome.hash });
+        setConfirmedFrom(state); // LLR-FE-046
         onConfirmed(); // LLR-FE-046
       } else if (outcome.kind === "reverted") {
         setResult({ kind: "reverted", error: outcome.error, hash: outcome.hash });
@@ -138,8 +164,6 @@ export function PledgeActions(props: PledgeActionsProps) {
     }
   }
 
-  const busy = pending !== null;
-  const gated = !gate.enabled;
   const reasonsId = `${ids}-reasons`;
   // aria-disabled and not the disabled attribute, as on the create form, so a control stays reachable by
   // keyboard and its reasons can be heard.
@@ -149,8 +173,10 @@ export function PledgeActions(props: PledgeActionsProps) {
   } as const;
   // A control that is only aria-disabled still receives clicks, so each handler refuses them itself.
   const refused = gated || busy; // LLR-FE-023
+  // A verdict is also refused when chain time has reached the deadline since the page last rendered.
+  const lateVerdict = () => deadlineReachedNow() === true; // LLR-FE-042
   function onKept() {
-    if (!refused) void start("markKept");
+    if (!refused && !lateVerdict()) void start("markKept");
   }
   function onBroken() {
     if (!refused) setDialogOpen(true);
@@ -218,6 +244,12 @@ export function PledgeActions(props: PledgeActionsProps) {
             brokenButton.current?.focus(); // LLR-FE-044
           }}
           onConfirm={() => {
+            // The dialog may have outlived the conditions that offered it. A refusal closes it without the
+            // user-closed mark, so focus goes to the status line like any other close the page makes.
+            if (refused || lateVerdict()) {
+              setDialogOpen(false);
+              return;
+            }
             closedByUser.current = true;
             setDialogOpen(false);
             void start("markBroken");
@@ -226,7 +258,10 @@ export function PledgeActions(props: PledgeActionsProps) {
       )}
 
       <div ref={progress} role="group" aria-label="Transaction progress" tabIndex={-1} className="pledge-progress">
-        {pending !== null && <p>{pending.hash === null ? "Confirm in your wallet." : "Waiting for the network to confirm."}</p>}
+        {/* In the page from the first render, so each line it is given is announced; the group around it is not live. */}
+        <p role="status" className="pledge-pending">
+          {pending !== null && (pending.hash === null ? "Confirm in your wallet." : "Waiting for the network to confirm.")}
+        </p>
         <RequestNotice error={notice} label="Transaction notices">
           {result?.kind === "unconfirmed" && <p className="notice">{UNCONFIRMED_MESSAGE}</p>}
         </RequestNotice>

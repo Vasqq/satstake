@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { numberToHex } from "viem";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { FAILED_MESSAGE, REJECTED_MESSAGE } from "../../wallet/failure";
 import { installDialogPolyfill } from "../../test/dialogPolyfill";
@@ -384,7 +385,7 @@ describe("LLR-FE-046 progress and result of a verdict or settle request", () => 
     await within(progress()).findByText("Waiting for the network to confirm.");
     const hash = `0x${"0".repeat(63)}1`;
     expect(within(progress()).getByRole("button", { name: "Copy the transaction hash" })).toBeTruthy();
-    const link = within(progress()).getByRole("link", { name: "View the transaction on the explorer" });
+    const link = within(progress()).getByRole("link", { name: "View on explorer, the transaction" });
     expect(link.getAttribute("href")).toBe(`${network.explorerUrl}/tx/${hash}`);
     expect(link.getAttribute("target")).toBe("_blank");
     expect(isDisabled(button("Kept"))).toBe(true);
@@ -394,7 +395,7 @@ describe("LLR-FE-046 progress and result of a verdict or settle request", () => 
     await kept();
     const result = await within(progress()).findByText("You marked this promise kept.");
     expect(document.activeElement).toBe(result);
-    expect(within(progress()).getByRole("link", { name: "View the transaction on the explorer" })).toBeTruthy();
+    expect(within(progress()).getByRole("link", { name: "View on explorer, the transaction" })).toBeTruthy();
     expect(result.closest("[role=status]")).toBeNull();
   });
 
@@ -460,7 +461,7 @@ describe("LLR-FE-046 progress and result of a verdict or settle request", () => 
     );
     expect(message.className).toContain("notice-failure");
     expect(sent(world)).toBe(1);
-    expect(within(progress()).getByRole("link", { name: "View the transaction on the explorer" })).toBeTruthy();
+    expect(within(progress()).getByRole("link", { name: "View on explorer, the transaction" })).toBeTruthy();
     expect(document.activeElement).toBe(progress());
   });
 
@@ -547,7 +548,7 @@ describe("LLR-FE-046 progress and result of a verdict or settle request", () => 
       "Your transaction was sent, but its confirmation could not be read. This page shows the change as soon as the network does.",
     );
     expect(sent(world)).toBe(1);
-    expect(within(progress()).getByRole("link", { name: "View the transaction on the explorer" })).toBeTruthy();
+    expect(within(progress()).getByRole("link", { name: "View on explorer, the transaction" })).toBeTruthy();
     expect(within(notices()).queryByText(FAILED_MESSAGE)).toBeNull();
   });
 
@@ -611,5 +612,199 @@ describe("LLR-FE-046 the request names the configured chain", () => {
     await within(notices()).findByText(FAILED_MESSAGE);
     expect(sent(world)).toBe(0);
     expect(wallet.count("eth_sendTransaction")).toBe(0);
+  });
+});
+
+type Prepare = NonNullable<Parameters<typeof openPledge>[0]>["prepare"];
+
+describe("LLR-FE-044 the Broken dialog follows the write gate", () => {
+  async function dialogOpenThenNetworkFails() {
+    vi.useFakeTimers();
+    const parts = await openPledge({ who: "referee", fakeTimers: true });
+    await advance(0);
+    fireEvent.click(button("Broken"));
+    expect(dialogOpen()).toBe(true);
+    // The re-check of the network runs every 30 seconds and now finds another chain.
+    parts.chain.chainId = 5042;
+    await advance(31_000);
+    return parts;
+  }
+
+  it("closes the open dialog, and moves focus to the status line, when the gate turns off", async () => {
+    await dialogOpenThenNetworkFails();
+    expect(main().getByText("This site is connected to the wrong network, so sending transactions is turned off.")).toBeTruthy();
+    expect(dialogOpen()).toBe(false);
+    expect(document.activeElement).toBe(statusLine());
+  });
+
+  it("sends nothing when Mark it broken is activated after the gate turned off", async () => {
+    const { world, wallet } = await dialogOpenThenNetworkFails();
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Mark it broken", hidden: true }));
+    await advance(100);
+    expect(sent(world)).toBe(0);
+    expect(wallet.count("eth_sendTransaction")).toBe(0);
+  });
+});
+
+describe("LLR-FE-046 a confirmed request hides the controls until the polled state changes", () => {
+  /** A node that still answers with the old state after the transaction was mined, as a lagging endpoint does. */
+  const lagging =
+    (from: number): Prepare =>
+    ({ wallet, chain }) => {
+      const mine = wallet.onSend as NonNullable<typeof wallet.onSend>;
+      wallet.onSend = (tx) => {
+        const hash = mine(tx);
+        chain.states.set(1n, from);
+        return hash;
+      };
+    };
+
+  it("hides Kept and Broken after a confirmed verdict while the re-read still returns Active, and offers what the new state allows once it changes", async () => {
+    vi.useFakeTimers();
+    const { chain } = await openPledge({ who: "referee", fakeTimers: true, prepare: lagging(0) });
+    await advance(0);
+    fireEvent.click(button("Kept"));
+    await advance(2500);
+    expect(within(progress()).getByText("You marked this promise kept.")).toBeTruthy();
+    expect(maybeButton("Kept")).toBeNull();
+    expect(maybeButton("Broken")).toBeNull();
+    expect(screen.queryByRole("group", { name: "Did the staker keep this promise?" })).toBeNull();
+    chain.states.set(1n, 2);
+    await advance(5000);
+    expect(statusLine().textContent).toContain("Kept.");
+    expect(main().queryByRole("button", { name: ACTION_NAMES })).not.toBeNull();
+    expect(within(progress()).getByText("You marked this promise kept.")).toBeTruthy();
+  });
+
+  it("hides the settle control after a confirmed settlement while the re-read still returns the old state", async () => {
+    vi.useFakeTimers();
+    await openPledge({ who: "other", state: 3, fakeTimers: true, prepare: lagging(3) });
+    await advance(0);
+    fireEvent.click(button("Send stake to beneficiary"));
+    await advance(2500);
+    expect(within(progress()).getByText("Done. The stake was sent to the beneficiary.")).toBeTruthy();
+    expect(maybeButton("Send stake to beneficiary")).toBeNull();
+  });
+
+  it("brings the controls back for a request that did not confirm", async () => {
+    const { wallet } = await openPledge({ who: "referee" });
+    await loaded();
+    wallet.failNext("eth_sendTransaction", rejection());
+    fireEvent.click(await screen.findByRole("button", { name: "Kept" }));
+    await within(notices()).findByText(REJECTED_MESSAGE);
+    await waitFor(() => expect(maybeButton("Kept")).not.toBeNull());
+  });
+});
+
+describe("LLR-FE-042 a verdict is refused at click time once chain time has reached the deadline", () => {
+  /** Moves the page's monotonic clock on by `ms` for the one synchronous action, so no tick re-renders in between. */
+  function afterDeadline(action: () => void, ms = 120_000) {
+    const spy = vi.spyOn(performance, "now").mockReturnValue(performance.now() + ms);
+    try {
+      action();
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it("sends nothing when Kept is activated after the deadline passed since the last render", async () => {
+    const { world, wallet } = await openPledge({ who: "referee", secondsLeft: 60n });
+    await loaded();
+    const kept = await screen.findByRole("button", { name: "Kept" });
+    await waitFor(() => expect(isDisabled(kept)).toBe(false));
+    afterDeadline(() => fireEvent.click(kept));
+    await pause();
+    expect(sent(world)).toBe(0);
+    expect(wallet.count("eth_sendTransaction")).toBe(0);
+  });
+
+  it("sends nothing when Mark it broken is activated after the deadline passed since the dialog opened", async () => {
+    const { world, wallet } = await openPledge({ who: "referee", secondsLeft: 60n });
+    await loaded();
+    const broken = await screen.findByRole("button", { name: "Broken" });
+    await waitFor(() => expect(isDisabled(broken)).toBe(false));
+    fireEvent.click(broken);
+    expect(dialogOpen()).toBe(true);
+    afterDeadline(() => fireEvent.click(within(dialog()).getByRole("button", { name: "Mark it broken", hidden: true })));
+    await pause();
+    expect(sent(world)).toBe(0);
+    expect(wallet.count("eth_sendTransaction")).toBe(0);
+  });
+
+  it("still sends when the deadline is not yet reached at click time", async () => {
+    const { world } = await openPledge({ who: "referee", secondsLeft: 600n });
+    await loaded();
+    const kept = await screen.findByRole("button", { name: "Kept" });
+    await waitFor(() => expect(isDisabled(kept)).toBe(false));
+    afterDeadline(() => fireEvent.click(kept), 5_000);
+    await waitFor(() => expect(world.acts).toHaveLength(1));
+  });
+});
+
+describe("LLR-FE-046 a mined revert is replayed where it happened", () => {
+  const revertedAfterSending =
+    (revert: { errorName: string; args?: unknown[]; block?: string }): Prepare =>
+    ({ wallet, chain, world }) => {
+      world.outcomes = ["reverted"];
+      const mine = wallet.onSend as NonNullable<typeof wallet.onSend>;
+      wallet.onSend = (tx) => {
+        const hash = mine(tx);
+        chain.callRevert = revert;
+        return hash;
+      };
+    };
+
+  it("replays at the block before the one that mined it, with that block's time", async () => {
+    const { chain } = await openPledge({
+      who: "referee",
+      prepare: revertedAfterSending({ errorName: "VerdictWindowClosed", args: [100n] }),
+    });
+    await loaded();
+    fireEvent.click(await screen.findByRole("button", { name: "Kept" }));
+    await within(notices()).findByText(
+      "The deadline has passed, so a verdict can no longer be recorded. The stake now goes to the beneficiary.",
+    );
+    // The fake chain mines every transaction in block 0x10.
+    const replays = chain.requests.filter((r) => r.method === "eth_call" && r.params?.[1] === "0xf");
+    expect(replays).toHaveLength(1);
+    expect(replays[0]?.params?.[3]).toEqual({ time: numberToHex(chain.blockTimestamp) });
+    // The time comes from the block that mined the transaction, not from the latest one.
+    expect(chain.requests.some((r) => r.method === "eth_getBlockByNumber" && r.params?.[0] === "0x10")).toBe(true);
+  });
+
+  it("does not name a reason that only the current state gives", async () => {
+    await openPledge({
+      who: "referee",
+      prepare: revertedAfterSending({ errorName: "NotActive", args: [2], block: "latest" }),
+    });
+    await loaded();
+    fireEvent.click(await screen.findByRole("button", { name: "Kept" }));
+    await within(notices()).findByText(FAILED_MESSAGE);
+    expect(within(notices()).queryByText("A verdict has already been recorded for this pledge.")).toBeNull();
+  });
+});
+
+describe("LLR-FE-046 progress lines are announced and then focused", () => {
+  it("fills a status element that was already in the page, and moves focus after the text is there", async () => {
+    await openPledge({ who: "referee", prepare: ({ wallet }) => void wallet.hold("eth_sendTransaction") });
+    await loaded();
+    const live = progress().querySelector(".pledge-pending") as HTMLElement;
+    expect(live.getAttribute("role")).toBe("status");
+    expect(live.textContent).toBe("");
+    expect(progress().getAttribute("role")).toBe("group");
+    const kept = await screen.findByRole("button", { name: "Kept" });
+    await waitFor(() => expect(isDisabled(kept)).toBe(false));
+    const area = progress();
+    const original = area.focus.bind(area);
+    let textAtFocus: string | null = null;
+    vi.spyOn(area, "focus").mockImplementation((options) => {
+      textAtFocus ??= live.textContent;
+      original(options);
+    });
+    fireEvent.click(kept);
+    await within(progress()).findByText("Confirm in your wallet.");
+    expect(progress().querySelector(".pledge-pending")).toBe(live);
+    expect(live.textContent).toBe("Confirm in your wallet.");
+    expect(textAtFocus).toBe("Confirm in your wallet.");
   });
 });

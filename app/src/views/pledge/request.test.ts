@@ -74,6 +74,20 @@ describe("LLR-FE-046 a verdict or settle request from send to receipt", () => {
     expect(outcome.kind === "reverted" && outcome.hash).toBe(HASH);
   });
 
+  it("hands the mined receipt to the replay, so it can be made where the transaction was mined", async () => {
+    const mined: ReceiptLike = { status: "reverted", logs: [], blockNumber: 16n };
+    let given: ReceiptLike | undefined;
+    const parts = io({
+      receipt: async () => mined,
+      explain: async (r) => {
+        given = r;
+        return null;
+      },
+    });
+    await runRequest(parts, () => {});
+    expect(given).toBe(mined);
+  });
+
   it("does not replay the call for a confirmed receipt", async () => {
     const parts = io();
     await runRequest(parts, () => {});

@@ -7,7 +7,7 @@ export interface HashValueProps {
   explorerUrl: string;
   /** What the Copy button copies, for its accessible name: "the referee's address" gives "Copy the referee's address". */
   copyNoun: string;
-  /** What the explorer link opens: "the referee" gives "View the referee on the explorer". */
+  /** What the explorer link opens: "the referee" gives "View on explorer, the referee". The visible text stays first so a voice command matches it (WCAG 2.5.3). */
   viewNoun: string;
   /** Show the whole value in a block that wraps, for a place where a visitor compares it with a published one. */
   full?: boolean;
@@ -47,9 +47,8 @@ export function HashValue({ kind, value, explorerUrl, copyNoun, viewNoun, full =
           href={`${explorerUrl}/${isTransaction ? "tx" : "address"}/${value}`} // LLR-FE-040
           target={isTransaction ? "_blank" : undefined}
           rel={isTransaction ? "noopener noreferrer" : "noreferrer"}
-          aria-label={`View ${viewNoun} on the explorer`}
         >
-          View on explorer
+          View on explorer<span className="visually-hidden">, {viewNoun}</span>
         </a>
       </span>
       <span role="status" className="hash-status">

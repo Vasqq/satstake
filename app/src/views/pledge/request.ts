@@ -4,8 +4,11 @@ import type { ReceiptLike } from "../../create/flow";
 export interface RequestIO {
   send(): Promise<Hex>;
   receipt(hash: Hex): Promise<ReceiptLike>;
-  /** Replays the call to find the contract's error for a mined revert, or null when it finds none. */
-  explain(): Promise<unknown>;
+  /**
+   * Replays the call to find the contract's error for a mined revert, or null when it finds none. It gets the
+   * receipt so the replay can be made where the transaction was mined and not against whatever state holds now.
+   */
+  explain(receipt: ReceiptLike): Promise<unknown>;
 }
 
 export type RequestOutcome =
@@ -32,6 +35,6 @@ export async function runRequest(io: RequestIO, onHash: (hash: Hex) => void): Pr
   }
   if (receipt.status === "success") return { kind: "confirmed", hash };
   // The receipt names no reason, so the call is replayed. A replay that cannot answer is not a second failure.
-  const found = await io.explain().catch(() => null);
+  const found = await io.explain(receipt).catch(() => null);
   return { kind: "reverted", hash, error: found ?? new Error("The transaction was mined and reverted.") }; // LLR-FE-046
 }

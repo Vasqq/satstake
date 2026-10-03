@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useConnection } from "wagmi";
 import type { Reads } from "../chain/reads";
@@ -89,9 +89,15 @@ function List({
   });
 
   const pages = Number((total + PAGE_SIZE - 1n) / PAGE_SIZE);
+  // Focus moves in an effect, after the page has rendered the new "Showing" line, so it is read as it stands
+  // and not as it stood before the click. Nothing is focused when the view opens.
+  const paged = useRef(false);
+  useEffect(() => {
+    if (paged.current) showing.current?.focus(); // LLR-FE-050
+  }, [page]);
   const move = (next: number) => {
+    paged.current = true;
     setPage(next);
-    showing.current?.focus();
   };
 
   let message: string | null = null;

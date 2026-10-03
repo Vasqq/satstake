@@ -50,6 +50,8 @@ export interface RequestRecord {
   method: string;
   functionName?: string;
   to?: string;
+  /** The raw params of an eth_call, so a test can check the block and the overrides it was made with. */
+  params?: unknown[];
 }
 
 export const samplePledge: FakePledge = {
@@ -98,8 +100,8 @@ export class FakeChain {
   blockError: Error | undefined;
   /** When set, every balanceOf call fails with it until cleared, while the other reads still answer. */
   balanceError: Error | undefined;
-  /** When set, every eth_call reverts with this contract error until cleared. */
-  callRevert: { errorName: string; args?: unknown[] } | undefined;
+  /** When set, every eth_call reverts with this contract error until cleared, or only those made at `block` when it is given. */
+  callRevert: { errorName: string; args?: unknown[]; block?: string } | undefined;
   /** When set, every eth_call waits for it before answering. */
   gate: Promise<void> | undefined;
   /** When set, every eth_getTransactionReceipt waits for it before answering, as when a transaction is not yet mined. */
@@ -166,6 +168,7 @@ export class FakeChain {
         await this.latency?.(record);
         return numberToHex(this.chainId);
       case "eth_getBlockByNumber": {
+        record.params = params;
         if (this.blockError) throw this.blockError;
         // A block with its transactions in full is what viem reads to look for a replacement of a pending one.
         const full = params?.[1] === true;
@@ -196,8 +199,9 @@ export class FakeChain {
         return tx ? this.formatTransaction(hash, tx) : null;
       }
       case "eth_call": {
+        record.params = params;
         if (this.callError) throw this.callError;
-        if (this.callRevert) throw this.revert(this.callRevert.errorName, this.callRevert.args);
+        if (this.callRevert && (this.callRevert.block === undefined || this.callRevert.block === params?.[1])) throw this.revert(this.callRevert.errorName, this.callRevert.args);
         if (this.gate) await this.gate;
         const answer = this.call(record, params);
         await this.latency?.(record);

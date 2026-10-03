@@ -20,6 +20,9 @@ import { PledgeNotFoundView } from "./Views";
 const READING = "Reading the pledge from the network.";
 const RETRYING = "Could not read this pledge. The site keeps trying while this page is open.";
 
+/** The deadline is reached at the second it names: the contract refuses a verdict from that block on. */
+const reachedAt = (deadline: bigint, chainNow: bigint) => deadline - chainNow <= 0n;
+
 export interface PledgeViewProps {
   reads: Reads;
   client: PublicClient;
@@ -56,26 +59,31 @@ export function PledgeView({ reads, client, network, health, id, afterStatus }: 
   const failed = pledge.error !== null || live.error !== null;
   const chainNow = live.clock.now();
   const remaining = data !== null && chainNow !== null ? data.deadline - chainNow : null;
-  const deadlineReached = remaining === null ? null : remaining <= 0n;
+  const deadlineReached = data !== null && chainNow !== null ? reachedAt(data.deadline, chainNow) : null;
   const role = data === null ? null : roleOf(data, connection.address);
   const wallet = connection.status === "connected" ? "connected" : connection.status === "disconnected" ? "none" : "pending";
 
   // Chain time can pass the deadline before the next poll flips the state, and the page must not claim a
   // verdict is still awaited in that gap.
+  const pastDeadlineWhileActive = live.state === "Active" && deadlineReached === true;
   const status =
-    live.state === null
-      ? READING
-      : live.state === "Active" && deadlineReached === true
-        ? ACTIVE_PAST_DEADLINE_MEANING
-        : STATE_MEANINGS[live.state];
+    live.state === null ? READING : pastDeadlineWhileActive ? ACTIVE_PAST_DEADLINE_MEANING : STATE_MEANINGS[live.state];
+  // The badge would say Active beside a sentence saying the deadline has passed, so it waits for the new state.
+  const showStateBadge = live.state !== null && !pastDeadlineWhileActive;
+  // Read again at the moment of a click: the tick can be a second behind chain time, and a verdict sent just past
+  // the deadline would only be refused by the contract.
+  const deadlineReachedNow = () => {
+    const now = live.clock.now();
+    return data === null || now === null ? null : reachedAt(data.deadline, now);
+  };
   const warning = live.state === null ? null : deadlineWarning({ state: live.state, remaining, role });
 
   return (
     <article className="pledge-page">
       <PageHeading title={`Pledge #${id.toString()} | SatStake`}>Pledge #{id.toString()}</PageHeading>
-      {(role !== null || live.state !== null) && (
+      {(role !== null || showStateBadge) && (
         <p className="pledge-badges">
-          {live.state !== null && (
+          {live.state !== null && showStateBadge && (
             <span className="state-badge" data-state={live.state}>
               {STATE_NAMES[live.state]}
             </span>
@@ -84,9 +92,12 @@ export function PledgeView({ reads, client, network, health, id, afterStatus }: 
         </p>
       )}
       {data !== null && <p className="pledge-promise">{data.promiseText}</p>}
-      <p role="status" aria-label="Pledge status" tabIndex={-1} ref={statusLine}>
-        {status}
-      </p>
+      {/* The live region and the focus target are different elements, so a screen reader is not told the same text twice. */}
+      <div role="status" aria-label="Pledge status">
+        <p tabIndex={-1} ref={statusLine}>
+          {status}
+        </p>
+      </div>
       {afterStatus}
       {data !== null && <PledgeFacts pledge={data} state={live.state} network={network} role={role} remaining={remaining} />}
       <div role="status" aria-label="Deadline warning">
@@ -102,6 +113,7 @@ export function PledgeView({ reads, client, network, health, id, afterStatus }: 
         role={role}
         wallet={wallet}
         deadlineReached={deadlineReached}
+        deadlineReachedNow={deadlineReachedNow}
         onConfirmed={live.refresh}
         statusRef={statusLine}
       />

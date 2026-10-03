@@ -10,6 +10,7 @@ import {
   fact,
   openPledge,
   statusLine,
+  statusRegion,
   usdc,
   warningArea,
 } from "../../test/pledgeHarness";
@@ -87,7 +88,7 @@ describe("LLR-FE-040 the pledge page shows the pledge", () => {
       const row = within(fact(label));
       expect(row.getByText(shortOf(address)).getAttribute("title")).toBe(address);
       expect(row.getByRole("button", { name: `Copy the ${noun}'s address` })).toBeTruthy();
-      const link = row.getByRole("link", { name: `View the ${noun} on the explorer` });
+      const link = row.getByRole("link", { name: `View on explorer, the ${noun}` });
       expect(link.getAttribute("href")).toBe(`${network.explorerUrl}/address/${address}`);
     }
   });
@@ -115,7 +116,22 @@ describe("LLR-FE-040 the pledge page shows the pledge", () => {
     await openPledge({ secondsLeft: -5n });
     await screen.findByText("The deadline has passed. Updating the status from the network.");
     expect(statusLine().textContent).not.toContain("Waiting for the referee");
+    expect(document.querySelector(".state-badge")).toBeNull();
+  });
+
+  it("shows the Active badge while the deadline has not passed", async () => {
+    await openPledge({ secondsLeft: 500_000n });
+    await main().findByText("Stake", { selector: "dt" });
     expect(document.querySelector(".state-badge")?.textContent).toBe("Active");
+  });
+
+  it("keeps the live status region apart from the text that takes focus", async () => {
+    await openPledge();
+    await main().findByText("Stake", { selector: "dt" });
+    expect(statusRegion().getAttribute("tabindex")).toBeNull();
+    expect(statusLine().getAttribute("tabindex")).toBe("-1");
+    expect(statusLine().getAttribute("role")).toBeNull();
+    expect(statusLine().parentElement).toBe(statusRegion());
   });
 
   it("shows the Time left row for Active and Expired pledges only", async () => {
@@ -143,9 +159,11 @@ describe("LLR-FE-041 the connected account's role is marked", () => {
     await openPledge({ who });
     await main().findByText("Stake", { selector: "dt" });
     expect(main().getByText(badge).className).toContain("role-badge");
-    expect(fact(label).textContent).toContain("(you)");
+    const term = (name: string) => main().getByText(name, { selector: "dt" });
+    expect(term(label).textContent).toBe(`${label} (you)`);
+    expect(fact(label).textContent).not.toContain("(you)");
     for (const other of ["Staker", "Referee", "Beneficiary"]) {
-      if (other !== label) expect(fact(other).textContent).not.toContain("(you)");
+      if (other !== label) expect(term(other).textContent).toBe(other);
     }
     expect(within(fact(label)).getByText(shortOf(ACCOUNT))).toBeTruthy();
   });

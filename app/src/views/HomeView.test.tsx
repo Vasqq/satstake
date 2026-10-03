@@ -84,7 +84,7 @@ describe("LLR-FE-070 the proof panel", () => {
     const address = within(panel).getByText(network.contract);
     expect(address.tagName).toBe("CODE");
     expect(within(panel).getByRole("button", { name: "Copy the contract address" })).toBeTruthy();
-    const link = within(panel).getByRole("link", { name: "View the contract on the explorer" });
+    const link = within(panel).getByRole("link", { name: "View on explorer, the contract" });
     expect(link.getAttribute("href")).toBe(`${network.explorerUrl}/address/${network.contract}`);
   });
 

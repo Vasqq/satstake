@@ -5312,6 +5312,11 @@ status element is never replaced across connect and list.
 First run: 45 mutants, 40 killed, 6 survived (945, 947, 948, 951, 956, 975), 976 not applied (my find string did not match the escape). Each survivor
 was a test gap; tests added, survivors rerun, all killed. Source restore verified by the suites below.
 
+Correction (review finding R-L6): the table holds 44 rows, 930 to 967 and 974 to 979, not 45. Numbers 968 to 973 were never
+used: they were left unassigned between the about-text mutants and the scanner mutants. The runner file and its copies are not in
+this checkout, so no mutant under those numbers can be shown to have run, and the first-run tally above (40 + 6 + 1 = 47) matches
+neither 44 nor 45 and cannot be reconciled from what remains. The 44 rows stand as the record.
+
 | # | Mutant | Result |
 |---|---|---|
 | 930 | page offset counted from the page after | killed |
@@ -5495,3 +5500,82 @@ Source hash checked equal before and after every mutant. 70 of 70 killed after t
 Final, from `app/`: `npm test` 948 passed, 9 skipped (live), 0 failed, run alone; `npm run lint` and
 `npm run typecheck` clean; `npm run build:testnet` built (chunk-size warning only). From the root:
 `node tools/trace-check.mjs`: `OK. 93/113 LLRs referenced, 7/55 journeys passing.`
+
+### Review fixes
+
+Baseline before the fixes: `npm test` 1001 passed, 9 skipped. Tests written first, then run: 36 red, each for the reason named.
+`FakeChain` gained `params` on each `eth_call` record and an optional `block` on `callRevert`; `statusLine()` in the harness now
+returns the paragraph inside the status region (F-L5), with `statusRegion()` for the region.
+
+| Finding | Test (file) | Red reason |
+|---|---|---|
+| R-M1 | "closes the open dialog, and moves focus to the status line, when the gate turns off" (PledgeActions) | dialog still open after the network check failed |
+| R-M1 | "sends nothing when Mark it broken is activated after the gate turned off" (PledgeActions) | `expected 1 to be 0`: markBroken was sent |
+| R-M2 | "hides Kept and Broken after a confirmed verdict while the re-read still returns Active, ..." | Kept button still present |
+| R-M2 | "hides the settle control after a confirmed settlement while the re-read still returns the old state" | settle button still present |
+| R-L1 | "sends nothing when Kept is activated after the deadline passed since the last render" | `expected 1 to be 0` |
+| R-L1 | "sends nothing when Mark it broken is activated after the deadline passed since the dialog opened" | `expected 1 to be 0` |
+| R-L2 | "hands the mined receipt to the replay, ..." (request) | `explain` received `undefined` |
+| R-L2 | "replays at the block before the one that mined it, with that block's time" | no `eth_call` at block `0xf` |
+| R-L2 | "does not name a reason that only the current state gives" | replay at `latest` named NotActive instead of the general message |
+| R-L5 | "reads the title and the meta content of an HTML file" (userStrings) | no `htmlStrings` reader yet (test-only; the two file checks pass, as the files are clean, and are proved by mutation 992) |
+| F-M1 | "aligns the rows of .pledge-facts / .facts on the text baseline" (pledgeStyles) | no `align-items: baseline` |
+| F-M2 | HashValue, HomeView, PledgeActions, PledgeDetails link-name tests | no link named "View on explorer, the referee" etc.; aria-label replaced the content |
+| F-M2 | "has a visually-hidden class that clips the text ..." | class absent |
+| F-M3 | "fills a status element that was already in the page, and moves focus after the text is there" | no `.pledge-pending` element |
+| F-M4 | "moves focus to the Showing line only after the page has rendered it, ..." (MineView) | focused while the line read "Showing 1 to 20 of 45" |
+| F-L5 | harness change; "keeps the live status region apart from the text that takes focus" | status paragraph was the region and the focus target in one |
+| F-L6 | "gives the kept states a success frame whose colour is fixed in both schemes" | no `--ok` token or rule |
+| F-L7 | "marks the staker/referee/beneficiary with a badge ... and (you) on their row" (3 cases) | `(you)` was in the value cell, not the label |
+| F-L8 | "gives the pledge facts an even row rhythm, ..." | row gap was 0.5rem |
+| F-L9 | "says the deadline has passed, not that a verdict is awaited, ..." | badge still read "Active" |
+
+Green: all findings fixed; 1024 passed, 9 skipped, 0 failed (first run after the code). Decisions inside the fixes:
+
+- R-L2: viem 2.57.2's `simulateContract` accepts `blockOverrides` (it passes the rest of its arguments to `call`, which sends them as
+  the fourth `eth_call` parameter). So the replay is made at `receipt.blockNumber - 1n` with `time` set to the mined block's
+  timestamp (one extra `getBlock`). A node that rejects block overrides makes the replay fail; `PledgeActions` turns that rejection into
+  the outcome's error (`.then(() => null, (e) => e)`), so the user sees the general message and its copied raw text is the node's
+  error (corrected by the confirmation review; `runRequest`'s own catch never sees it). Both Arc testnet RPCs were checked live,
+  read-only, by the confirmation reviewer: they accept and apply the override. No fallback to the parent block alone was written: it would have been
+  code for a case not seen. A receipt without a block number is also unexplained.
+- R-M2: the first draft also cleared the held state when a request started; no test could tell, since the controls are hidden
+  until the state has changed anyway, so the line was removed.
+- R-L1: the "deadline reached" test lives in one function, `reachedAt` in `PledgeView.tsx`, used by the render and by the click,
+  so the existing boundary mutants cover both.
+- F-L8: chose the larger row gap (0.75rem) over a smaller copy button; `.pledge-facts` also takes `align-items: baseline` (F-M1).
+  Checked in `cache/screenshots/p-16-1440-light.png`: labels sit on the address text, rows are evenly spaced.
+
+#### Mutation pass 980 to 999 (logic only; script `cache/mutants/m.sh`, originals in `cache/mutants/orig980`, restored after each and verified with `cmp`)
+
+| # | Mutant | Result |
+|---|---|---|
+| 980 | R-M1: dialog not closed when the gate turns off | killed (1: gate-off close test) |
+| 981 | R-M1: confirm no longer refuses when the gate is off | killed (1: "sends nothing when Mark it broken ... gate turned off") |
+| 982 | R-M1: close condition `\|\|` changed to `&&` | killed (3) |
+| 983 | R-M2: controls never hidden after a confirmed request | killed (2) |
+| 984 | R-M2: hidden once the state differs, shown while it is the same | killed (2) |
+| 985 | R-M2: state at confirmation not kept | killed (2) |
+| 986 | R-L1: Kept does not re-read chain time at click | killed (1) |
+| 987 | R-L1: confirm does not re-read chain time at click | killed (1) |
+| 988 | R-L1: refusal inverted (refuses before the deadline) | killed (30) |
+| 989 | R-L2: replay at the mined block, not its parent | killed (1) |
+| 990 | R-L2: replay at `latest` | killed (2) |
+| 991 | R-L2: block time override removed | killed (1) |
+| 992 | R-L2: block time taken from the latest block | killed (1) |
+| 993 | F-M3: focus moved before the render, as before | killed (1) |
+| 994 | F-M3: pending line not in a status element | killed (1) |
+| 995 | F-M4: `paged` starts true (focus on first render) | SURVIVED, argued equivalent: at mount the pager has not rendered (it needs the count), so `showing.current` is null and the effect focuses nothing. The flag is the reviewer's instruction and states the intent; no test can tell it apart |
+| 996 | F-M4: effect runs once, not on a page change | killed (2) |
+| 997 | F-L9: badge shown past the deadline | killed (1) |
+| 998 | R-L5: banned word planted in the `index.html` title | killed (1) |
+| 999 | R-L1: deadline boundary `<=` changed to `<` | killed (3) |
+
+Not mutated, and why: the `blockNumber === undefined` guard in the replay (without it the next line throws a TypeError, which the
+caller also turns into "no explanation", so the two cannot be told apart; it is there for the type); closing the dialog without
+the user-closed mark when confirm is refused (the race it covers needs the gate to turn off between two events of one click, which
+no test can arrange).
+
+Final, from `app/`: `npm test` 1024 passed, 9 skipped (live), 0 failed, run alone; `npm run lint` and `npm run typecheck` clean;
+`npm run build:testnet` built (chunk-size warning only). From the root: `node tools/trace-check.mjs`: `OK. 96/113 LLRs referenced,
+7/55 journeys passing.`

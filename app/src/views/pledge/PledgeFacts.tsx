@@ -45,7 +45,15 @@ function PartyRow(props: { party: (typeof PARTIES)[number]; address: string; exp
   const { party, address, explorerUrl, mine } = props;
   return (
     <>
-      <dt>{ROLE_NAMES[party]}</dt>
+      <dt>
+        {ROLE_NAMES[party]}
+        {mine && (
+          <>
+            {" "}
+            <span className="you-mark">(you)</span>
+          </>
+        )}
+      </dt>
       <dd>
         <HashValue
           kind="address"
@@ -54,7 +62,6 @@ function PartyRow(props: { party: (typeof PARTIES)[number]; address: string; exp
           copyNoun={`the ${party}'s address`}
           viewNoun={`the ${party}`}
         />
-        {mine && <span className="you-mark"> (you)</span>}
       </dd>
     </>
   );

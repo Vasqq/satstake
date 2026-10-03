@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { networks } from "./config/networks";
 
 const SRC = import.meta.dirname;
 const EM_DASH = String.fromCharCode(0x2014);
@@ -85,6 +86,33 @@ describe("LLR-FE-071 the scan reads every kind of user-facing string", () => {
     expect(files).toContain(join("views", "MineView.tsx"));
     expect(files.some((f) => /\.test\./.test(f))).toBe(false);
     expect(files.some((f) => f.startsWith("test"))).toBe(false);
+  });
+});
+
+/** The text of the page shell: its title and the content of its meta tags, which a search result or a link preview shows. */
+function htmlStrings(html: string): string[] {
+  const titles = [...html.matchAll(/<title[^>]*>([^<]*)<\/title>/gi)].map((m) => m[1] as string);
+  const contents = [...html.matchAll(/<meta\b[^>]*\bcontent\s*=\s*"([^"]*)"/gi)].map((m) => m[1] as string);
+  return [...titles, ...contents];
+}
+
+describe("LLR-FE-071 the scan also reads the page shell and the network names", () => {
+  it("reads the title and the meta content of an HTML file", () => {
+    const html = `<head><meta name="description" content="one ${EM_DASH} two" /><title>Seamless</title></head>`;
+    expect(htmlStrings(html).flatMap(problemsIn)).toEqual(["seamless", "U+2014"]);
+  });
+
+  it("holds for the title and meta content of app/index.html", () => {
+    const html = readFileSync(join(SRC, "..", "index.html"), "utf8");
+    expect(htmlStrings(html)).toContain("SatStake");
+    expect(htmlStrings(html).flatMap(problemsIn)).toEqual([]);
+  });
+
+  it("scans the file that names each network, and the names it shows are clean", () => {
+    expect(applicationSources(SRC).map((p) => relative(SRC, p))).toContain(join("config", "networks.ts"));
+    const names = Object.values(networks).map((n) => n.name);
+    expect(names).toEqual(["Arc Testnet", "Arc"]);
+    expect(names.flatMap(problemsIn)).toEqual([]);
   });
 });
 
