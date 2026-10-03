@@ -98,11 +98,11 @@ describe("LLR-FE-013 the shell shows the view for each route", () => {
     const chain = freshChain();
     chain.addPledge(2n, samplePledge, 2);
     setup("#/p/1", chain);
-    await screen.findByText("Active");
+    await screen.findByText("Active. Waiting for the referee's verdict.");
     act(() => {
       window.location.hash = "#/p/2";
     });
-    await screen.findByText("Kept");
+    await screen.findByText("Kept. The referee confirmed the promise. The stake can now be returned to the staker.");
     let release = () => {};
     chain.gate = new Promise<void>((resolve) => (release = resolve));
     act(() => {
@@ -111,9 +111,9 @@ describe("LLR-FE-013 the shell shows the view for each route", () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
-    expect(screen.queryByText("Kept")).toBeNull();
+    expect(screen.queryByText("Kept. The referee confirmed the promise. The stake can now be returned to the staker.")).toBeNull();
     release();
-    await screen.findByText("Active");
+    await screen.findByText("Active. Waiting for the referee's verdict.");
   });
 
   it("changes view when the hash changes", async () => {
@@ -181,10 +181,10 @@ describe("LLR-FE-011 the pledge page re-reads state and the latest block every 4
 
   it("shows the state a later poll finds", async () => {
     const chain = await settle();
-    expect(screen.getByText("Active")).toBeTruthy();
+    expect(screen.getByText("Active. Waiting for the referee's verdict.")).toBeTruthy();
     chain.states.set(1n, 2);
     await advance(4_000);
-    expect(screen.getByText("Kept")).toBeTruthy();
+    expect(screen.getByText("Kept. The referee confirmed the promise. The stake can now be returned to the staker.")).toBeTruthy();
   });
 
   it("stops while the page is hidden and reads again when it is shown", async () => {
@@ -351,12 +351,12 @@ const RETRYING = "Could not read this pledge. The site keeps trying while this p
 
 describe("LLR-FE-011 the pledge page in plain words, and a failed first read is tried again", () => {
   const states: [number, string][] = [
-    [0, "Active"],
-    [1, "Expired"],
-    [2, "Kept"],
-    [3, "Broken"],
-    [4, "Settled: stake returned to the staker"],
-    [5, "Settled: stake sent to the beneficiary"],
+    [0, "Active. Waiting for the referee's verdict."],
+    [1, "Expired. The deadline passed with no verdict. The stake can now be sent to the beneficiary."],
+    [2, "Kept. The referee confirmed the promise. The stake can now be returned to the staker."],
+    [3, "Broken. The referee marked the promise broken. The stake can now be sent to the beneficiary."],
+    [4, "Settled. The stake was returned to the staker."],
+    [5, "Settled. The stake was sent to the beneficiary."],
   ];
 
   it.each(states)("shows state %i as %s", async (value, label) => {
@@ -377,7 +377,7 @@ describe("LLR-FE-011 the pledge page in plain words, and a failed first read is 
     expect(pledgeStatus().textContent).toContain("Reading the pledge");
     await advance(3_000);
     expect(screen.queryByText(/Reading the pledge/)).toBeNull();
-    expect(screen.getByText("Active")).toBeTruthy();
+    expect(screen.getByText("Active. Waiting for the referee's verdict.")).toBeTruthy();
   });
 
   it("says it is reading while the pledge itself has not been answered, with the heading and title already there", async () => {
@@ -392,7 +392,7 @@ describe("LLR-FE-011 the pledge page in plain words, and a failed first read is 
     expect(pledgeStatus().textContent).toContain("Reading the pledge");
     await advance(3_000);
     await advance(50);
-    expect(screen.getByText("Active")).toBeTruthy();
+    expect(screen.getByText("Active. Waiting for the referee's verdict.")).toBeTruthy();
   });
 
   it("keeps trying when the first read of the pledge fails, and shows it when a later try succeeds", async () => {
@@ -410,7 +410,7 @@ describe("LLR-FE-011 the pledge page in plain words, and a failed first read is 
     await advance(4_000);
     await advance(50);
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByText("Active")).toBeTruthy();
+    expect(screen.getByText("Active. Waiting for the referee's verdict.")).toBeTruthy();
   });
 
   it("reads no state for a pledge the contract says does not exist", async () => {
@@ -542,17 +542,17 @@ describe("LLR-FE-011 a failed poll shows an error beside the last state, and the
   it("keeps the last state on screen and shows the error while the most recent poll failed, then clears it", async () => {
     const chain = freshChain();
     await open(chain);
-    expect(screen.getByText("Active")).toBeTruthy();
+    expect(screen.getByText("Active. Waiting for the referee's verdict.")).toBeTruthy();
     chain.callError = new HttpRequestError({ url: "https://rpc.example" });
     await advance(4_000);
     await advance(50);
-    expect(screen.getByText("Active")).toBeTruthy();
+    expect(screen.getByText("Active. Waiting for the referee's verdict.")).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toBe(RETRYING);
     chain.callError = undefined;
     await advance(4_000);
     await advance(50);
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByText("Active")).toBeTruthy();
+    expect(screen.getByText("Active. Waiting for the referee's verdict.")).toBeTruthy();
   });
 
   it("shows the error beside the reading message while no state has been read", async () => {
@@ -590,12 +590,12 @@ describe("LLR-FE-011 a failed poll shows an error beside the last state, and the
     expect(status.textContent).toContain("Reading the pledge");
     await advance(3_000);
     expect(pledgeStatus()).toBe(status);
-    expect(status.textContent).toBe("Active");
+    expect(status.textContent).toBe("Active. Waiting for the referee's verdict.");
     chain.latency = undefined;
     chain.states.set(1n, 2);
     await advance(4_000);
     expect(pledgeStatus()).toBe(status);
-    expect(status.textContent).toBe("Kept");
+    expect(status.textContent).toBe("Kept. The referee confirmed the promise. The stake can now be returned to the staker.");
   });
 });
 

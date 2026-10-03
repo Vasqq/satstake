@@ -25,7 +25,7 @@ live("LLR-FE-013 LLR-FE-005 the application rendered over Arc testnet", () => {
     expect((await screen.findByRole("heading", { level: 1 }, { timeout: 15_000 })).textContent).toBe(
       `Pledge #${network.examplePledgeId}`,
     );
-    const state = await screen.findByText(/^(Active|Expired|Kept|Broken|Settled: stake (returned|sent) to the .+)$/, undefined, {
+    const state = await screen.findByText(/^(Active|Expired|Kept|Broken|Settled)\. /, undefined, {
       timeout: 15_000,
     });
     expect(state).toBeTruthy();

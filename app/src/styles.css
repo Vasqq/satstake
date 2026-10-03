@@ -372,3 +372,39 @@ main {
 .site-footer p {
   margin: 0.25rem 0;
 }
+
+/* HashValue: an address or hash with its copy and explorer controls. The controls wrap below the value on a
+   narrow screen so the value is never squeezed. */
+.hash-value {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+}
+
+.hash-text {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.hash-full {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+}
+
+.hash-controls {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+}
+
+.hash-controls a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+}
+
+/* The room for "Copied." is kept before there is anything to say, so the controls do not move. */
+.hash-status {
+  min-width: 7ch;
+}

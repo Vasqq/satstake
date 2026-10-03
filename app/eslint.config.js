@@ -18,4 +18,9 @@ export default tseslint.config(
       "@typescript-eslint/no-explicit-any": "error",
     },
   },
+  {
+    // Node scripts run outside the browser bundle, such as the screenshot capture for design review.
+    files: ["scripts/**/*.mjs"],
+    languageOptions: { globals: globals.node },
+  },
 );

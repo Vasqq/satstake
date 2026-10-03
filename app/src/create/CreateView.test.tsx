@@ -1601,7 +1601,7 @@ describe("LLR-FE-060 a failure the contract or the token reported is shown with 
     await ready();
     click(submit());
     await waitFor(() =>
-      expect(within(notices()).getByText("The token refused the transfer, so nothing was locked. You can try again later.")).toBeTruthy(),
+      expect(within(notices()).getByText("The token refused the transfer. Nothing changed. You can try again later.")).toBeTruthy(),
     );
   });
 

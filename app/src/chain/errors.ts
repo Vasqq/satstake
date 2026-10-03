@@ -24,7 +24,7 @@ export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   VerdictWindowClosed: "The deadline has passed, so a verdict can no longer be recorded. The stake now goes to the beneficiary.",
   NotSettleable: "This pledge cannot be settled until the referee rules or the deadline passes.",
   AlreadySettled: "This pledge has already been settled.",
-  SafeERC20FailedOperation: "The token refused the transfer, so nothing was locked. You can try again later.",
+  SafeERC20FailedOperation: "The token refused the transfer. Nothing changed. You can try again later.",
   ReentrancyGuardReentrantCall: "This request called SatStake again before the first call finished. Nothing changed.",
 };
 

@@ -261,7 +261,7 @@ describe("LLR-FE-021 every read-only view renders fully without a connected wall
 
   it("reads and shows a pledge's state with no wallet", async () => {
     const chain = mountApp({ hash: "#/p/1" }).chain;
-    expect(await screen.findByText("Active")).toBeTruthy();
+    expect(await screen.findByText("Active. Waiting for the referee's verdict.")).toBeTruthy();
     expect(chain.count("eth_call", "stateOf")).toBeGreaterThan(0);
   });
 
@@ -269,7 +269,7 @@ describe("LLR-FE-021 every read-only view renders fully without a connected wall
     const w = fresh({ chainId: FOREIGN_CHAIN, authorized: true });
     const { chain } = mountApp({ hash: "#/p/1", wallets: [alpha(w)] });
     await connectedAddress();
-    expect(await screen.findByText("Active")).toBeTruthy();
+    expect(await screen.findByText("Active. Waiting for the referee's verdict.")).toBeTruthy();
     expect(chain.count("eth_call", "stateOf")).toBeGreaterThan(0);
     expect(w.methods().filter((m) => !["eth_accounts", "eth_chainId"].includes(m))).toEqual([]);
   });
@@ -279,7 +279,7 @@ describe("LLR-FE-021 every read-only view renders fully without a connected wall
     // wagmi retries a failed eth_accounts a few times before it decides the wallet is not authorized.
     for (let i = 0; i < 10; i++) w.failNext("eth_accounts", walletError(-32603, "wallet is locked"));
     mountApp({ hash: "#/p/1", wallets: [alpha(w)] });
-    expect(await screen.findByText("Active")).toBeTruthy();
+    expect(await screen.findByText("Active. Waiting for the referee's verdict.")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
     // wagmi allows one reconnect at a time for the whole process, so let this one finish before the next test.
     await waitFor(() => expect(w.count("eth_accounts")).toBeGreaterThanOrEqual(3), { timeout: 4_000 });
@@ -289,7 +289,7 @@ describe("LLR-FE-021 every read-only view renders fully without a connected wall
   it("asks the wallet for nothing while a read-only view is shown", async () => {
     const w = fresh();
     mountApp({ hash: "#/p/1", wallets: [alpha(w)] });
-    await screen.findByText("Active");
+    await screen.findByText("Active. Waiting for the referee's verdict.");
     await settleReconnect(w);
     expect(w.methods().filter((m) => m !== "eth_accounts")).toEqual([]);
   });

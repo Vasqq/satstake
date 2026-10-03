@@ -5214,3 +5214,73 @@ Tree hash equal after the run. Mutant 765's equivalence argument rested on "chai
 refetch on window focus against a lagging RPC can break; the reviewer showed its only effect is a stale deadline
 message during a retried attempt, so it is reclassified as a survivor of cosmetic effect and listed in the pre-release
 sweep, not argued equivalent.
+
+## FE pledge page and other views
+
+### Shared parts
+
+Spec: `docs/BRIEF_PLEDGE_AND_VIEWS.md` sections 0 and 1, 05 v1.17. Mutation numbers 830 to 859. Red was run against
+inert stubs (empty strings, `null`, a component returning `null`) so each failure is an assertion, not a missing
+module. 41 of the new or changed tests fail; the rest pass vacuously against the stubs (the "no role" and "not in the
+list" cases).
+
+Red, 2026-10-03:
+
+| Tests (file) | Reason |
+|---|---|
+| LLR-FE-040 `formatAmount`: USDC x5, cirBTC x3 with sats, case-insensitive address, unknown token as raw units, token looked up in the network given (`src/format.test.ts`) | `expected '' to be '5 USDC'` and the like |
+| LLR-FE-040 `formatLocalTime`: Paris, UTC, seconds not milliseconds (same) | `expected '' to be 'Oct 5, 2026, 3:30 PM GMT+2'` |
+| LLR-FE-040 `shorten`: address and hash (same) | `expected '' to be '0x3Ae2…Cac4'` |
+| LLR-FE-041 `roleOf` x4 and `ROLE_NAMES` (`src/views/roles.test.ts`) | `expected null to be 'staker'`; names are empty |
+| LLR-FE-040 `STATE_NAMES`, `STATE_MEANINGS`, past-deadline sentence (`src/views/stateLabels.test.ts`) | tables are empty strings |
+| LLR-FE-040 `HashValue` x13 (`src/views/HashValue.test.tsx`) | component renders nothing: no element, button, link or status found |
+| LLR-FE-060 `SafeERC20FailedOperation` x3: the 05 section 2.2 table test, a direct pin, and the create form's display (`src/chain/errors.test.ts`, `src/create/CreateView.test.tsx`) | message still reads "so nothing was locked" |
+
+Green: `format.ts` (`formatAmount`, `formatLocalTime`, `shorten`; `shorten` delegates to `wallet/address.ts`, which
+already shortened as the brief wants, and `formatLocalTime` is new because the create form has only a date-input
+formatter), `views/roles.ts`, `views/stateLabels.ts` (`STATE_LABELS` removed, tag moved to LLR-FE-040),
+`views/HashValue.tsx`, the section 2.2 message, and a block at the end of `styles.css`. `PledgeView` now shows
+`STATE_MEANINGS`; 17 older tests in `App.test.tsx` and `WalletBar.test.tsx` that pinned the old state words were
+changed to the brief's meaning sentences, and `liveApp.test.tsx`'s pattern with them. Full suite: 799 passed, 9
+skipped (live), 0 failed.
+
+Mutations 830 to 859, logic only, rows in `cache/mutations-shared.mjs`, run by `cache/mutate-shared.mjs` (a copy of
+the earlier runner, scratch under `cache/mutants/`), each against the test files of its own part. Tree hash equal
+after both runs. 28 of 30 killed; two argued equivalent.
+
+| # | Mutation | Result |
+|---|---|---|
+| 830 | formatAmount: token matched case-sensitively | killed |
+| 831 | formatAmount: decimals fixed at 6 | killed |
+| 832 | formatAmount: sats for every token | killed |
+| 833 | formatAmount: sats never | killed |
+| 834 | formatAmount: symbol dropped | killed |
+| 835 | formatAmount: sats of a fixed value | killed |
+| 836 | formatAmount: unknown token not shortened | killed |
+| 837 | formatAmount: "units of" wording dropped | killed |
+| 838 | formatAmount: first configured token always used | killed |
+| 839 | shorten: 5 leading characters | killed |
+| 840 | shorten: 5 trailing characters | killed |
+| 841 | shorten: returns its input | killed |
+| 842 | formatLocalTime: seconds read as milliseconds | killed |
+| 843 | formatLocalTime: zone fixed to UTC | killed (TZ set to Paris) |
+| 844 | formatLocalTime: 24-hour clock | killed |
+| 845 | formatLocalTime: zone name dropped | killed |
+| 846 | formatLocalTime: month in full | killed |
+| 847 | formatLocalTime: year dropped | killed |
+| 848 | roleOf: case-sensitive compare | first run SURVIVED: the test addresses were `0x22...`, all digits, so lower case equals checksum case; addresses now use `ab`, `cd`, `ef`; killed on rerun |
+| 849 | roleOf: roles checked in another order | equivalent: the contract refuses a pledge where one address holds two roles, so at most one matches |
+| 850 | roleOf: prefix match | killed |
+| 851 | roleOf: undefined account treated as the empty string | equivalent: an empty string equals no address |
+| 852 | roleOf: always "staker" | killed |
+| 853 | HashValue: transaction link in the same tab | killed |
+| 854 | HashValue: address link in a new tab | killed |
+| 855 | HashValue: transaction link without noopener | killed |
+| 856 | HashValue: address link with noopener | killed |
+| 857 | HashValue: transaction links to the address path | killed |
+| 858 | HashValue: the shortened value is copied | killed |
+| 859 | HashValue: `full` ignored | killed |
+
+Final, from `app/`: `npm test` 814 passed, 9 skipped (live), 0 failed, run alone; `npm run lint` and `npm run typecheck`
+clean; `npm run build:testnet` built (chunk-size warning only). From the root: `node tools/trace-check.mjs`:
+`OK. 89/113 LLRs referenced, 7/55 journeys passing.`

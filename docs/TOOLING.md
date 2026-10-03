@@ -20,6 +20,7 @@ Every skill, MCP server, and non-trivial package or tool used to build SatStake,
 | `typescript`, `typescript-eslint`, `eslint`, `@eslint/js`, `eslint-plugin-react-hooks`, `globals` | 6.0.3, 8.71.0, 10.11.0, 10.0.1, 7.1.1, 17.13.0 | https://github.com/microsoft/TypeScript, https://github.com/typescript-eslint/typescript-eslint, https://github.com/eslint/eslint | Strict type checking and lint with no `any` (LLR-FE-080). TypeScript stays on 6.0 because typescript-eslint 8.71.0 supports `<6.1.0` |
 | `vitest`, `jsdom`, `@testing-library/react` | 5.0.3, 30.1.1, 16.3.3 | https://github.com/vitest-dev/vitest, https://github.com/jsdom/jsdom, https://github.com/testing-library/react-testing-library | Frontend unit and component tests (LLR-VV-006). `npm audit` on `app/` reports 0 vulnerabilities |
 | `@types/react`, `@types/react-dom`, `@types/node` | 19.3.0, 19.3.0, 26.6.3 | https://github.com/DefinitelyTyped/DefinitelyTyped | Type declarations only |
+| `playwright` | 1.63.0, exact pin in `app/package-lock.json`; Chromium headless shell kept in `app/node_modules` via `PLAYWRIGHT_BROWSERS_PATH=0` | https://github.com/microsoft/playwright, npm, Microsoft maintainers | `app/scripts/screenshots.mjs` captures every view at 360 and 1440 px, light and dark, into the gitignored `cache/screenshots/`, so the frontend reviewer reads the rendered app. A review aid, not a test. `npm audit` reports 0 vulnerabilities |
 
 ## Agent safeguards
 

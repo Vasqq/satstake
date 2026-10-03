@@ -4,7 +4,7 @@ import { POLL_INTERVAL_MS } from "../chain/poller";
 import { usePledgeLive } from "../chain/usePledgeLive";
 import { type Reads, isPledgeNotFound } from "../chain/reads";
 import { PageHeading } from "./PageHeading";
-import { STATE_LABELS } from "./stateLabels";
+import { STATE_MEANINGS } from "./stateLabels";
 import { PledgeNotFoundView } from "./Views";
 
 const READING = "Reading the pledge from the network.";
@@ -29,7 +29,7 @@ export function PledgeView({ reads, id, afterStatus }: { reads: Reads; id: bigin
   if (pledge.error && isPledgeNotFound(pledge.error)) return <PledgeNotFoundView />;
 
   const failed = pledge.error !== null || live.error !== null;
-  const status = live.state !== null ? STATE_LABELS[live.state] : READING;
+  const status = live.state !== null ? STATE_MEANINGS[live.state] : READING;
 
   return (
     <article>

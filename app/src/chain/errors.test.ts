@@ -41,6 +41,12 @@ describe("LLR-FE-060 every custom error in the contract ABI has the message of s
     expect(missing).toEqual([]);
   });
 
+  it("says nothing changed for a token that refused the transfer, since settle raises it too and nothing is locked there", () => {
+    expect(ERROR_MESSAGES.SafeERC20FailedOperation).toBe(
+      "The token refused the transfer. Nothing changed. You can try again later.",
+    );
+  });
+
   it("leaves unmapped only the constructor-only errors that LLR-FE-060 excludes, which are the ones section 2.2 does not list", () => {
     const unlisted = abiErrorNames.filter((name) => !table.has(name));
     expect(unlisted).toEqual(CONSTRUCTOR_ONLY);
