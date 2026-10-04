@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { numberToHex } from "viem";
 import { afterEach, describe, expect, it } from "vitest";
-import { FakeWallet, rejection, walletError } from "../test/fakeWallet";
+import { FakeWallet, installWindowEthereum, rejection, walletError } from "../test/fakeWallet";
 import { ACCOUNT, FOREIGN_CHAIN, OTHER_ACCOUNT, mountApp, network, reloadPage, shortOf, teardownWallets, walletStatus } from "../test/walletHarness";
 import { shortAddress } from "./address";
 import { FAILED_MESSAGE, REJECTED_MESSAGE } from "./failure";
@@ -743,5 +743,118 @@ describe("LLR-FE-020 the prompt above the connect controls", () => {
     mountApp({ wallets: [alpha(fresh())] });
     await connectButton("Alpha Wallet");
     expect(within(bar()).getByText(CONNECT_PROMPT)).toBeTruthy();
+  });
+});
+
+describe("LLR-FE-020 a wallet that injects window.ethereum after the first render is offered once the page is told", () => {
+  it("replaces the no-wallet sentence with the connect control when ethereum#initialized fires", async () => {
+    mountApp();
+    expect(within(bar()).getByText(NO_WALLET)).toBeTruthy();
+    // Lets the check for a remembered connection end, so the click below is not ignored as pending.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const w = fresh();
+    const remove = installWindowEthereum(w);
+    try {
+      act(() => void window.dispatchEvent(new Event("ethereum#initialized")));
+      // Read at once, with no wait, because any later poll of the page would redraw it and hide a missing listener.
+      fireEvent.click(screen.getByRole("button", { name: "Connect browser wallet" }));
+      await connectedAddress();
+      expect(w.count("wallet_requestPermissions")).toBe(1);
+    } finally {
+      remove();
+    }
+  });
+
+  it("keeps the no-wallet sentence when the event fires and nothing was injected", async () => {
+    mountApp();
+    act(() => void window.dispatchEvent(new Event("ethereum#initialized")));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(within(bar()).getByText(NO_WALLET)).toBeTruthy();
+    expect(within(bar()).queryByRole("button")).toBeNull();
+  });
+});
+
+describe("LLR-FE-072 a Skip to content link comes first and moves focus to the main heading", () => {
+  const focusables = () => [...document.querySelectorAll<HTMLElement>("a[href], button, input, select, textarea, [tabindex='0']")];
+
+  it("is the first focusable element on the page, before the header and the wallet bar", async () => {
+    mountApp({ wallets: [alpha(fresh())] });
+    await connectButton("Alpha Wallet");
+    const first = focusables()[0] as HTMLElement;
+    expect(first.tagName).toBe("A");
+    expect(first.textContent).toBe("Skip to content");
+  });
+
+  it("moves focus to the main heading when used, and leaves the route alone", async () => {
+    mountApp({ hash: "#/about" });
+    const heading = await screen.findByRole("heading", { level: 1 });
+    // fireEvent returns false when the default action, a change of the address, was cancelled.
+    expect(fireEvent.click(screen.getByRole("link", { name: "Skip to content" }))).toBe(false);
+    expect(document.activeElement).toBe(heading);
+    expect(window.location.hash).toBe("#/about");
+  });
+});
+
+describe("LLR-FE-022 two activations of the switch in one task send one request", () => {
+  it("asks the wallet once when the control is activated twice before React renders", async () => {
+    const w = fresh({ chainId: FOREIGN_CHAIN, authorized: true });
+    w.knownChains.add(network.chainId);
+    const release = w.hold("wallet_switchEthereumChain");
+    mountApp({ wallets: [alpha(w)] });
+    await connectedAddress();
+    const button = await screen.findByRole("button", { name: `Switch to ${network.name}` });
+    act(() => {
+      button.click();
+      button.click();
+    });
+    release();
+    await waitFor(() => expect(walletStatus().textContent).not.toContain("another network"));
+    expect(w.count("wallet_switchEthereumChain")).toBe(1);
+  });
+});
+
+describe("LLR-FE-072 focus follows a successful request only from the pressed control or the page body", () => {
+  it("leaves focus where the user put it after a connect", async () => {
+    const w = fresh();
+    const release = w.hold("wallet_requestPermissions");
+    mountApp({ wallets: [alpha(w)] });
+    fireEvent.click(await connectButton("Alpha Wallet"));
+    const elsewhere = screen.getByRole("link", { name: "About" });
+    elsewhere.focus();
+    release();
+    await connectedAddress();
+    expect(document.activeElement).toBe(elsewhere);
+  });
+
+  it("leaves focus where the user put it after a switch", async () => {
+    const w = fresh({ chainId: FOREIGN_CHAIN, authorized: true });
+    w.knownChains.add(network.chainId);
+    const release = w.hold("wallet_switchEthereumChain");
+    mountApp({ wallets: [alpha(w)] });
+    await connectedAddress();
+    fireEvent.click(await screen.findByRole("button", { name: `Switch to ${network.name}` }));
+    const elsewhere = screen.getByRole("link", { name: "About" });
+    elsewhere.focus();
+    release();
+    await waitFor(() => expect(walletStatus().textContent).not.toContain("another network"));
+    expect(document.activeElement).toBe(elsewhere);
+  });
+});
+
+describe("LLR-FE-072 a disconnect is announced", () => {
+  it("says No wallet connected. when a connected wallet shares no account any longer", async () => {
+    const w = fresh({ authorized: true });
+    mountApp({ wallets: [alpha(w)] });
+    await connectedAddress();
+    act(() => w.changeAccounts([]));
+    await connectButton("Alpha Wallet");
+    expect(walletStatus().textContent).toBe("No wallet connected.");
+  });
+
+  it("says nothing of the kind before any wallet was connected", async () => {
+    const w = fresh();
+    mountApp({ wallets: [alpha(w)] });
+    await settleReconnect(w);
+    expect(walletStatus().textContent).toBe("");
   });
 });

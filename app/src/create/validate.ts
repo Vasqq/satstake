@@ -52,7 +52,8 @@ const MESSAGES = {
   balanceError: "Could not read your balance. Trying again every 5 seconds.",
   feeReserveNeeded: `You need at least ${FEE_RESERVE_USDC} USDC in this wallet to pay network fees, which Arc charges in USDC.`,
   feeReserveLeft: `Leave at least ${FEE_RESERVE_USDC} USDC in this wallet for network fees, which Arc charges in USDC.`,
-  badAddress: "Enter a valid address for the referee and the beneficiary.",
+  zeroAddress: "Enter a valid address for the referee and the beneficiary.",
+  addressSyntax: (who: "referee" | "beneficiary") => `Enter the ${who}'s address: 0x followed by 40 letters and digits.`,
   partyIsContract: "The SatStake contract cannot be a party. Enter a person's address.",
   partyIsStaker: "You cannot be your own referee or beneficiary.",
   samePeople: "The referee and the beneficiary must be different people.",
@@ -124,8 +125,11 @@ function amountError(
   return undefined;
 }
 
-function partyError(text: string, context: FormContext): string | undefined {
-  if (!isAddress(text) || text.toLowerCase() === ZERO_ADDRESS) return MESSAGES.badAddress; // LLR-FE-030
+function partyError(text: string, who: "referee" | "beneficiary", context: FormContext): string | undefined {
+  // Section 2.2 binds contract errors only, so a malformed address is told which field it is; a well-formed zero
+  // address keeps the words of the contract's ZeroAddress.
+  if (!isAddress(text)) return MESSAGES.addressSyntax(who); // LLR-FE-030
+  if (text.toLowerCase() === ZERO_ADDRESS) return MESSAGES.zeroAddress; // LLR-FE-030
   if (text.toLowerCase() === context.network.contract.toLowerCase()) return MESSAGES.partyIsContract; // LLR-FE-030
   if (context.staker !== undefined && text.toLowerCase() === context.staker.toLowerCase()) return MESSAGES.partyIsStaker; // LLR-FE-030
   return undefined;
@@ -185,8 +189,8 @@ export function checkForm(values: FormValues, context: FormContext): FormCheck {
     if (fault?.atOnce) atOnce.push("amount");
   }
 
-  const referee = partyError(values.referee, context);
-  const beneficiary = partyError(values.beneficiary, context);
+  const referee = partyError(values.referee, "referee", context);
+  const beneficiary = partyError(values.beneficiary, "beneficiary", context);
   set("referee", referee);
   set("beneficiary", beneficiary);
   // The pair is judged only when each address is sound on its own, so one fault is reported once.

@@ -1,17 +1,18 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
 import { type Address, type PublicClient, erc20Abi, formatUnits, getAddress, isAddress } from "viem";
 import { useConfig, useConnection } from "wagmi";
 import { writeContract } from "wagmi/actions";
 import { satStakeAbi } from "../abi";
 import { ChainClock } from "../chain/clock";
+import { useTick } from "../chain/useTick";
 import type { Reads } from "../chain/reads";
 import type { Health } from "../chain/useHealth";
 import type { SelectedNetwork, TokenConfig } from "../config/networks";
 import { PageHeading } from "../views/PageHeading";
 import { RequestNotice, useConnectionFailure } from "../wallet/failure";
 import { useWriteGate } from "../wallet/gate";
-import { formatSats } from "../format";
+import { formatLocalTime, formatSats } from "../format";
 import { parseAmount } from "./amount";
 import { type DeadlineChoice, PRESETS, deadlineBounds, localToTimestamp } from "./deadline";
 import { CreationUnconfirmedError, DeadlineCheckError, type CreateInput, type FlowIO, type Step, receiptOf, runCreate } from "./flow";
@@ -122,6 +123,8 @@ function FieldShell({ id, label, error, warning, hints, control }: FieldShellPro
   );
 }
 
+const DELEGATION_PREFIX = "0xef0100";
+
 /**
  * Whether an address has deployed code, asked only for one that is well formed and once per address.
  * A failed read says nothing, since the warning is advice and not a check.
@@ -130,7 +133,12 @@ function useHasCode(client: PublicClient, network: SelectedNetwork, text: string
   const wellFormed = isAddress(text);
   const query = useQuery({
     queryKey: ["code", network.chainId, text.toLowerCase()],
-    queryFn: async () => (await client.getCode({ address: text as Address })) !== undefined,
+    queryFn: async () => {
+      const code = await client.getCode({ address: text as Address });
+      // An account that has delegated to code under EIP-7702 holds the designator 0xef0100 and an address, and is
+      // a person's wallet, so it is not the contract the warning is about.
+      return code !== undefined && !code.startsWith(DELEGATION_PREFIX); // LLR-FE-035
+    },
     enabled: wellFormed,
     retry: false,
   });
@@ -190,6 +198,7 @@ export interface CreateViewProps {
 export function CreateView({ client, reads, network, health, onCreated }: CreateViewProps) {
   const ids = useId();
   const config = useConfig();
+  const queryClient = useQueryClient();
   const connection = useConnection();
   const staker = connection.status === "connected" ? connection.address : undefined;
   const gate = useWriteGate(health.network, network); // LLR-FE-023
@@ -218,6 +227,10 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
 
   const token = network.tokens.find((t) => t.address.toLowerCase() === values.token.toLowerCase());
 
+  // A transaction changes the balance of the token and, through the fee, of USDC, so both are read again; a balance
+  // read once and left would judge the next attempt against a figure that is no longer true (LLR-FE-030).
+  const refreshBalances = () => void queryClient.invalidateQueries({ queryKey: ["balance", network.chainId] });
+
   // The network fee is paid in USDC, so its balance matters whichever token is staked. For a USDC stake the two
   // reads share one cache entry and cost one request.
   const usdc = network.tokens.find((t) => t.symbol === "USDC") as TokenConfig;
@@ -239,6 +252,8 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
     gcTime: 0,
     refetchInterval: (q) => (q.state.status === "error" ? RETRY_READ_MS : false), // LLR-FE-031
   });
+  // The end of a preset moves with chain time, so the page redraws once a second without reading anything.
+  useTick(); // LLR-FE-012
   const chainNow = clock.now();
 
   const refereeHasCode = useHasCode(client, network, values.referee); // LLR-FE-035
@@ -312,8 +327,14 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
     const send = { chainId: network.chainId } as const;
     const io: FlowIO = {
       contract: network.contract,
-      allowance: () =>
-        client.readContract({ address: token.address, abi: erc20Abi, functionName: "allowance", args: [staker, network.contract] }),
+      allowance: (atBlock) =>
+        client.readContract({
+          address: token.address,
+          abi: erc20Abi,
+          functionName: "allowance",
+          args: [staker, network.contract],
+          ...(atBlock === undefined ? {} : { blockNumber: atBlock }),
+        }),
       approve: (exact) =>
         writeContract(config, {
           ...send,
@@ -330,7 +351,7 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
           functionName: "createPledge",
           args: [token.address, amount, getAddress(referee), getAddress(beneficiary), deadlineSeconds, promise],
         }),
-      receipt: (hash) => receiptOf(client, hash),
+      receipt: (hash) => receiptOf(client, hash).finally(refreshBalances), // LLR-FE-030
       chainTime: () => reads.latestBlockTimestamp(),
       clockNow: () => clock.now(),
     };
@@ -378,6 +399,9 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
       ? `This amount: ${formatUnits(parsed.value, token.decimals)} ${token.symbol}${inSats(parsed.value)}.`
       : undefined;
   const choice = values.deadline;
+  const chosenPreset = choice.kind === "preset" ? PRESETS.find((p) => p.id === choice.id) : undefined;
+  // Approximate, since the deadline is fixed from a fresh reading when the creation is sent (LLR-FE-031).
+  const presetEnds = chosenPreset !== undefined && chainNow !== null ? `Ends about ${formatLocalTime(chainNow + chosenPreset.seconds)}.` : "";
   const choices: { key: string; label: string; checked: boolean; select: () => void }[] = [
     ...PRESETS.map((preset) => ({
       key: preset.id,
@@ -483,7 +507,7 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
 
         {/* The deadline is left when focus goes out of the whole group, and not when it moves from Custom to its date. */}
         <fieldset
-          aria-describedby={`${ids}-deadline-error`}
+          aria-describedby={`${ids}-deadline-end ${ids}-deadline-error`}
           onBlur={(event) => {
             if (!event.currentTarget.contains(event.relatedTarget as Node | null)) touch("deadline");
           }}
@@ -504,6 +528,9 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
               </label>
             ))}
           </div>
+          <p id={`${ids}-deadline-end`} className="hint">
+            {presetEnds}
+          </p>
           {choice.kind === "custom" && (
             <div className="field">
               <label htmlFor={`${ids}-custom`}>Custom date and time</label>

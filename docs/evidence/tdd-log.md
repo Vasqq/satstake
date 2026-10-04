@@ -5579,3 +5579,171 @@ no test can arrange).
 Final, from `app/`: `npm test` 1024 passed, 9 skipped (live), 0 failed, run alone; `npm run lint` and `npm run typecheck` clean;
 `npm run build:testnet` built (chunk-size warning only). From the root: `node tools/trace-check.mjs`: `OK. 96/113 LLRs referenced,
 7/55 journeys passing.`
+
+## Pre-release sweep
+
+Rows are the "Pre-release sweep" table in `docs/INSPECTIONS.md`. Mutation rows 1000 to 1049, scratch in `cache/mutants/`.
+
+### Wallet rows (1 to 5), red
+
+Tests in `app/src/wallet/WalletBar.test.tsx`, run alone, 6 fail and the rest pass.
+
+| Row | Test | Red reason |
+|---|---|---|
+| 1 | "replaces the no-wallet sentence with the connect control when ethereum#initialized fires" | no button "Connect browser wallet" straight after the event (any poll redraws the page later, so the test reads at once) |
+| 2 | "is the first focusable element on the page ..." | first focusable is the brand link "SatStake" |
+| 2 | "moves focus to the main heading when used, and leaves the route alone" | no link "Skip to content" |
+| 3 | "asks the wallet once when the control is activated twice before React renders" | 2 `wallet_switchEthereumChain` sent, expected 1 |
+| 4 | "leaves focus where the user put it after a connect" / "... after a switch" | focus pulled to the wallet status |
+| 5 | "says No wallet connected. when a connected wallet shares no account any longer" | status is empty |
+
+The CSS test for the skip link (`styles.test.ts`) was written after the rule; its red was shown by renaming the class in
+`styles.css` (fails, restored, `cmp` clean).
+
+### Wallet rows (1 to 5), green
+
+`WalletBar.tsx` (`useSyncExternalStore` on `ethereum#initialized`, `switchInFlight` ref, `moveFocus` conditioned on body or the
+pressed control, `wasConnected` sentence), `App.tsx` (`SkipLink`, focuses `main h1` by script because the route lives in the
+hash), `styles.css` (`.skip-link`). `src/wallet`, `styles.test.ts`, `App.test.tsx`: 233 passed. The late-injection test waits 200 ms
+after mount so the click is not ignored while the remembered-connection check is pending, then reads without waiting, since any
+later poll would redraw the page and hide a missing listener.
+
+| # | Mutant | Result |
+|---|---|---|
+| 1000 | row 1: listener not added | killed (1) |
+| 1001 | row 3: in-flight ref ignored | killed (1) |
+| 1002 | row 4: focus always moved | killed (2) |
+| 1003 | row 4: only `body` counts, not null or the pressed control | SURVIVED, equivalent in practice: the pressed control is removed when its request succeeds, jsdom and browsers then report `body`, and `activeElement` is never null; the extra terms state the requirement |
+| 1004 | row 5: no disconnect sentence | killed (1) |
+| 1005 | row 2: link does not focus the heading | killed (1) |
+| 1006 | row 2: `preventDefault` removed | survived at first (jsdom does not follow the synthetic click), then killed (1) after the test asserted the click was cancelled |
+
+### Row 6 (address wording)
+
+Tests changed to the new strings first: `validate.test.ts` and `CreateView.test.tsx`, 14 failed with the old shared sentence.
+Green: `partyError` takes the party; a malformed address says "Enter the referee's address: 0x followed by 40 letters and digits."
+(or the beneficiary's). The well-formed zero address keeps the contract's ZeroAddress words, since the new sentence would
+not describe it. `src/create`: 332 passed.
+
+### Row 7 (EIP-7702 delegated accounts)
+
+`fakeChain.ts` gained `codeBytes` (exact code per address). Tests in `CreateView.test.tsx` ("an account that delegates to code under
+EIP-7702 ..."): referee and beneficiary with code `0xef0100` + 20 bytes show no warning; `0xef0101...` still does.
+Red: 2 failed, the warning showed for the delegated accounts. Green: `useHasCode` ignores code starting `0xef0100`; 162 passed.
+
+| # | Mutant | Result |
+|---|---|---|
+| 1007 | prefix test removed | killed (2) |
+| 1008 | prefix shortened to `0xef01` | killed (1) |
+
+### Rows 8 and 10 (preset end, chain-time message)
+
+Tests in `CreateView.test.tsx` ("a preset deadline shows roughly when it ends, from chain time"): four presets show
+"Ends about <formatLocalTime>." from chain time, nothing before a choice or for a custom time, nothing while chain time is
+unread (device clock set to 2031 to show it is not used), and the text moves when chain time advances an hour with no read.
+Red: 6 failed (no such text). Green: a `<p>` in the deadline group, `useTick()` in `CreateView`; `src/create` 343 passed.
+Row 10: the code already matched 05 v1.19 (`deadlineError` says the failed read only for a custom choice, and a preset test
+existed); a test for "no choice made" was added and passed at once, so it is not a red.
+
+| # | Mutant | Result |
+|---|---|---|
+| 1009 | row 8: `useTick()` removed | killed (1) |
+| 1010 | row 8: end taken from the device clock | killed (5) |
+| 1011 | row 8: shown for every choice | killed (165, the page throws) |
+
+### Row 9 (allowance re-read after the approval), red
+
+`flow.test.ts`: the fake world's allowance is now stateful (the approval raises it, or leaves it, per script), and the expected
+logs gained the second `allowance` read. New suite "the allowance is read again after the approval receipt, and a short one
+stops the creation" (5 tests), plus `CreateView.test.tsx` "an approval that was mined but left the allowance short ..." with
+`FakeWorld.approvalTakesNoEffect`. Red: 6 in `flow.test.ts` (log lacks the re-read; "promise resolved 42n instead of rejecting"
+for a short allowance) and 1 in `CreateView.test.tsx` (no "Something went wrong" message, creation was requested).
+
+### Row 9, green
+
+`runCreate` reads the allowance again after a successful approval receipt and throws before the "done" progress when it is below
+the amount; `CreateView` shows the general LLR-FE-062 message and no kept-approval line. `src/create`: 349 passed.
+
+| # | Mutant | Result |
+|---|---|---|
+| 1012 | re-read removed | killed (7) |
+| 1013 | `<` changed to `<=` | killed (12) |
+| 1014 | "done" progress reported before the re-read | killed (1) |
+
+### Row 11 (mutant 765)
+
+Test "removes the failure when a new attempt starts, though the deadline has not changed" (`CreateView.test.tsx`): a custom
+deadline fails the submit re-check after 40 s of the monotonic clock; a `visibilitychange` on `window` (what TanStack's focus
+manager listens to; on `document` it does not bubble) refetches, and the fake chain's block is earlier than the page's
+estimate, so the deadline is in range again with the old message still shown; the next attempt, held at the wallet prompt,
+must not show it. It passes on the unchanged code (the mutant is the red).
+
+| # | Mutant | Result |
+|---|---|---|
+| 1015 | same as 765: `setRecheck(null)` removed from the start of an attempt | killed (1) |
+
+### Row 12 (balances re-read after each transaction), red
+
+Suite "the balances shown are read again after each transaction the form sends" in `CreateView.test.tsx`, three tests: after the
+approval confirms (creation prompt held open), after a reverted creation, and the USDC fee balance after a failed cirBTC
+stake. Red: 3 failed, the balance hint still read the old value and the fee-reserve fault never appeared.
+
+### Row 12, green
+
+`CreateView` invalidates every `["balance", chainId]` query when a receipt wait ends, success or failure (`receipt(...).finally`),
+so both the staked token and USDC are read again. A second refresh in the attempt's `finally` was written and removed: every
+transaction with a hash already passes through the receipt wait, so that line could not be told apart by any test. `src/create`: 353 passed.
+
+| # | Mutant | Result |
+|---|---|---|
+| 1016 | no refresh after a receipt | killed (3) |
+| 1017 | refresh only after a successful receipt | killed (2) |
+| 1018 | only the staked token's balance refreshed | killed (1) |
+
+### Row 13 (mutant 995)
+
+`MineView.test.tsx`: "does not move focus when the view opens with the count already cached and the pager drawn at once". It mounts
+`MineView` under a `QueryClient` whose count is pre-filled with 45 (`mountUi` gained a `queryClient` option), so the pager is in
+the first render. It passes on unchanged code; the mutant is the red.
+
+| # | Mutant | Result |
+|---|---|---|
+| 1019 | same as 995: `paged` ref starts true | killed (1) |
+
+### Row 14 (focus after a click-time refusal)
+
+`PledgeActions.test.tsx`, in "a verdict is refused at click time once chain time has reached the deadline": Kept refused ->
+status line focused (red: focus stayed on the Kept button); Mark it broken refused -> status line focused (passed at once, the
+existing dialog-close effect; kept as a lock); Kept refused only because a request is pending -> focus unchanged (passed at once).
+Green: `onKept` focuses the status when `lateVerdict()`. `src/views`: 233 passed.
+
+| # | Mutant | Result |
+|---|---|---|
+| 1020 | Kept refusal does not focus the status | killed (1) |
+| 1021 | `refused` guard removed from `onKept` | killed (1) |
+| 1022 | confirm refusal marks the close as the user's | killed (1) |
+
+### Row 15 (settle through a token revert)
+
+`PledgeActions.test.tsx`, suite "a settlement the token refuses is explained in the words of section 2.2 (UJ-46, UJ-47)": Withdraw
+my stake refused before sending with `SafeERC20FailedOperation` shows "The token refused the transfer. Nothing changed. You can
+try again later.", nothing sent, control back; Claim stake mined and reverted with a revert string (replay answers `Error(string)`,
+which `FakeChain.revert` now encodes) shows "The token issuer blocked this transfer. Nothing changed. You can try again later."
+with the hash link and no general message. Both pass at once, since the code existed; the mutants are the red. Names added to
+the FE part of the UJ-46 and UJ-47 rows of `docs/ACCEPTANCE.md`, results unchanged.
+
+| # | Mutant | Result |
+|---|---|---|
+| 1023 | `Error` revert string gets no message | killed (1) |
+| 1024 | `SafeERC20FailedOperation` has no message | killed (1) |
+
+### Final
+
+From `app/`: `npm run lint` and `npm run typecheck` clean; `npm test` run alone: 1061 passed, 9 skipped (live), 0 failed;
+`npm run build:testnet` built (chunk-size warning only). From the root: `node tools/trace-check.mjs`: `OK. 96/113 LLRs
+referenced, 9/55 journeys passing.` Every mutant was restored and compared with `cmp` against its saved original after its run
+(`cache/mutants/mut.py`). The `INSPECTIONS.md` sweep table now carries a Status for all 23 rows.
+
+### Lead fix after the sweep
+
+- Row 9 follow-up (LLR-FE-033): the allowance re-read after an approval was taken at `latest`, which a public endpoint one block behind (01 V-11) answers with the old allowance and no error, so a genuine approval would read as failed. Test `flow.test.ts` "reads the allowance after the approval at the approval's own block, so a lagging endpoint cannot answer with the old one": red, the second read was unpinned (`"allowance"` where `"allowance@77"` was expected). Green: `runCreate` passes the approval receipt's `blockNumber`, and `CreateView` hands it to `readContract`; 354 create tests pass.

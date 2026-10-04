@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { type Connector, useConnect, useConnection, useSwitchChain } from "wagmi";
 import { addChainParameter } from "../chain/wagmi";
 import type { SelectedNetwork } from "../config/networks";
@@ -9,6 +9,13 @@ import { RequestNotice, useConnectionFailure } from "./failure";
 const FALLBACK_ID = "injected";
 
 const hasWindowEthereum = () => Reflect.get(window, "ethereum") !== undefined;
+
+// Some wallets inject window.ethereum after the first render and fire this event when they have. It is the
+// only way the page learns of them, since such a wallet need not announce itself over EIP-6963.
+function subscribeToInjection(onChange: () => void) {
+  window.addEventListener("ethereum#initialized", onChange, { once: true });
+  return () => window.removeEventListener("ethereum#initialized", onChange);
+}
 
 /**
  * The wallet area under the header: which wallets can be connected, who is connected, and a switch to the
@@ -22,6 +29,10 @@ export function WalletBar({ network }: { network: SelectedNetwork }) {
   const { connect, connectors, isPending: connecting } = useConnect();
   const { switchChain, isPending: switching } = useSwitchChain();
   const statusRef = useRef<HTMLParagraphElement>(null);
+  // Set at once in the handler, because the pending flag of the request arrives a task later.
+  const switchInFlight = useRef(false);
+  const windowEthereum = useSyncExternalStore(subscribeToInjection, hasWindowEthereum);
+  const [wasConnected, setWasConnected] = useState(false);
 
   const failure = useConnectionFailure();
 
@@ -31,7 +42,7 @@ export function WalletBar({ network }: { network: SelectedNetwork }) {
   const options: { connector: Connector; label: string }[] =
     announced.length > 0
       ? announced.map((connector) => ({ connector, label: connector.name }))
-      : fallback && hasWindowEthereum()
+      : fallback && windowEthereum
         ? [{ connector: fallback, label: "browser wallet" }]
         : [];
 
@@ -39,6 +50,8 @@ export function WalletBar({ network }: { network: SelectedNetwork }) {
   const wrongChain = connected && connection.chainId !== network.chainId;
   // aria-disabled and an early return, not the disabled attribute, so the focus stays on the control pressed.
   const busy = connecting || connection.status === "connecting" || connection.status === "reconnecting"; // LLR-FE-020
+
+  if (connected && !wasConnected) setWasConnected(true);
 
   // One sentence for every state, in one element that stays in the page, so each change is announced.
   const sentence = connected
@@ -49,24 +62,37 @@ export function WalletBar({ network }: { network: SelectedNetwork }) {
       ? "Waiting for your wallet. Answer the request in your wallet."
       : busy
         ? "Checking your wallet."
-        : "";
+        : wasConnected
+          ? "No wallet connected." // LLR-FE-072
+          : "";
 
   // Focus follows only a request the user made and that succeeded, because the control pressed is gone then.
-  const moveFocus = () => statusRef.current?.focus(); // LLR-FE-072
+  // If the user has since moved focus to something else, taking it back would be a jump they did not ask for.
+  const moveFocus = (pressed: Element) => {
+    const now = document.activeElement;
+    if (now === null || now === document.body || now === pressed) statusRef.current?.focus(); // LLR-FE-072
+  };
 
-  function pick(connector: Connector) {
+  function pick(connector: Connector, pressed: Element) {
     if (busy) return;
     failure.clear();
     // The wallet is asked for accounts here and nowhere else, so nothing is requested before this click.
-    connect({ connector }, { onError: failure.fail, onSuccess: moveFocus }); // LLR-FE-020
+    connect({ connector }, { onError: failure.fail, onSuccess: () => moveFocus(pressed) }); // LLR-FE-020
   }
 
-  function switchNetwork() {
-    if (switching) return; // LLR-FE-022
+  function switchNetwork(pressed: Element) {
+    if (switching || switchInFlight.current) return; // LLR-FE-022
+    switchInFlight.current = true;
     failure.clear();
     switchChain(
       { chainId: network.chainId, addEthereumChainParameter: addChainParameter(network) }, // LLR-FE-022
-      { onError: failure.fail, onSuccess: moveFocus },
+      {
+        onError: failure.fail,
+        onSuccess: () => moveFocus(pressed),
+        onSettled: () => {
+          switchInFlight.current = false;
+        },
+      },
     );
   }
 
@@ -83,7 +109,7 @@ export function WalletBar({ network }: { network: SelectedNetwork }) {
       </p>
       {connected ? (
         wrongChain && (
-          <button type="button" aria-disabled={switching} onClick={switchNetwork}>
+          <button type="button" aria-disabled={switching} onClick={(e) => switchNetwork(e.currentTarget)}>
             {`Switch to ${network.name}`}
           </button>
         )
@@ -93,7 +119,7 @@ export function WalletBar({ network }: { network: SelectedNetwork }) {
           <ul>
             {options.map(({ connector, label }) => (
               <li key={connector.uid}>
-                <button type="button" aria-disabled={busy} onClick={() => pick(connector)}>
+                <button type="button" aria-disabled={busy} onClick={(e) => pick(connector, e.currentTarget)}>
                   {`Connect ${label}`}
                 </button>
               </li>

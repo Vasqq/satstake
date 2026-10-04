@@ -1,9 +1,14 @@
+import { QueryClient } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { useMemo } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { HttpRequestError } from "viem";
+import { type PublicClient, HttpRequestError } from "viem";
+import { usePublicClient } from "wagmi";
+import { createReads } from "../chain/reads";
+import { MineView } from "./MineView";
 import { type FakeChain, type FakePledge, samplePledge } from "../test/fakeChain";
 import { FakeWallet } from "../test/fakeWallet";
-import { ACCOUNT, OTHER_ACCOUNT, findConnected, freshChain, mountApp, network, teardownWallets } from "../test/walletHarness";
+import { ACCOUNT, OTHER_ACCOUNT, findConnected, freshChain, mountApp, mountUi, network, teardownWallets } from "../test/walletHarness";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -290,6 +295,33 @@ describe("LLR-FE-050 the list", () => {
       fireEvent.click(button("Older"));
       await screen.findByText("Promise number 26");
       expect(focused).toEqual(["Showing 21 to 40 of 45"]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("does not move focus when the view opens with the count already cached and the pager drawn at once", async () => {
+    const focused: (string | null)[] = [];
+    const original = HTMLElement.prototype.focus;
+    const spy = vi.spyOn(HTMLElement.prototype, "focus").mockImplementation(function (this: HTMLElement, options) {
+      if (this.getAttribute("tabindex") === "-1" && /^Showing/.test(this.textContent ?? "")) focused.push(this.textContent);
+      original.call(this, options);
+    });
+    try {
+      const queryClient = new QueryClient();
+      queryClient.setQueryData(["mine", "count", ACCOUNT], 45n);
+      const chain = freshChain();
+      seed(chain, ACCOUNT, 45);
+      const wallet = new FakeWallet({ chainId: network.chainId, accounts: [ACCOUNT], authorized: true });
+      function Open() {
+        const client = usePublicClient({ chainId: network.chainId }) as PublicClient;
+        const reads = useMemo(() => createReads(client, network.contract), [client]);
+        return <MineView reads={reads} network={network} />;
+      }
+      mountUi(<Open />, { chain, queryClient, hash: "#/mine", wallets: [{ wallet, name: "Alpha Wallet", rdns: "test.alpha" }] });
+      await screen.findByText("Showing 1 to 20 of 45");
+      await screen.findByText("Promise number 46");
+      expect(focused).toEqual([]);
     } finally {
       spy.mockRestore();
     }

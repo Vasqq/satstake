@@ -61,7 +61,7 @@ export function mountUi(ui: ReactNode, options: MountOptions = {}): Mounted {
   return mount(
     ({ config }) => (
       <WagmiProvider config={config}>
-        <QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>
+        <QueryClientProvider client={options.queryClient ?? new QueryClient()}>{ui}</QueryClientProvider>
       </WagmiProvider>
     ),
     options,
@@ -73,6 +73,8 @@ export interface MountOptions {
   wallets?: Announced[];
   windowEthereum?: FakeWallet;
   chain?: FakeChain;
+  /** For `mountUi`: a client the test has already filled, as when a view opens with its answers cached. */
+  queryClient?: QueryClient;
 }
 
 function mount(tree: (parts: { config: Config }) => ReactNode, options: MountOptions): Mounted {

@@ -16,7 +16,8 @@ export interface ReceiptLike {
 }
 export interface FlowIO {
   contract: Address;
-  allowance(): Promise<bigint>;
+  /** At `atBlock` when given, so a read after a receipt cannot be answered by an endpoint still behind it. */
+  allowance(atBlock?: bigint): Promise<bigint>;
   approve(amount: bigint): Promise<Hex>;
   create(deadline: bigint): Promise<Hex>;
   receipt(hash: Hex): Promise<ReceiptLike>;
@@ -133,7 +134,12 @@ export async function runCreate(io: FlowIO, input: CreateInput, onProgress: (ste
     onProgress(progressOf("wallet", "waiting"));
     const approval = await io.approve(input.amount); // LLR-FE-033
     onProgress(progressOf("confirming", "waiting"));
-    if ((await io.receipt(approval)).status !== "success") throw new Error("The approval transaction was mined and reverted.");
+    const approved = await io.receipt(approval);
+    if (approved.status !== "success") throw new Error("The approval transaction was mined and reverted.");
+    // A wallet that cancels a pending approval is answered with the cancel's successful receipt, so a success
+    // receipt alone does not show the allowance rose. The read is pinned to the receipt's block: Arc's public
+    // endpoints can lag a block (01 V-11), and a lagging one would return the old allowance with no error.
+    if ((await io.allowance(approved.blockNumber)) < input.amount) throw new Error("The approval was mined but the allowance is still below the amount."); // LLR-FE-033
     onProgress(progressOf("done", "wallet"));
   } else {
     onProgress(progressOf(null, "wallet"));

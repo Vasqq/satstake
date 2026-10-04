@@ -70,6 +70,19 @@ a {
   outline-offset: 2px;
 }
 
+/* Off screen until focused, so it is the first stop for a keyboard and costs a mouse user nothing. */
+.skip-link {
+  position: absolute;
+  inset-inline-start: var(--gap);
+  top: -4rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg);
+}
+
+.skip-link:focus {
+  top: var(--gap);
+}
+
 /* A heading takes focus only so a route change is announced; it is not a control and needs no ring. */
 h1[tabindex="-1"]:focus {
   outline: none;

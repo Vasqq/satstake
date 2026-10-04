@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { type Abi, encodeErrorResult, getAddress, parseUnits } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { satStakeAbi } from "../abi";
+import { formatLocalTime } from "../format";
 import { REJECTED_MESSAGE, FAILED_MESSAGE } from "../wallet/failure";
 import {
   ACK_TEXT,
@@ -129,10 +130,10 @@ describe("LLR-FE-030 the create form lays out its fields and shows each failure 
     ["Amount", { amount: "1,5" }, "Use digits and at most one decimal point."],
     ["Amount", { amount: "1.1234567" }, "USDC has 6 decimal places. Remove the extra digits."],
     ["Amount", { amount: "100.000001" }, "Your balance is 100 USDC, which is less than this amount."],
-    ["Referee address", { referee: "0x12" }, "Enter a valid address for the referee and the beneficiary."],
+    ["Referee address", { referee: "0x12" }, "Enter the referee's address: 0x followed by 40 letters and digits."],
     ["Referee address", { referee: ACCOUNT }, "You cannot be your own referee or beneficiary."],
     ["Referee address", { referee: network.contract }, "The SatStake contract cannot be a party. Enter a person's address."],
-    ["Beneficiary address", { beneficiary: "" }, "Enter a valid address for the referee and the beneficiary."],
+    ["Beneficiary address", { beneficiary: "" }, "Enter the beneficiary's address: 0x followed by 40 letters and digits."],
     ["Beneficiary address", { beneficiary: ACCOUNT }, "You cannot be your own referee or beneficiary."],
     ["Beneficiary address", { beneficiary: REFEREE }, "The referee and the beneficiary must be different people."],
   ] as const)("shows the failure of %s beside it for %j", async (label, entry, message) => {
@@ -340,8 +341,8 @@ describe("LLR-FE-030 a failure shows once its field has been left, and then foll
   it.each([
     ["Promise", "", "Run 5 km", "Write the promise you are making."],
     ["Amount", "0", "1.5", "Enter an amount above zero."],
-    ["Referee address", "0x12", REFEREE, "Enter a valid address for the referee and the beneficiary."],
-    ["Beneficiary address", "0x12", BENEFICIARY, "Enter a valid address for the referee and the beneficiary."],
+    ["Referee address", "0x12", REFEREE, "Enter the referee's address: 0x followed by 40 letters and digits."],
+    ["Beneficiary address", "0x12", BENEFICIARY, "Enter the beneficiary's address: 0x followed by 40 letters and digits."],
   ])("%s: nothing while it is typed in, the failure when it is left, and then on every change", async (label, bad, good, message) => {
     await openCreate();
     await waitFor(() => expect(describedText(field("Amount"))).toContain("Your balance"));
@@ -398,8 +399,8 @@ describe("LLR-FE-030 activating the disabled submit shows every failure and move
     click(submit());
     expect(errorFor("Promise")).toBe("Write the promise you are making.");
     expect(errorFor("Amount")).toBe("Enter an amount above zero.");
-    expect(errorFor("Referee address")).toBe("Enter a valid address for the referee and the beneficiary.");
-    expect(errorFor("Beneficiary address")).toBe("Enter a valid address for the referee and the beneficiary.");
+    expect(errorFor("Referee address")).toBe("Enter the referee's address: 0x followed by 40 letters and digits.");
+    expect(errorFor("Beneficiary address")).toBe("Enter the beneficiary's address: 0x followed by 40 letters and digits.");
     expect(describedText(screen.getByRole("group", { name: "Deadline" }))).toContain("Choose a deadline.");
     expect(describedText(screen.getByRole("checkbox", { name: ACK_TEXT }))).toContain("Tick the box to confirm you understand.");
     expect(document.activeElement).toBe(field("Promise"));
@@ -644,6 +645,26 @@ describe("LLR-FE-031 a custom deadline is checked again when submit is activated
     fireEvent.change(screen.getByLabelText("Custom date and time"), { target: { value: localInput(T0 + 7_200n) } });
     await waitFor(() => expect(group()).not.toContain("at least 90 seconds"));
   });
+
+  it("removes the failure when a new attempt starts, though the deadline has not changed", async () => {
+    vi.useFakeTimers({ toFake: ["performance"] });
+    const { wallet } = await openCreate({ allowance: 5_000_000n });
+    chooseCustom(T0 + 120n);
+    await ready();
+    vi.advanceTimersByTime(40_000);
+    click(submit());
+    await waitFor(() => expect(group()).toContain("at least 90 seconds"));
+    // Returning to the tab reads the chain again. The node answers with a block earlier than the page's own
+    // estimate of chain time, so the deadline is in range once more while the earlier failure is still said.
+    act(() => void window.dispatchEvent(new Event("visibilitychange")));
+    await waitFor(() => expect(isDisabled(submit())).toBe(false));
+    expect(group()).toContain("at least 90 seconds");
+    const release = wallet.hold("eth_sendTransaction");
+    click(submit());
+    await waitFor(() => expect(prompts(wallet)).toBe(1));
+    expect(group()).not.toContain("at least 90 seconds");
+    release();
+  });
 });
 
 describe("LLR-FE-012 chain time counts from the arrival of the block, not from the request for it", () => {
@@ -710,6 +731,55 @@ describe("LLR-FE-031 the date field offers the range chain time allows, in the v
     const input = screen.getByLabelText("Custom date and time");
     expect(input.getAttribute("min")).toBeNull();
     expect(input.getAttribute("max")).toBeNull();
+  });
+});
+
+describe("LLR-FE-031 a preset deadline shows roughly when it ends, from chain time", () => {
+  const ends = (seconds: bigint) => `Ends about ${formatLocalTime(T0 + seconds)}.`;
+  const shownEnd = () => screen.queryByText(/^Ends about /)?.textContent;
+
+  it.each([
+    ["2 minutes", 120n],
+    ["1 day", 86_400n],
+    ["7 days", 604_800n],
+    ["30 days", 2_592_000n],
+  ])("says when the %s preset ends, in the visitor's own time", async (label, seconds) => {
+    await openCreate();
+    chooseDeadline(label);
+    await waitFor(() => expect(shownEnd()).toBe(ends(seconds)));
+  });
+
+  it("says nothing before a choice and nothing for a custom time", async () => {
+    await openCreate();
+    await waitFor(() => expect(screen.getByLabelText("Amount")).toBeTruthy());
+    expect(shownEnd()).toBeUndefined();
+    chooseDeadline("7 days");
+    await waitFor(() => expect(shownEnd()).toBeDefined());
+    chooseDeadline("Custom");
+    expect(shownEnd()).toBeUndefined();
+  });
+
+  it("says nothing while chain time has not been read, and never from the device's clock", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2031-01-01T00:00:00Z") });
+    await openCreate({ prepare: ({ chain }) => void (chain.blockError = new Error("down")) });
+    chooseDeadline("7 days");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(shownEnd()).toBeUndefined();
+  });
+
+  it("moves with chain time between reads", async () => {
+    vi.useFakeTimers({ toFake: ["performance"] });
+    await openCreate();
+    chooseDeadline("1 day");
+    await waitFor(() => expect(shownEnd()).toBe(ends(86_400n)));
+    vi.advanceTimersByTime(3_600_000);
+    await waitFor(() => expect(shownEnd()).toBe(ends(86_400n + 3_600n)), { timeout: 3_000 });
+  });
+
+  it("says no chain-time failure beside the deadline while no choice has been made", async () => {
+    await openCreate({ prepare: ({ chain }) => void (chain.blockError = new Error("down")) });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(describedText(screen.getByRole("group", { name: "Deadline" }))).not.toContain("Could not read");
   });
 });
 
@@ -1296,6 +1366,27 @@ describe("LLR-FE-035 the form warns, without blocking, when the referee or benef
   });
 });
 
+describe("LLR-FE-035 an account that delegates to code under EIP-7702 is a person's wallet, so it gets no warning", () => {
+  const DELEGATED = "0xef0100" + "ab".repeat(20);
+
+  it.each([
+    ["Referee address", REFEREE],
+    ["Beneficiary address", BENEFICIARY],
+  ])("does not warn beside %s for code that is a delegation designator", async (label, address) => {
+    const { chain } = await openCreate({ prepare: ({ chain }) => void chain.codeBytes.set(address.toLowerCase(), DELEGATED) });
+    type(label, address);
+    await waitFor(() => expect(chain.count("eth_getCode")).toBe(1));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(warningElement(label).textContent).toBe("");
+  });
+
+  it("still warns for code that only resembles the designator", async () => {
+    await openCreate({ prepare: ({ chain }) => void chain.codeBytes.set(REFEREE.toLowerCase(), "0xef0101" + "ab".repeat(20)) });
+    type("Referee address", REFEREE);
+    await waitFor(() => expect(warningElement("Referee address").textContent).toMatch(/is a contract/));
+  });
+});
+
 describe("LLR-FE-036 while a transaction from the form is pending, submit is disabled and a second press does nothing (UJ-16)", () => {
   it("ignores presses while the wallet's prompt is open, and creates exactly once", async () => {
     const { wallet, world } = await openCreate({ allowance: 5_000_000n });
@@ -1757,5 +1848,69 @@ describe("LLR-FE-072 the form is operable by keyboard and its changes are announ
     const positions = order.map((el) => all.indexOf(el));
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
     expect(all.indexOf(submit())).toBeGreaterThan(Math.max(...positions));
+  });
+});
+
+describe("LLR-FE-033 and 062 an approval that was mined but left the allowance short does not lead to a creation request", () => {
+  it("stops with the general message, never reads Done. for step 1, and asks the wallet once", async () => {
+    const { wallet, world } = await openCreate({ prepare: ({ world: w }) => void (w.approvalTakesNoEffect = true) });
+    fill();
+    await ready();
+    click(submit());
+    await within(notices()).findByText(FAILED_MESSAGE);
+    expect(world.count("approve")).toBe(1);
+    expect(world.count("createPledge")).toBe(0);
+    expect(prompts(wallet)).toBe(1);
+    expect(progress().textContent).not.toContain("Done.");
+    expect(progress().textContent).not.toContain("stays in place");
+    await waitFor(() => expect(isDisabled(submit())).toBe(false));
+  });
+});
+
+describe("LLR-FE-030 the balances shown are read again after each transaction the form sends", () => {
+  const hint = () => describedText(field("Amount"));
+
+  it("reads them again once the approval has confirmed, while the creation prompt is still open", async () => {
+    const { chain, wallet } = await openCreate({ prepare: ({ chain: c }) => void c.setBalance(usdc.address, ACCOUNT, 100_000_000n) });
+    const first = wallet.hold("eth_sendTransaction");
+    const second = wallet.hold("eth_sendTransaction");
+    first();
+    // The approval costs gas, which on Arc comes out of the USDC balance.
+    afterSend(wallet, 1, () => chain.setBalance(usdc.address, ACCOUNT, 90_000_000n));
+    fill();
+    await ready();
+    expect(hint()).toContain("Your balance: 100 USDC.");
+    click(submit());
+    await waitFor(() => expect(prompts(wallet)).toBe(2));
+    await waitFor(() => expect(hint()).toContain("Your balance: 90 USDC."));
+    second();
+  });
+
+  it("reads them again after a creation that was mined and reverted", async () => {
+    const { chain, wallet } = await openCreate({
+      allowance: 5_000_000n,
+      prepare: ({ world }) => void (world.outcomes = ["reverted"]),
+    });
+    afterSend(wallet, 1, () => chain.setBalance(usdc.address, ACCOUNT, 80_000_000n));
+    fill();
+    await ready();
+    click(submit());
+    await within(notices()).findByText(FAILED_MESSAGE);
+    await waitFor(() => expect(hint()).toContain("Your balance: 80 USDC."));
+  });
+
+  it("reads the USDC balance that pays the fee when a cirBTC stake fails, and says when it has run short", async () => {
+    const { chain, wallet } = await openCreate({
+      prepare: ({ chain: c, world }) => {
+        c.setAllowance(cirbtc.address, ACCOUNT, network.contract, 100_000_000n);
+        world.outcomes = ["reverted"];
+      },
+    });
+    afterSend(wallet, 1, () => chain.setBalance(usdc.address, ACCOUNT, 20_000n));
+    fill({ token: cirbtc.address, amount: "0.5" });
+    await ready();
+    click(submit());
+    await within(notices()).findByText(FAILED_MESSAGE);
+    await waitFor(() => expect(errorFor("Amount")).toContain("You need at least 0.05 USDC"));
   });
 });

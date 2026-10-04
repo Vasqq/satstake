@@ -86,6 +86,8 @@ export class FakeChain {
   allowances = new Map<string, bigint>();
   /** Lower-cased addresses that hold contract code. */
   code = new Set<string>();
+  /** Lower-cased address to the exact code it holds, for a test that needs code other than the stock bytes. */
+  codeBytes = new Map<string, string>();
   receipts = new Map<Hex, FakeReceipt>();
   transactions = new Map<Hex, FakeTransaction>();
   contract: Address;
@@ -187,7 +189,10 @@ export class FakeChain {
         return "0x10";
       case "eth_getCode":
         record.to = String(params?.[0] ?? "").toLowerCase();
-        return this.code.has(String((params?.[0] ?? "")).toLowerCase()) ? "0x6080604052" : "0x";
+        return (
+          this.codeBytes.get(String(params?.[0] ?? "").toLowerCase()) ??
+          (this.code.has(String(params?.[0] ?? "").toLowerCase()) ? "0x6080604052" : "0x")
+        );
       case "eth_getTransactionReceipt": {
         if (this.receiptGate) await this.receiptGate;
         if (this.receiptError) throw this.receiptError;
@@ -324,7 +329,11 @@ export class FakeChain {
   }
 
   private revert(errorName: string, args: unknown[] = []): RpcRequestError {
-    const data = encodeErrorResult({ abi: satStakeAbi, errorName, args });
+    // A token's own revert string is not in SatStake's ABI, so the standard Error(string) is encoded by hand.
+    const data =
+      errorName === "Error"
+        ? encodeErrorResult({ abi: [{ type: "error", name: "Error", inputs: [{ name: "message", type: "string" }] }], errorName, args: args as [string] })
+        : encodeErrorResult({ abi: satStakeAbi, errorName, args });
     return new RpcRequestError({
       body: {},
       error: { code: 3, message: "execution reverted", data },

@@ -244,3 +244,10 @@ describe("LLR-FE-072 the page has a viewport declaration", () => {
     expect(html).toContain('<meta name="viewport" content="width=device-width, initial-scale=1.0" />');
   });
 });
+
+describe("LLR-FE-072 the Skip to content link is visible when it has focus", () => {
+  it("sits off screen by default and is brought back by :focus", () => {
+    expect(css).toMatch(/\.skip-link\s*{[^}]*top:\s*-\d/);
+    expect(css).toMatch(/\.skip-link:focus\s*{[^}]*top:\s*var\(--gap\)/);
+  });
+});

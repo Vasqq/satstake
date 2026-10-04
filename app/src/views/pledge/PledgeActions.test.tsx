@@ -14,6 +14,7 @@ import {
   progress,
   revertedWith,
   statusLine,
+  usdc,
 } from "../../test/pledgeHarness";
 import { ACCOUNT, FOREIGN_CHAIN, findConnected, network, teardownWallets } from "../../test/walletHarness";
 
@@ -731,6 +732,39 @@ describe("LLR-FE-042 a verdict is refused at click time once chain time has reac
     expect(wallet.count("eth_sendTransaction")).toBe(0);
   });
 
+  it("moves focus to the status line when Kept is refused at click time, since the controls go with the next tick", async () => {
+    await openPledge({ who: "referee", secondsLeft: 60n });
+    await loaded();
+    const kept = await screen.findByRole("button", { name: "Kept" });
+    await waitFor(() => expect(isDisabled(kept)).toBe(false));
+    kept.focus();
+    afterDeadline(() => fireEvent.click(kept));
+    expect(document.activeElement).toBe(statusLine());
+  });
+
+  it("moves focus to the status line when Mark it broken is refused at click time", async () => {
+    await openPledge({ who: "referee", secondsLeft: 60n });
+    await loaded();
+    const broken = await screen.findByRole("button", { name: "Broken" });
+    await waitFor(() => expect(isDisabled(broken)).toBe(false));
+    fireEvent.click(broken);
+    afterDeadline(() => fireEvent.click(within(dialog()).getByRole("button", { name: "Mark it broken", hidden: true })));
+    await waitFor(() => expect(document.activeElement).toBe(statusLine()));
+  });
+
+  it("leaves focus alone when Kept is refused only because a request is pending", async () => {
+    const { wallet } = await openPledge({ who: "referee", secondsLeft: 600n });
+    await loaded();
+    const release = wallet.hold("eth_sendTransaction");
+    const kept = await screen.findByRole("button", { name: "Kept" });
+    await waitFor(() => expect(isDisabled(kept)).toBe(false));
+    fireEvent.click(kept);
+    await waitFor(() => expect(document.activeElement).toBe(progress()));
+    fireEvent.click(kept);
+    expect(document.activeElement).toBe(progress());
+    release();
+  });
+
   it("still sends when the deadline is not yet reached at click time", async () => {
     const { world } = await openPledge({ who: "referee", secondsLeft: 600n });
     await loaded();
@@ -781,6 +815,43 @@ describe("LLR-FE-046 a mined revert is replayed where it happened", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Kept" }));
     await within(notices()).findByText(FAILED_MESSAGE);
     expect(within(notices()).queryByText("A verdict has already been recorded for this pledge.")).toBeNull();
+  });
+});
+
+describe("LLR-FE-046 and 060 a settlement the token refuses is explained in the words of section 2.2 (UJ-46, UJ-47)", () => {
+  it("says the token refused the transfer, and that nothing changed, when SafeERC20FailedOperation is found before sending", async () => {
+    const { wallet, world } = await openPledge({ who: "staker", state: 2 });
+    await loaded();
+    wallet.failNext("eth_sendTransaction", revertedWith("SafeERC20FailedOperation", [usdc.address]));
+    fireEvent.click(await screen.findByRole("button", { name: "Withdraw my stake" }));
+    const message = await within(notices()).findByText("The token refused the transfer. Nothing changed. You can try again later.");
+    expect(message.className).toContain("notice-failure");
+    expect(sent(world)).toBe(0);
+    // The settlement can be tried again later, so the control comes back.
+    await waitFor(() => expect(isDisabled(button("Withdraw my stake"))).toBe(false));
+  });
+
+  it("says the token issuer blocked the transfer when the settlement was mined and reverted with a revert string", async () => {
+    const { world } = await openPledge({
+      who: "beneficiary",
+      state: 3,
+      prepare: ({ wallet, chain, world: w }) => {
+        w.outcomes = ["reverted"];
+        const mine = wallet.onSend as NonNullable<typeof wallet.onSend>;
+        wallet.onSend = (tx) => {
+          const hash = mine(tx);
+          chain.callRevert = { errorName: "Error", args: ["Blacklistable: account is blacklisted"] };
+          return hash;
+        };
+      },
+    });
+    await loaded();
+    fireEvent.click(await screen.findByRole("button", { name: "Claim stake" }));
+    const message = await within(notices()).findByText("The token issuer blocked this transfer. Nothing changed. You can try again later.");
+    expect(message.className).toContain("notice-failure");
+    expect(sent(world)).toBe(1);
+    expect(within(progress()).getByRole("link", { name: "View on explorer, the transaction" })).toBeTruthy();
+    expect(within(notices()).queryByText(FAILED_MESSAGE)).toBeNull();
   });
 });
 

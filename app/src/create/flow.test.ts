@@ -31,6 +31,10 @@ const preset: CreateInput = { amount: AMOUNT, deadline: { kind: "preset", second
 
 interface Script {
   allowance?: bigint;
+  /** What the allowance reads once the approval has been mined. Unset, the approval does what it says. */
+  allowanceAfterApproval?: bigint;
+  /** The error the allowance read raises on its second call, which is the one after the approval. */
+  secondAllowanceReadError?: Error;
   approveError?: Error;
   createError?: Error;
   chainTimes?: bigint[];
@@ -47,15 +51,20 @@ function world(script: Script = {}) {
   const log: string[] = [];
   const times = [...(script.chainTimes ?? [NOW])];
   const clock = [...(script.clock ?? [NOW])];
+  let allowance = script.allowance ?? 0n;
+  let allowanceReads = 0;
   const io: FlowIO = {
     contract: CONTRACT,
-    async allowance() {
-      log.push("allowance");
-      return script.allowance ?? 0n;
+    async allowance(atBlock) {
+      log.push(atBlock === undefined ? "allowance" : `allowance@${atBlock}`);
+      allowanceReads += 1;
+      if (allowanceReads === 2 && script.secondAllowanceReadError) throw script.secondAllowanceReadError;
+      return allowance;
     },
     async approve(amount) {
       log.push(`approve:${amount}`);
       if (script.approveError) throw script.approveError;
+      allowance = script.allowanceAfterApproval ?? amount;
       return APPROVE_HASH;
     },
     async create(deadline) {
@@ -83,6 +92,12 @@ function world(script: Script = {}) {
 }
 
 describe("LLR-FE-033 the allowance is read first, and approval is requested only when it is short, for exactly the amount", () => {
+  it("reads the allowance after the approval at the approval's own block, so a lagging endpoint cannot answer with the old one", async () => {
+    const { io, log } = world({ allowance: 0n, receipts: { [APPROVE_HASH]: { status: "success", logs: [], blockNumber: 77n } } });
+    await runCreate(io, preset, () => {});
+    expect(log.filter((l) => l.startsWith("allowance"))).toEqual(["allowance", "allowance@77"]);
+  });
+
   it("approves, waits for the approval receipt, and only then requests creation", async () => {
     const { io, log } = world({ allowance: 0n });
     await runCreate(io, preset, () => {});
@@ -90,6 +105,7 @@ describe("LLR-FE-033 the allowance is read first, and approval is requested only
       "allowance",
       `approve:${AMOUNT}`,
       "receipt:approve",
+      "allowance",
       "chainTime",
       `create:${NOW + 604_800n}`,
       "receipt:create",
@@ -169,6 +185,48 @@ describe("LLR-FE-033 the allowance is read first, and approval is requested only
     const retry = world({ allowance: AMOUNT });
     await runCreate(retry.io, preset, () => {});
     expect(retry.log.filter((l) => l.startsWith("approve"))).toEqual([]);
+  });
+});
+
+
+describe("LLR-FE-033 and 062 the allowance is read again after the approval receipt, and a short one stops the creation", () => {
+  const STILL_SHORT = /allowance/i;
+
+  it("reads it once more after the approval is mined, and requests no creation when it is still short", async () => {
+    // A wallet that cancels a pending approval is answered with the cancel's own successful receipt.
+    const { io, log } = world({ allowance: 0n, allowanceAfterApproval: 0n });
+    const steps: Step[][] = [];
+    await expect(runCreate(io, preset, (s) => steps.push(s))).rejects.toThrow(STILL_SHORT);
+    expect(log).toEqual(["allowance", `approve:${AMOUNT}`, "receipt:approve", "allowance"]);
+    expect(log.some((l) => l.startsWith("create") || l === "chainTime")).toBe(false);
+    // Step 1 never reads "Done." for an approval that did not take effect.
+    expect(steps.flat().some((step) => step.id === "approve" && step.stage === "done")).toBe(false);
+  });
+
+  it("stops when the allowance is one unit short and goes on when it is exactly the amount", async () => {
+    const short = world({ allowanceAfterApproval: AMOUNT - 1n });
+    await expect(runCreate(short.io, preset, () => {})).rejects.toThrow(STILL_SHORT);
+    const exact = world({ allowanceAfterApproval: AMOUNT });
+    await expect(runCreate(exact.io, preset, () => {})).resolves.toBe(42n);
+  });
+
+  it("does not read it again when no approval was needed", async () => {
+    const { io, log } = world({ allowance: AMOUNT });
+    await runCreate(io, preset, () => {});
+    expect(log.filter((l) => l === "allowance")).toHaveLength(1);
+  });
+
+  it("does not read it again after an approval that was mined and reverted", async () => {
+    const { io, log } = world({ receipts: { [APPROVE_HASH]: { status: "reverted", logs: [] } } });
+    await expect(runCreate(io, preset, () => {})).rejects.toThrow(/reverted/i);
+    expect(log.filter((l) => l === "allowance")).toHaveLength(1);
+  });
+
+  it("stops with the read's own error when the second read fails, and requests no creation", async () => {
+    const failure = new Error("rpc down");
+    const { io, log } = world({ secondAllowanceReadError: failure });
+    await expect(runCreate(io, preset, () => {})).rejects.toBe(failure);
+    expect(log.some((l) => l.startsWith("create"))).toBe(false);
   });
 });
 
@@ -365,13 +423,22 @@ describe("LLR-FE-031 a custom deadline is checked again when submit is activated
     const { error, log } = await refusal({ allowance: 0n, clock: [NOW, NOW + 60n] }, custom(NOW + 100n));
     expect(error).toBeInstanceOf(DeadlineCheckError);
     expect(error.check).toBe("tooSoon");
-    expect(log).toEqual(["clock", "allowance", `approve:${AMOUNT}`, "receipt:approve", "clock"]);
+    expect(log).toEqual(["clock", "allowance", `approve:${AMOUNT}`, "receipt:approve", "allowance", "clock"]);
   });
 
   it("checks twice with an approval and sends the creation when both pass", async () => {
     const { io, log } = world({ allowance: 0n, clock: [NOW, NOW + 5n] });
     await runCreate(io, custom(NOW + 600n), () => {});
-    expect(log).toEqual(["clock", "allowance", `approve:${AMOUNT}`, "receipt:approve", "clock", `create:${NOW + 600n}`, "receipt:create"]);
+    expect(log).toEqual([
+      "clock",
+      "allowance",
+      `approve:${AMOUNT}`,
+      "receipt:approve",
+      "allowance",
+      "clock",
+      `create:${NOW + 600n}`,
+      "receipt:create",
+    ]);
   });
 
   it("checks twice without an approval, the second immediately before the creation", async () => {

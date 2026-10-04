@@ -44,6 +44,22 @@ function tokenNotice(check: TokenCheck): string | null {
   return `${check.token.symbol} cannot be used for new pledges right now. ${cause}`;
 }
 
+// A hash link would change the route, which lives in the hash, so the link focuses the heading by script.
+function SkipLink() {
+  return (
+    <a
+      className="skip-link"
+      href="#/"
+      onClick={(e) => {
+        e.preventDefault();
+        document.querySelector<HTMLElement>("main h1")?.focus(); // LLR-FE-072
+      }}
+    >
+      Skip to content
+    </a>
+  );
+}
+
 function Header({ route }: { route: Route }) {
   return (
     <header className="site-header">
@@ -84,6 +100,7 @@ function Shell({ client, network }: { client: PublicClient; network: SelectedNet
 
   return (
     <NavigatedContext.Provider value={navigated}>
+      <SkipLink />
       <Header route={route} />
       <WalletBar network={network} />
       {error && (

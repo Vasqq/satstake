@@ -60,6 +60,11 @@ export class FakeWorld {
   outcomes: ("success" | "reverted")[] = [];
   /** Added to the block timestamp as each transaction is mined, as the time a real approval takes. */
   blockAdvance = 0n;
+  /**
+   * An approval whose receipt reads as success but which leaves the allowance as it was, as a wallet's cancel of a
+   * pending approval does: the cancelling transaction is the one mined, and it is a success.
+   */
+  approvalTakesNoEffect = false;
   /** A creation that succeeds but whose receipt carries no PledgeCreated log. */
   omitCreatedEvent = false;
   /**
@@ -105,7 +110,7 @@ export class FakeWorld {
       if (decoded.functionName !== "approve") throw walletError(4200, `FakeWorld does not send ${decoded.functionName}`);
       const args = decoded.args as readonly [Address, bigint];
       this.sent.push({ to: tx.to, functionName: "approve", args, hash, from: tx.from });
-      if (outcome === "success") this.chain.setAllowance(tx.to, tx.from, args[0], args[1]);
+      if (outcome === "success" && !this.approvalTakesNoEffect) this.chain.setAllowance(tx.to, tx.from, args[0], args[1]);
     }
 
     return this.record(hash, tx, outcome, logs);

@@ -306,13 +306,16 @@ describe("LLR-FE-030 which failures show at once, because typing cannot fix them
 });
 
 describe("LLR-FE-030 the referee and the beneficiary are addresses, not zero, not the contract, not the staker (LLR-SC-023)", () => {
-  const BAD = "Enter a valid address for the referee and the beneficiary.";
+  // The zero address is well formed, so it keeps the contract's own words (section 2.2, ZeroAddress).
+  const ZERO = "Enter a valid address for the referee and the beneficiary.";
+  const BAD_REFEREE = "Enter the referee's address: 0x followed by 40 letters and digits.";
+  const BAD_BENEFICIARY = "Enter the beneficiary's address: 0x followed by 40 letters and digits.";
 
   it.each(["", "0x123", "not an address", REFEREE.slice(0, -1), REFEREE + "0", REFEREE.slice(2), " " + REFEREE])(
     "refuses %j as an address, beside the field it was typed in",
     (text) => {
-      expect(check({ referee: text }).errors.referee).toBe(BAD);
-      expect(check({ beneficiary: text }).errors.beneficiary).toBe(BAD);
+      expect(check({ referee: text }).errors.referee).toBe(BAD_REFEREE);
+      expect(check({ beneficiary: text }).errors.beneficiary).toBe(BAD_BENEFICIARY);
       expect(check({ referee: text }).errors.beneficiary).toBeUndefined();
       expect(check({ beneficiary: text }).errors.referee).toBeUndefined();
     },
@@ -323,15 +326,15 @@ describe("LLR-FE-030 the referee and the beneficiary are addresses, not zero, no
     // Any single flip of a letter's case changes the checksum pattern, so the result cannot be a valid one.
     const flipped = mixed.replace(/[a-f]/i, (c) => (c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase()));
     expect(flipped).not.toBe(mixed);
-    expect(check({ referee: flipped }).errors.referee).toBe(BAD);
+    expect(check({ referee: flipped }).errors.referee).toBe(BAD_REFEREE);
     expect(check({ referee: mixed }).errors.referee).toBeUndefined();
     expect(check({ referee: mixed.toLowerCase() }).errors.referee).toBeUndefined();
   });
 
-  it("refuses the zero address for either party, with the same words", () => {
+  it("refuses the zero address for either party, with the contract's words", () => {
     const zero = "0x" + "0".repeat(40);
-    expect(check({ referee: zero }).errors.referee).toBe(BAD);
-    expect(check({ beneficiary: zero }).errors.beneficiary).toBe(BAD);
+    expect(check({ referee: zero }).errors.referee).toBe(ZERO);
+    expect(check({ beneficiary: zero }).errors.beneficiary).toBe(ZERO);
   });
 
   it("refuses the SatStake contract as either party, in any letter case", () => {
@@ -353,7 +356,7 @@ describe("LLR-FE-030 the referee and the beneficiary are addresses, not zero, no
   it("checks the zero address, then the contract, then the staker, as the contract does", () => {
     // The zero address is none of the others, so only the first check can be what caught it.
     expect(check({ referee: "0x" + "0".repeat(40), beneficiary: network.contract }).errors).toEqual({
-      referee: BAD,
+      referee: ZERO,
       beneficiary: "The SatStake contract cannot be a party. Enter a person's address.",
     });
   });
@@ -373,7 +376,7 @@ describe("LLR-FE-030 the referee and the beneficiary differ (LLR-SC-024)", () =>
       referee: "You cannot be your own referee or beneficiary.",
       beneficiary: "You cannot be your own referee or beneficiary.",
     });
-    expect(check({ referee: "", beneficiary: "" }).errors.beneficiary).toBe("Enter a valid address for the referee and the beneficiary.");
+    expect(check({ referee: "", beneficiary: "" }).errors.beneficiary).toBe("Enter the beneficiary's address: 0x followed by 40 letters and digits.");
   });
 });
 

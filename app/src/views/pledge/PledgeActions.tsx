@@ -176,7 +176,10 @@ export function PledgeActions(props: PledgeActionsProps) {
   // A verdict is also refused when chain time has reached the deadline since the page last rendered.
   const lateVerdict = () => deadlineReachedNow() === true; // LLR-FE-042
   function onKept() {
-    if (!refused && !lateVerdict()) void start("markKept");
+    if (refused) return;
+    // The controls go with the next tick, up to a second away, so the refusal is said by moving focus to the status.
+    if (lateVerdict()) statusRef.current?.focus(); // LLR-FE-042
+    else void start("markKept");
   }
   function onBroken() {
     if (!refused) setDialogOpen(true);
