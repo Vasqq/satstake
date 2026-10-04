@@ -80,6 +80,25 @@ jobs:
           cat coverage-summary.txt
           node tools/coverage-gate.mjs coverage-summary.txt
 
+  # LLR-VV-008: static analysis of the contract. Any medium or high finding fails the build; the low
+  # ones are justified in docs/evidence/slither.md.
+  slither:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: v1.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install Slither
+        run: pip install slither-analyzer==0.11.6
+      - name: Analyze
+        run: slither src/SatStake.sol --compile-force-framework foundry --filter-paths "lib/|test/|script/" --fail-medium
+
   # LLR-FE-080: lint (no any), type check, unit tests, and the testnet build. The app imports its ABI from
   # the Foundry artifact (LLR-FE-081), so the contract is built first.
   app:
@@ -111,15 +130,26 @@ jobs:
       - name: Build for testnet
         working-directory: app
         run: npm run build:testnet
-      # Interim, until the mainnet contract exists (06 section 7 asks for a build of both targets): the
-      # mainnet build must refuse (LLR-FE-002), and for that reason, not for any other. The mainnet
-      # deployment group replaces this step with a real mainnet build.
-      - name: Mainnet build refuses without a contract address
+      # LLR-FE-002, LLR-FE-073: 06 section 7 asks for a build of both targets. The mainnet page may connect
+      # only to the mainnet RPC URLs, read from the configuration the build itself uses.
+      - name: Build for mainnet
+        working-directory: app
+        run: npm run build:mainnet
+      - name: Mainnet policy names only the mainnet RPC URLs
         working-directory: app
         run: |
-          if npm run build:mainnet > mainnet-build.log 2>&1; then
-            echo "the mainnet build succeeded without a contract address"
-            exit 1
-          fi
-          cat mainnet-build.log
-          grep -q "mainnet has no SatStake contract address" mainnet-build.log
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            import { networks } from "./src/config/networks.ts";
+            const page = readFileSync("dist/index.html", "utf8");
+            const meta = /<meta http-equiv="Content-Security-Policy" content="([^"]*)"/.exec(page);
+            const connect = /connect-src ([^;]*)/.exec(meta?.[1] ?? "")?.[1]?.split(" ");
+            const want = [...networks.mainnet.rpcUrls];
+            if (JSON.stringify(connect) !== JSON.stringify(want)) {
+              console.error("connect-src is", connect, "but the mainnet RPC URLs are", want);
+              process.exit(1);
+            }
+            for (const url of networks.testnet.rpcUrls) {
+              if (page.includes(url)) { console.error("testnet URL in the mainnet page:", url); process.exit(1); }
+            }
+          '

@@ -22,6 +22,7 @@ Every skill, MCP server, and non-trivial package or tool used to build SatStake,
 | `vitest`, `jsdom`, `@testing-library/react` | 5.0.3, 30.1.1, 16.3.3 | https://github.com/vitest-dev/vitest, https://github.com/jsdom/jsdom, https://github.com/testing-library/react-testing-library | Frontend unit and component tests (LLR-VV-006). `npm audit` on `app/` reports 0 vulnerabilities |
 | `@types/react`, `@types/react-dom`, `@types/node` | 19.3.0, 19.3.0, 26.6.3 | https://github.com/DefinitelyTyped/DefinitelyTyped | Type declarations only |
 | `playwright` | 1.63.0, exact pin in `app/package-lock.json`; Chromium headless shell kept in `app/node_modules` via `PLAYWRIGHT_BROWSERS_PATH=0` | https://github.com/microsoft/playwright, npm, Microsoft maintainers | `app/scripts/screenshots.mjs` captures every view at 360 and 1440 px, light and dark, into the gitignored `cache/screenshots/`, so the frontend reviewer reads the rendered app. A review aid, not a test. `npm audit` reports 0 vulnerabilities |
+| Slither (`slither-analyzer`) | 0.11.6, exact pin | https://github.com/crytic/slither, PyPI, Trail of Bits | Static analysis of the contract (LLR-VV-008) in the CI `slither` job, and locally from a gitignored venv in `cache/`. It runs `forge clean` before compiling, so run `forge build` after a local run: the app imports its ABI from `out/` |
 
 ## Agent safeguards
 
