@@ -1,0 +1,73 @@
+name: Pages
+
+# Publishes the site. It builds testnet until the mainnet contract exists; the mainnet deployment group
+# switches the build target (UJ-84). The working branch deploys too, because work lands there first
+# and the testnet dry run of every journey needs the real site.
+on:
+  push:
+    branches: [main, worktree-fe-config-reading]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: v1.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Build the contract artifact
+        run: forge build
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci --ignore-scripts
+      - name: Build for testnet
+        working-directory: app
+        run: npm run build:testnet
+      # LLR-FE-070: the published home view must carry the one sentence of NS section 1, read from the
+      # North Star itself, so a placeholder or an edited sentence never reaches the public site.
+      - name: The site carries the North Star sentence
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const ns = fs.readFileSync("docs/02_NORTH_STAR.md", "utf8");
+            const line = ns.split("## 1. The one sentence")[1].split("\n").find((l) => l.trim() && !l.startsWith("#"));
+            const sentences = line.replace(/\s*\[[A-Z]\]\s*$/, "").match(/[^.]+\./g).map((s) => s.trim());
+            const js = fs.readdirSync("app/dist/assets").filter((f) => f.endsWith(".js"))
+              .map((f) => fs.readFileSync("app/dist/assets/" + f, "utf8")).join("\n");
+            const missing = sentences.filter((s) => !js.includes(s));
+            if (sentences.length !== 3 || missing.length) {
+              console.error("Home view lacks the NS section 1 sentence:", missing.length ? missing : sentences);
+              process.exit(1);
+            }
+            console.log("Found:", sentences.join(" "));
+          '
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: app/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
