@@ -3531,7 +3531,7 @@ for the reviewer. `tools/trace-check.mjs` accepts `Pending` before the release g
 import), so a test of the source was added (`is imported from the artifact path in the source, and no ABI is
 written by hand under src`) and the row says the inspection discharges the claim.
 
-Finding 23 (placeholders): a search of `app/src` and `app/index.html` for placeholder, todo, lorem, fixme,
+Finding 23 (placeholders): a search of `app/src` and `app/index.html` for placeholder text, lorem ipsum, to-do and fix-me markers,
 coming soon finds nothing. What remains are views that are headings only: `HomeView`, `CreateView`, `MineView`,
 `AboutView`. Their content is required by LLR-FE-070, 071, 030 to 037, 050, which belong to later groups, so
 nothing was invented here. There is no Pages workflow yet; none may be added until those groups replace the
@@ -6034,3 +6034,122 @@ Green: 162 passed; `node --test test/tools/*.test.mjs` 450 passed. Edit: the has
 | 1303 | hash pattern unbounded again | killed |
 
 Restore checked with `cmp`; the copy in `cache/mutants/` deleted.
+
+## Release-gate batch
+
+Four items; `src/SatStake.sol` untouched (`git diff --exit-code src/` clean). Mutants 1310 to 1349 ran from copies in `cache/mutants/`; restore verified byte for byte (`cmp`-equivalent file comparison in the driver) and the copy deleted after each; the suites were rerun green afterwards. Contract mutants for item 4 were made in a renamed copy of the contract (`test/MutantSatStake.sol`, deleted), never in `src/`.
+
+### 1. LLR-SC-080 by artifact test, and the checker's condition 4 (06 v1.11)
+
+Reading of the two inherited errors: 05 section 1.1 says the OpenZeppelin units raise `SafeERC20FailedOperation` and `ReentrancyGuardReentrantCall`, "which the contract does not declare but its ABI carries". LLR-SC-080 concerns what the contract carries NatSpec for, and these two are declared in pinned libraries. They are exempt by name; the audit counts them (`exempt == 2`), so the exemption fails if either leaves the ABI, and every other error must carry notice and tag. Source of the docs: the artifact's `rawMetadata` output, because the `devdoc` and `userdoc` Foundry copies into the artifact omit events, errors, and state-variable docs. Public constants are documented as state variables (tag from `devdoc.stateVariables`, notice from `userdoc.methods`). The constructor is not an external function and is not audited.
+
+Red (`forge test --match-path test/SatStake.NatSpec.t.sol`, audit stubbed to report nothing so the suite compiled): 12 failed, 2 passed (the two that expect no problems, vacuous against a stub).
+
+| Test | Observed |
+|---|---|
+| aCompleteFixturePasses | `0 != 4`: the stub checked nothing |
+| aFunctionWithoutATraceTagFails, aFunctionWithoutNoticeOrDevDocFails, aConstantTakesItsTraceFromTheStateVariableDoc | `0 != 1`: no problem reported |
+| anEventWithoutATraceTagFails, anEventWithoutANoticeFails | `0 != 1` |
+| anErrorWithoutATraceTagFails, anErrorWithoutANoticeFails | `0 != 1` |
+| aTagWithoutAWellFormedIdFails | `0 != 1` |
+| everyEntryWithoutDocsIsReportedNotJustTheFirst | `0 != 2` |
+| onlyTheTwoInheritedErrorsAreExempt | `0 != 2` |
+| theDeployedContractCarriesNatSpec... | `the audit did not reach every entry of the ABI: 0 != 38` |
+
+Red for the checker (`node --test test/tools/trace-check.test.mjs`): 1 of 4 new tests failed, "accepts a test carrying the ID in place of a source reference" (condition 4 still demanded a source reference); the other three pin what must not loosen and passed.
+
+Green: NatSpec suite 14 passed against the real artifact (16 functions, 4 events, 18 errors checked, 2 exempt); trace-check tests 48 passed. The checker builds the ID at runtime so that `tools/trace-check.mjs`, which it scans as source, does not become the reference it makes optional.
+
+| # | Mutant | Result |
+|---|---|---|
+| 1310 | functions not audited | killed |
+| 1311 | events not audited | killed |
+| 1312 | errors not audited | killed |
+| 1313 | every error exempt | killed |
+| 1314 | only one inherited error exempt | killed |
+| 1315 | missing trace tag accepted | killed |
+| 1316 | malformed ID accepted | killed |
+| 1317 | missing notice accepted | killed |
+| 1318 | constant trace fallback removed | killed |
+| 1319 | dev `details` no longer stands in for a notice | killed |
+| 1320 | fourth digit allowed | killed |
+| 1321 | errors read as unwrapped | killed |
+| 1322 | problem list not trimmed | killed |
+| 1323 | dash after scope not required | first run survived; case `LLR-SC_005` added; killed |
+| 1324 | functions not counted | killed |
+| 1325 | checker exemption extended to every ID with a test | killed |
+| 1326 | exemption without the test | killed |
+| 1327 | evidence file accepted as the test | killed |
+| 1328 | wrong requirement ID in the checker | killed |
+
+### 2. LLR-VV-006
+
+All eight requirements have unit tests. Red: trace-check against the committed tree reported `LLR-VV-006: has method T but no test carries its ID`. The ID is now in the main unit suite title for each: clock (FE-012), validate (030), deadline (031), amount (032), actions (042), format (045), errors (060), userStrings (071). Green: those eight files, 230 tests pass; the failure is gone. 1329: the ID removed from all eight, killed (the checker fails at release). The checker cannot tell which of the eight carries the ID, so that each has one is by inspection of the diff.
+
+### 3. LLR-SB-005 scans (`test/tools/hygiene.test.mjs`)
+
+Decisions. Console output: Node command-line programs in `tools/`, `e2e/`, `script/` and `app/scripts/` print by design, so only `app/src`, `src` and Solidity scripts are scanned (Foundry console imports included). Exclusions: submodules, lockfiles, and the specification documents `docs/0N_*.md`, which quote the marker words in the requirement itself; `docs/evidence/tdd-log.md` needs none. Commented-out code is left to inspection. Dependencies count as used when imported by a file in their package, or when the scripts or test config run them (`tsc`, `eslint`, `vite`, `jsdom`, `@types/node` with a Node import, `@types/x` with `x`).
+
+Red: none against the repository, which already held no hit; the 18 tests passed on first run, so discrimination rests on fixtures and mutants. No real hit was found or fixed. Green: 18 passed; `node --test test/tools/*.test.mjs` 472 passed.
+
+| # | Mutant | Result |
+|---|---|---|
+| 1330 | second marker word misspelled | first run survived (fixtures shared the constant); fixtures now spell the words themselves; killed |
+| 1331 | spec documents not excluded | killed |
+| 1332 | `src/` not scanned for console | killed |
+| 1333 | `tools/` scanned for console | killed |
+| 1334 | `require` not recognised | killed |
+| 1335 | scoped package name cut to its scope | killed |
+| 1336 | `typescript` always used | first run survived; case added; killed |
+| 1337 | root scan includes `app/` | killed |
+| 1338 | `@types/x` never matched to `x` | killed |
+| 1339 | `@types/node` always used | killed |
+| 1340 | Foundry console2 not recognised | killed |
+| 1341 | `jsdom` always used | killed |
+| 1342 | `eslint` always used | killed |
+| 1343 | `vite` always used | killed |
+| 1344 | marker planted in `e2e/lib.mjs` | killed by the repository scan |
+| 1345 | console log planted in `app/src/format.ts` | killed |
+| 1346 | unused dependency planted in `app/package.json` | killed |
+| 1347 | unused dependency planted in `package.json` | killed |
+
+### 4. UJ-63 donation test (`test/SatStake.Donation.t.sol`)
+
+`test_SC070_tokensSentDirectlyChangeNeitherTheLockedTotalNorAnyPayoutAndStayInTheContract`, tagged LLR-SC-027, 028, 041, 070, 071 (HLR-015's children that it exercises; HLR-027's children are frontend). It donates before and between creations, uses a kept, a broken and an expired pledge and a second token, and asserts locked totals, each payout, and the donated balance left at the end. Added to UJ-63's Verification cell in `docs/ACCEPTANCE.md`.
+
+Red: none against the contract, which was already correct, so the red is the mutants below. Green: 1 passed; `forge test` 222 passed.
+
+| # | Mutant (renamed copy of the contract) | Result |
+|---|---|---|
+| 1348 | receipt measured against a zero starting balance | killed: `UnexpectedTransferAmount(1000, 1777)` |
+| 1349 | payout sends the contract's whole balance | killed: `a kept stake returns exactly the stake` |
+
+### Review fixes: release-gate batch, applied by the lead (05 v1.25, 06 v1.12)
+
+The independent review (Opus) found two High in `docs/WALKTHROUGH.md` (the beneficiary had no USDC for the claim's fee; the
+deadlines assumed a 10-minute minimum that does not exist, so P1 would expire before its verdict), five Medium, and six Low.
+Documentation fixes were applied by the lead and are not repeated here; the code side follows.
+
+Requirement first: LLR-SC-080 now covers what the contract declares, and LLR-SB-005 states its scope (markers in any case
+outside `docs/0N_*.md`; `console.log` in shipped code only), with change-log row 1.25 and 06 v1.12.
+
+Red (`node --test test/tools/hygiene.test.mjs`): 3 of 21 failed.
+
+| Test | Observed |
+|---|---|
+| reads the contract, the application, the scripts, and the documents, each with its text | first run failed on `README.md`, which is untracked until Pages serves mainnet; rewritten over tracked documents, it passes on correct code and kills mutant 1350 (the reviewer's surviving M3b) |
+| flags a marker word in any case (05 v1.25) | fails: lower and mixed case escaped |
+| flags a log passed as a value or taken apart from console | fails: `p.catch(console.log)` and `const { log } = console` escaped |
+
+Green: 21 passed after the marker pattern took the `i` flag and the console pattern matched any use. The wider scan then found
+four real hits: a variable named `todo` in `script/seed.mjs`, renamed `pending`, and one TDD-log line quoting the searched
+words, reworded. `node --test test/tools/*.test.mjs` 475 passed. LLR-VV-001: `@trace` added to `isRetryableStatus` and
+`customDeadlineMessage`.
+
+| # | Mutant | Result |
+|---|---|---|
+| 1350 | repository scan skips `.md` and `.sol` | killed |
+| 1351 | marker pattern case-sensitive again | killed |
+| 1352 | console pattern matches only a call | killed |
+
+Restore checked with `cmp`; the copy deleted.

@@ -25,6 +25,12 @@ const ID_SHAPE_RE = /\b(?:LLR-[A-Z]+-\d+|HLR-\d+|UJ-\d+)\b/g;
 
 // Scopes whose LLRs must be implemented somewhere in code or build configuration (condition 4).
 const IMPLEMENTED_SCOPES = new Set(["SC", "FE", "DP"]);
+// The one requirement on the deployed source's own annotations. A tag for it in src/SatStake.sol would
+// change the verified source, so a test over the compiled artifact stands in for the source reference
+// (06 section 3, condition 4).
+// Assembled at runtime so that this file, which the checker scans as source, does not itself count as the
+// source reference it makes optional.
+const ANNOTATION_REQUIREMENT = ["LLR", "SC", "080"].join("-");
 const SCAN_DIRS = ["src", "test", "app/src", "script", "e2e", "tools", ".github/workflows"];
 // Git hooks have no file extension, so every file in these directories is scanned.
 const SCAN_ALL_FILES_DIRS = [".githooks"];
@@ -227,7 +233,8 @@ for (const [id, l] of llrs) {
   const referenced = source.has(id) || tests.has(id) || inspections.mentioned.has(id) || evidence.has(id);
   if (!referenced && !release) continue;
   if (l.methods.has("T") && !tests.has(id)) fail(id, "has method T but no test carries its ID");
-  if (IMPLEMENTED_SCOPES.has(l.scope) && !source.has(id)) fail(id, "has no source reference in code or build configuration");
+  const satisfiedByTest = id === ANNOTATION_REQUIREMENT && tests.has(id);
+  if (IMPLEMENTED_SCOPES.has(l.scope) && !source.has(id) && !satisfiedByTest) fail(id, "has no source reference in code or build configuration");
 }
 
 // Condition 5: inspection and demonstration records at the release gate.

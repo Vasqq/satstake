@@ -3,7 +3,7 @@ import { ChainClock } from "./clock";
 
 afterEach(() => vi.useRealTimers());
 
-describe("LLR-FE-012 chain time", () => {
+describe("LLR-FE-012 LLR-VV-006 chain time", () => {
   const fake = (start: number) => {
     let t = start;
     return { monotonic: () => t, advance: (ms: number) => void (t += ms) };

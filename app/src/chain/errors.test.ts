@@ -22,7 +22,7 @@ const abiErrorNames = abiErrors.map((e) => e.name);
 // produce it, and 2.2 gives it no row.
 const CONSTRUCTOR_ONLY = ["InvalidAllowlist"];
 
-describe("LLR-FE-060 every custom error in the contract ABI has the message of section 2.2", () => {
+describe("LLR-FE-060 LLR-VV-006 every custom error in the contract ABI has the message of section 2.2", () => {
   it("reads the table and the ABI, and not nothing", () => {
     expect(table.size).toBeGreaterThanOrEqual(20);
     expect(table.get("ZeroAmount")).toBe("Enter an amount above zero.");

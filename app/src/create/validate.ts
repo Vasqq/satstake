@@ -135,7 +135,10 @@ function partyError(text: string, who: "referee" | "beneficiary", context: FormC
   return undefined;
 }
 
-/** The words for a failed check of a custom deadline, which the check at submit shows beside the deadline too. */
+/**
+ * The words for a failed check of a custom deadline, which the check at submit shows beside the deadline too.
+ * @trace LLR-FE-031
+ */
 export function customDeadlineMessage(check: CustomCheck, clockFailed = false): string | undefined {
   switch (check) {
     case "invalid":

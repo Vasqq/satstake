@@ -1,6 +1,6 @@
 # 05 Low-Level Requirements
 
-Version 1.24, 2026-10-04. Status: baselined. Low-level requirements are precise enough to be implemented and tested without further design decisions. Conventions follow 04_HLR.md. The "Derived" column marks requirements that arise from design or platform constraints rather than directly from a user journey; each carries its reason.
+Version 1.25, 2026-10-04. Status: baselined. Low-level requirements are precise enough to be implemented and tested without further design decisions. Conventions follow 04_HLR.md. The "Derived" column marks requirements that arise from design or platform constraints rather than directly from a user journey; each carries its reason.
 
 Scopes: **SC** smart contract, **FE** frontend application, **DP** deployment, **SB** submission, **VV** verification process.
 
@@ -192,7 +192,7 @@ stateDiagram-v2
 
 | ID | Requirement | Parents | Method | Derived |
 |---|---|---|---|---|
-| LLR-SC-080 | Every external function, event, and error shall carry NatSpec describing its behaviour and a `@custom:trace` tag listing the LLRs it implements. | HLR-018 | I | Yes: traceability |
+| LLR-SC-080 | Every external function, event, and error that the contract declares shall carry NatSpec describing its behaviour and a `@custom:trace` tag listing the LLRs it implements. | HLR-018 | I | Yes: traceability |
 
 ---
 
@@ -342,7 +342,7 @@ stateDiagram-v2
 | LLR-SB-002 | The DoraHacks "what it does / what it uses Arc for" text shall be at most 150 words and shall contain no claim absent from the North Star. | HLR-034 | I | No |
 | LLR-SB-003 | The demo video shall be at most 90 seconds and follow UJ-10, UJ-42, and UJ-40 in that order, showing the expired stake reaching the beneficiary. | HLR-034 | I | No |
 | LLR-SB-004 | The repository shall be public under the MIT license. | HLR-034 | I | No |
-| LLR-SB-005 | At submission, CI shall be green and the repository shall contain no TODO or FIXME markers, no commented-out code, no `console.log`, and no unused dependencies. | HLR-034 | I, T | No |
+| LLR-SB-005 | At submission, CI shall be green and the repository shall contain no TODO or FIXME markers in any case outside the specification documents `docs/0N_*.md`, which name them; no commented-out code; no `console.log` in shipped code, meaning the contract, the Solidity scripts, and `app/src`; and no unused dependencies. | HLR-034 | I, T | No |
 
 ---
 
@@ -391,3 +391,4 @@ stateDiagram-v2
 | 1.22 | 2026-10-03 | LLR-FE-074 names `wallet_requestPermissions`. The live UI dry run on testnet saw wagmi's injected connector send it on connect, beside `eth_requestAccounts`. It asks the wallet for account access, which the requirement already allows, and it is not a signature; the list now names it so the inspection can be checked against what the wallet actually receives. |
 | 1.23 | 2026-10-03 | LLR-DP-009, from the independent review of the mainnet group. A create interrupted after its first pledge (a failed send on the single mainnet RPC) could never be finished, since the phase refused any contract that was not empty. An approval could be sent to a wrong record address, since an `approve` simulates fine against any spender. And the send path had run only against a test double, the lesson of `verify-sourcify.mjs` (2026-09-30); the testnet rehearsal is what found it sound. |
 | 1.24 | 2026-10-04 | LLR-DP-009, from the confirmation review of the mainnet group. Only `create` could resume: a verdicts run stopped after `markKept 1` by a failed send on the single mainnet RPC refused on rerun because pledge 1 was no longer Active, and settle then refused for good; the same for settle after `settle 1`. The only recovery was a hand-typed `cast send` outside the simulate-then-send path of LLR-DP-012. Each phase now skips a pledge it already finished. A send that fails after broadcast now reports its hash, since a rerun before it is mined could create a second pledge. |
+| 1.25 | 2026-10-04 | Two changes from the independent review of the release-gate batch. LLR-SC-080 now covers what the contract declares. `SafeERC20FailedOperation` and `ReentrancyGuardReentrantCall` are in the ABI because of LLR-SC-003, but they are declared in the pinned OpenZeppelin libraries, where no annotation can be added; section 1.1 already says the contract does not declare them, and LLR-SC-004 was reworded for the same reason in v1.9. LLR-SB-005 states the scope its test applies: the specification documents must name the markers to require their absence, and the command-line tools and the invariant harness print to the terminal by design, so `console.log` is ruled out of shipped code only. Markers are matched in any case, which the review found the test did not do. |

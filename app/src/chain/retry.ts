@@ -9,6 +9,7 @@ const DATA_NOT_AVAILABLE = -32014;
 
 // A load balancer in front of a single endpoint answers 429 or 5xx while a backend is restarting. Mainnet
 // has one configured URL, so without retrying these the fallback transport has nowhere else to go (UJ-90).
+/** @trace LLR-FE-004 */
 export const isRetryableStatus = (status: number) => status === 429 || (status >= 500 && status <= 599);
 
 /**

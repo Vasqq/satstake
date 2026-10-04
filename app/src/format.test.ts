@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { formatAmount, formatLocalTime, formatSats, shorten } from "./format";
 import { network } from "./test/walletHarness";
 
-describe("LLR-FE-045 amounts of cirBTC are shown in satoshis as a grouped integer", () => {
+describe("LLR-FE-045 LLR-VV-006 amounts of cirBTC are shown in satoshis as a grouped integer", () => {
   it.each([
     [0n, "0 sats"],
     [1n, "1 sat"],

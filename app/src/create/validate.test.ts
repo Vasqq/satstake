@@ -42,7 +42,7 @@ const context: FormContext = {
 const check = (over: Partial<FormValues> = {}, ctx: Partial<FormContext> = {}) => checkForm({ ...valid, ...over }, { ...context, ...ctx });
 const summary = ({ errors, valid }: FormCheck) => ({ errors, valid });
 
-describe("LLR-FE-030 the create form passes a complete, correct entry", () => {
+describe("LLR-FE-030 LLR-VV-006 the create form passes a complete, correct entry", () => {
   it("has no error and is valid", () => {
     expect(summary(check())).toEqual({ errors: {}, valid: true });
   });

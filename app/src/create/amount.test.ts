@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseAmount } from "./amount";
 
-describe("LLR-FE-032 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals", () => {
+describe("LLR-FE-032 LLR-VV-006 amount entry accepts digits with at most one decimal point and no more fractional digits than the token's decimals", () => {
   it.each([
     ["1", 6, 1_000_000n],
     ["0", 6, 0n],

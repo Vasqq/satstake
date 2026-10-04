@@ -24,11 +24,11 @@ No high or medium finding. Four low findings, all from one detector, all justifi
 
 The detector flags any comparison with `block.timestamp`, because a block producer has some freedom over it. A deadline
 is the product: the referee may rule only before it (LLR-SC-032), a pledge with no verdict becomes settleable to the
-beneficiary at it (LLR-SC-042), and its bounds are 10 minutes to 365 days from creation (LLR-SC-025). Decision D-04 in
+beneficiary at it (LLR-SC-042), and its bounds are 60 seconds to 365 days from creation (LLR-SC-005, LLR-SC-025). Decision D-04 in
 the North Star chose `block.timestamp` with a strict `<` / `>=` partition, so every instant falls on exactly one side.
 
 What a producer could gain is bounded by how far Arc lets a block's timestamp drift. Arc makes about two blocks a second
 with deterministic finality (01 V-10, V-11), and repeated or slightly shifted timestamps matter only for which side of a
-deadline a transaction sent within about a second of it lands on. The shortest pledge lasts 10 minutes, and the
+deadline a transaction sent within about a second of it lands on. The shortest pledge lasts 60 seconds and the shortest preset in the application 2 minutes, both far longer than that drift, and the
 application shows a warning in the last 10 minutes and removes the verdict controls once chain time reaches the deadline
 (LLR-FE-012, LLR-FE-042, LLR-FE-043), so a referee acting through it is not led to that edge. No comparison here uses a timestamp as randomness or as a price.

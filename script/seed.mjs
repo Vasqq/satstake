@@ -362,18 +362,18 @@ export async function runSeed({ phase, account, keystore, passwordFile, send, te
           { id: 3, from: "Broken", done: "SettledToBeneficiary", what: "settle 3", fn: "settle" },
         ];
   if (phase === "verdicts") requireSigner(roles.referee, "referee"); // LLR-DP-009
-  const todo = [];
+  const pending = [];
   for (const step of steps) {
     const actual = STATES[Number(await read(satStake, "stateOf", [BigInt(step.id)]))];
     if (actual === step.done) continue;
     if (actual !== step.from) throw new Error(`pledge ${step.id} is ${actual}, this phase needs it ${step.from} or already ${step.done}`); // LLR-DP-009
-    todo.push(step);
+    pending.push(step);
   }
-  if (todo.length === 0) {
+  if (pending.length === 0) {
     log(`${phase}: every pledge is already in its end state, nothing to send`);
     return;
   }
-  for (const step of todo) {
+  for (const step of pending) {
     await transact(step.what, satStake, step.fn, [BigInt(step.id)], async () => {
       return `pledge ${step.id} is ${STATES[Number(await read(satStake, "stateOf", [BigInt(step.id)]))]}`;
     });

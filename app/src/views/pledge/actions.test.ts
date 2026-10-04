@@ -8,7 +8,7 @@ const plan = (state: PledgeState, role: Role | "other" | null, over: { wallet?: 
   planActions({ state, role: role === "other" ? null : role, wallet: over.wallet ?? "connected", deadlineReached: "deadlineReached" in over ? (over.deadlineReached as boolean | null) : false });
 const settle = (label: string, goesTo: "staker" | "beneficiary"): ActionPlan => ({ kind: "settle", label, goesTo });
 
-describe("LLR-FE-042 the action matrix of 05 section 2.1", () => {
+describe("LLR-FE-042 LLR-VV-006 the action matrix of 05 section 2.1", () => {
   it("offers a referee of an Active pledge Kept and Broken before the deadline", () => {
     expect(plan("Active", "referee")).toEqual({ kind: "verdict" });
   });

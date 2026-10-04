@@ -116,7 +116,7 @@ describe("LLR-FE-071 the scan also reads the page shell and the network names", 
   });
 });
 
-describe("LLR-FE-071 no user-facing string holds U+2014 or a banned word", () => {
+describe("LLR-FE-071 LLR-VV-006 no user-facing string holds U+2014 or a banned word", () => {
   it("holds for every string in app/src", () => {
     const offences = applicationSources(SRC).flatMap((path) =>
       userStrings(readFileSync(path, "utf8"), path).flatMap((text) =>

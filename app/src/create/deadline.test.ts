@@ -11,7 +11,7 @@ import {
 
 const NOW = 1_789_500_000n;
 
-describe("LLR-FE-031 the deadline input offers four presets and a custom date and time", () => {
+describe("LLR-FE-031 LLR-VV-006 the deadline input offers four presets and a custom date and time", () => {
   it("offers 2 minutes, 1 day, 7 days, and 30 days, in that order, and nothing else", () => {
     expect(PRESETS.map((p) => [p.label, p.seconds])).toEqual([
       ["2 minutes", 120n],

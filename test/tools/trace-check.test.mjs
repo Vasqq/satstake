@@ -285,6 +285,45 @@ describe("LLR-VV-002 trace checker", () => {
     });
   });
 
+  describe("condition 4: the annotations requirement (06 v1.11)", () => {
+    const SC80 = L("SC", 80); // method I, about the contract's own annotations
+
+    // SC80 is in the tables and inspected, with no source reference anywhere.
+    const withSc80 = (extra = {}) => {
+      const files = baseline();
+      files["docs/04_HLR.md"] = files["docs/04_HLR.md"].replace(`${SC1}, 002`, `${SC1}, ${SC80}, 002`);
+      files["docs/05_LLR.md"] = files["docs/05_LLR.md"].replace(
+        `| ${FE1} |`,
+        `| ${SC80} | Every function shall carry NatSpec. | ${H(1)} | I | No |\n| ${FE1} |`,
+      );
+      files["docs/INSPECTIONS.md"] = files["docs/INSPECTIONS.md"].replace(
+        INSPECTION_SC2,
+        `${INSPECTION_SC2}\n| ${SC80} | 2026-10-04 | out/SatStake.json | Pass | none |`,
+      );
+      return { ...files, ...extra };
+    };
+
+    it("accepts a test carrying the ID in place of a source reference", () => {
+      const files = withSc80({ "test/N.t.sol": `/// @custom:verifies ${SC80}\nfunction test_n() {}\n` });
+      expectPass(run(files, ["--release"]));
+    });
+
+    it("still fails when no test carries the ID", () => {
+      expectFailure(run(withSc80()), SC80, "has no source reference");
+    });
+
+    it("does not accept an inspection row or evidence file as the test", () => {
+      const files = withSc80({ "docs/evidence/notes.md": `${SC80} mentioned here\n` });
+      expectFailure(run(files), SC80, "has no source reference");
+    });
+
+    it("does not extend the exemption to any other SC requirement", () => {
+      const files = withSc80({ "test/N.t.sol": `/// @custom:verifies ${SC80} ${SC2}\nfunction test_n() {}\n` });
+      files["src/A.sol"] = files["src/A.sol"].replace(`/// @custom:trace ${SC2}\n`, "");
+      expectFailure(run(files), SC2, "has no source reference");
+    });
+  });
+
   describe("condition 5: inspection and evidence at release", () => {
     it("fails when an I LLR has no inspection entry", () => {
       const files = edit("docs/INSPECTIONS.md", INSPECTION_SC2 + "\n", "");
