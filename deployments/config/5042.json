@@ -1,0 +1,19 @@
+{
+  "chainId": 5042,
+  "tokens": [
+    {
+      "symbol": "USDC",
+      "address": "0x3600000000000000000000000000000000000000",
+      "decimals": 6,
+      "source": "https://docs.arc.io/arc/references/contract-addresses",
+      "confirmed": "2026-09-24"
+    },
+    {
+      "symbol": "cirBTC",
+      "address": "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0",
+      "decimals": 8,
+      "source": "https://developers.circle.com/assets/cirbtc-contract-addresses.md and https://docs.arc.io/arc/references/contract-addresses",
+      "confirmed": "2026-09-24"
+    }
+  ]
+}

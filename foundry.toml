@@ -50,8 +50,9 @@ fail_on_revert = false
 [fmt]
 line_length = 120
 
-# The testnet endpoint, named so a deploy or check command does not repeat the URL. It carries no
-# credential. There is deliberately no mainnet alias: the mainnet group adds one when it needs it,
-# and until then nothing here shortens the path to a mainnet broadcast.
+# Named endpoints, so a deploy, check or seed command does not repeat the URL. They carry no
+# credential. The mainnet alias exists for the mainnet group; every mainnet script is simulated
+# without --broadcast before it is broadcast.
 [rpc_endpoints]
 arc_testnet = "https://rpc.testnet.arc.io"
+arc_mainnet = "https://rpc.mainnet.arc.io"
