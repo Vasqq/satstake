@@ -17,10 +17,13 @@
  * - The creation must have succeeded, since a failed one still leaves a receipt with a block number.
  *
  * Usage: node tools/record-deployment.mjs <chainId>
+ *        node tools/record-deployment.mjs <chainId> --explorer <verified-by-sourcify|verified-in-ui> --checked <YYYY-MM-DD>
+ *
+ * The second form only sets `verification.explorer` in the existing record (LLR-DP-007).
  *
  * @trace LLR-DP-005
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,6 +37,10 @@ const BYTECODE_PATHS = ["src", "lib", "foundry.toml"];
 const PERFECT_MATCH = "exact_match";
 const MATCH_FIELDS = ["match", "creationMatch", "runtimeMatch"];
 const SUCCESS = 1;
+// What a person saw on the explorer page. The normal run writes "unchecked" for a deployment nobody
+// has looked at; the first two records, made before the field existed, had it added by hand in this form.
+const EXPLORER_STATUSES = ["verified-by-sourcify", "verified-in-ui"];
+const DATE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
 const HEX = /^0x[0-9a-fA-F]+$/;
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -93,8 +100,10 @@ export function compilerOf(artifact) {
   return { version: metadata.compiler.version, settings: metadata.settings };
 }
 
+const sameAddress = (a, b) => typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase();
+
 /** The record of one deployment, or a throw naming what does not add up. */
-export function buildRecord({ chainId, contractName, broadcast, artifact, gitCommit, dirtyPaths, sourcify }) {
+export function buildRecord({ chainId, contractName, broadcast, artifact, gitCommit, dirtyPaths, sourcify, existing }) {
   if (dirtyPaths.length > 0) {
     // Which hunk of a dirty path reaches the bytecode is not something this tool can tell, so any
     // change in them blocks a record rather than being judged.
@@ -144,6 +153,11 @@ export function buildRecord({ chainId, contractName, broadcast, artifact, gitCom
         runtimeMatch: sourcify?.runtimeMatch ?? null,
         perfectMatch: MATCH_FIELDS.every((field) => sourcify?.[field] === PERFECT_MATCH), // @trace LLR-DP-006
       },
+      // A rerun of the record must not drop what a person recorded at a walkthrough (LLR-DP-007), but
+      // only for the contract that person looked at: a redeployment starts unchecked.
+      explorer: (sameAddress(existing?.address, deployment.address) && existing?.verification?.explorer) || {
+        status: "unchecked",
+      },
     },
   };
 }
@@ -155,6 +169,76 @@ export async function sourcifyStatus(chainId, address, fetched = fetch) {
   if (!response.ok) throw new Error(`Sourcify answered ${response.status} for ${address} on chain ${chainId}`);
   const { match, creationMatch, runtimeMatch } = await response.json();
   return match ? { match, creationMatch, runtimeMatch } : null;
+}
+
+/**
+ * The explorer mode's request from the command line, or null when `--explorer` is absent and the
+ * normal record run applies. Anything unrecognised throws, since a typo must not fall through to a
+ * run that rewrites the whole record.
+ *
+ * @trace LLR-DP-007
+ */
+export function explorerArgsFrom(args) {
+  const [chain, ...flags] = args;
+  if (!flags.includes("--explorer")) {
+    if (flags.includes("--checked")) throw new Error("--checked is only meaningful together with --explorer");
+    return null;
+  }
+  const chainId = Number(chain);
+  if (!/^[0-9]+$/.test(chain ?? "") || !Number.isSafeInteger(chainId) || chainId <= 0) {
+    throw new Error(`chain id ${JSON.stringify(chain)} is not a positive whole number`);
+  }
+  const values = {};
+  for (let i = 0; i < flags.length; i += 2) {
+    if (flags[i] !== "--explorer" && flags[i] !== "--checked") {
+      throw new Error(`unknown argument ${flags[i]}`);
+    }
+    values[flags[i]] = flags[i + 1];
+  }
+  if (!flags.includes("--checked")) {
+    throw new Error("--explorer needs --checked <YYYY-MM-DD>, the day a person looked");
+  }
+  return { chainId, ...validExplorer({ status: values["--explorer"], checked: values["--checked"] }) };
+}
+
+function validExplorer({ status, checked }) {
+  if (!EXPLORER_STATUSES.includes(status)) {
+    throw new Error(`explorer status ${JSON.stringify(status)} is not one of ${EXPLORER_STATUSES.join(", ")}`);
+  }
+  const day = DATE.test(checked ?? "") ? new Date(`${checked}T00:00:00Z`) : null;
+  if (!day || Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== checked) {
+    throw new Error(`date ${JSON.stringify(checked)} is not a real day written YYYY-MM-DD`);
+  }
+  return { status, checked };
+}
+
+/**
+ * The stored record's text with only `verification.explorer` set. It reads nothing but the record,
+ * because the explorer is checked by a person long after the deployment commit, when the broadcast
+ * guards of the normal run no longer apply.
+ *
+ * @trace LLR-DP-007
+ */
+export function recordExplorer(text, { chainId, status, checked }) {
+  const explorer = validExplorer({ status, checked });
+  const record = JSON.parse(text);
+  if (record.chainId !== chainId) {
+    throw new Error(`the record is for chain ${record.chainId}, not chain ${chainId}`); // LLR-DP-007
+  }
+  if (typeof record.verification !== "object" || record.verification === null) {
+    throw new Error("the record has no verification object");
+  }
+  record.verification.explorer = explorer; // LLR-DP-007
+  return `${JSON.stringify(record, null, 2)}\n`;
+}
+
+function recordExplorerMain(request) {
+  const path = join(root, `deployments/${request.chainId}.json`);
+  if (!existsSync(path)) throw new Error(`deployments/${request.chainId}.json does not exist`);
+  writeFileSync(path, recordExplorer(readFileSync(path, "utf8"), request));
+  console.log(
+    `record-deployment: deployments/${request.chainId}.json explorer ${request.status}, checked ${request.checked}.`,
+  );
 }
 
 async function main(chainIdArg) {
@@ -171,6 +255,7 @@ async function main(chainIdArg) {
   const gitCommit = git("rev-parse", "HEAD");
   const dirtyPaths = dirtyPathsFrom(git("status", "--porcelain", "--", ...BYTECODE_PATHS));
   const sourcify = await sourcifyStatus(chainId, deploymentOf(broadcast, CONTRACT).address);
+  const existing = existsSync(join(root, `deployments/${chainId}.json`)) ? json(`deployments/${chainId}.json`) : undefined;
 
   const record = buildRecord({
     chainId,
@@ -180,6 +265,7 @@ async function main(chainIdArg) {
     gitCommit,
     dirtyPaths,
     sourcify,
+    existing,
   });
   writeFileSync(join(root, `deployments/${chainId}.json`), `${JSON.stringify(record, null, 2)}\n`);
   const { match, perfectMatch } = record.verification.sourcify;
@@ -190,5 +276,7 @@ async function main(chainIdArg) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  await main(process.argv[2]);
+  const explorer = explorerArgsFrom(process.argv.slice(2));
+  if (explorer) recordExplorerMain(explorer);
+  else await main(process.argv[2]);
 }

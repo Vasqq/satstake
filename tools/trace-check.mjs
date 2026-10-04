@@ -40,6 +40,9 @@ const SCAN_EXT = /\.(sol|ts|tsx|js|jsx|mjs|cjs|toml|ya?ml)$/;
 // lib such as app/src/lib is project code and must be scanned.
 const SKIP_ANYWHERE = new Set(["node_modules", "out", "cache", "dist", "broadcast", "coverage", ".git"]);
 
+// What a person may record about the explorer page (LLR-DP-007); "unchecked" is the state before they look.
+const EXPLORER_VERIFIED = new Set(["verified-by-sourcify", "verified-in-ui"]);
+
 const failures = [];
 const fail = (id, reason) => failures.push(`${id}: ${reason}`);
 
@@ -252,6 +255,28 @@ for (const j of journeys) {
   const result = row.result.toLowerCase();
   const ok = result === "pass" || (result === "awaiting walkthrough" && hasWalkthrough(row));
   if (release && !ok) fail(j, `has result "${row.result}" instead of Pass`);
+}
+
+// Condition 8: the mainnet record shows both verifications at release (LLR-DP-007). It reads the record
+// rather than the evidence, because evidence that mentions the requirement does not say it was met.
+if (release) {
+  const recordPath = "deployments/5042.json";
+  let record;
+  if (!existsSync(join(root, recordPath))) fail(recordPath, "does not exist");
+  else {
+    try {
+      record = JSON.parse(read(recordPath));
+    } catch {
+      fail(recordPath, "is not valid JSON");
+    }
+  }
+  if (record !== undefined) {
+    const verification = record?.verification;
+    if (verification?.sourcify?.perfectMatch !== true) fail(recordPath, "does not record verification.sourcify.perfectMatch as true");
+    if (!EXPLORER_VERIFIED.has(verification?.explorer?.status)) {
+      fail(recordPath, "does not record verification.explorer.status as verified-by-sourcify or verified-in-ui");
+    }
+  }
 }
 
 if (failures.length > 0) {

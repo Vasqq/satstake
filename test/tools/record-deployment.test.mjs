@@ -3,7 +3,14 @@
 // git, so these tests drive that assembly with fixtures of each and never touch the network.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { asNumber, buildRecord, dirtyPathsFrom, sourcifyStatus } from "../../tools/record-deployment.mjs";
+import {
+  asNumber,
+  buildRecord,
+  dirtyPathsFrom,
+  explorerArgsFrom,
+  recordExplorer,
+  sourcifyStatus,
+} from "../../tools/record-deployment.mjs";
 
 const ADDRESS = "0x9aD0d2A1F0e94D2E8Ff7AD6B0f0aE3cFd4a2B1c6";
 const TX = "0x4d1c1b9e4a1c4f6b8c2d0e5a7f3b9d1c6e8a0f2b4d6c8e0a2f4b6d8c0e2a4f6b";
@@ -256,5 +263,167 @@ describe("LLR-DP-006 Sourcify status", () => {
       throw new Error("getaddrinfo ENOTFOUND");
     };
     await assert.rejects(() => sourcifyStatus(5042002, ADDRESS, fetched), /ENOTFOUND/);
+  });
+});
+
+describe("LLR-DP-007 explorer status in the record", () => {
+  it("writes an unchecked explorer status when the record has none", () => {
+    // The record never claims the explorer shows the contract as verified before a person looked.
+    assert.deepEqual(buildRecord(inputs()).verification.explorer, { status: "unchecked" });
+  });
+
+  it("keeps an explorer status the existing record already carries", () => {
+    const explorer = { status: "verified-in-ui", checked: "2026-10-05" };
+    const existing = { address: ADDRESS, verification: { explorer } };
+    assert.deepEqual(buildRecord(inputs({ existing })).verification.explorer, explorer);
+  });
+
+  it("keeps it when the existing address differs from the new one only in letter case", () => {
+    const explorer = { status: "verified-in-ui", checked: "2026-10-05" };
+    const existing = { address: ADDRESS.toLowerCase(), verification: { explorer } };
+    assert.deepEqual(buildRecord(inputs({ existing })).verification.explorer, explorer);
+  });
+
+  it("drops it when the existing record is of another contract: the new deployment was never looked at", () => {
+    const explorer = { status: "verified-in-ui", checked: "2026-10-05" };
+    const existing = { address: "0x1111111111111111111111111111111111111111", verification: { explorer } };
+    assert.deepEqual(buildRecord(inputs({ existing })).verification.explorer, { status: "unchecked" });
+  });
+
+  it("drops it when the existing record names no address", () => {
+    const existing = { verification: { explorer: { status: "verified-in-ui", checked: "2026-10-05" } } };
+    assert.deepEqual(buildRecord(inputs({ existing })).verification.explorer, { status: "unchecked" });
+  });
+
+  it("keeps the Sourcify fields as before when an explorer status is present", () => {
+    const existing = { address: ADDRESS, verification: { explorer: { status: "verified-by-sourcify", checked: "2026-10-05" } } };
+    assert.equal(buildRecord(inputs({ existing })).verification.sourcify.match, "pending");
+  });
+
+  it("puts the explorer status after the Sourcify fields", () => {
+    assert.deepEqual(Object.keys(buildRecord(inputs()).verification), ["sourcify", "explorer"]);
+  });
+});
+
+describe("LLR-DP-007 explorer mode arguments", () => {
+  const argv = (...rest) => ["5042", ...rest];
+
+  it("returns null when no explorer flag is given, so the normal run proceeds", () => {
+    assert.equal(explorerArgsFrom(argv()), null);
+  });
+
+  it("reads the chain, the status, and the date", () => {
+    assert.deepEqual(explorerArgsFrom(argv("--explorer", "verified-in-ui", "--checked", "2026-10-05")), {
+      chainId: 5042,
+      status: "verified-in-ui",
+      checked: "2026-10-05",
+    });
+    assert.equal(explorerArgsFrom(argv("--explorer", "verified-by-sourcify", "--checked", "2026-10-05")).status, "verified-by-sourcify");
+  });
+
+  it("accepts the flags in either order", () => {
+    assert.equal(explorerArgsFrom(argv("--checked", "2026-10-05", "--explorer", "verified-in-ui")).status, "verified-in-ui");
+  });
+
+  it("refuses any other status, including unchecked", () => {
+    for (const status of ["unchecked", "verified", "", "Verified-In-UI", "verified-in-ui "]) {
+      assert.throws(() => explorerArgsFrom(argv("--explorer", status, "--checked", "2026-10-05")), /status/i, status);
+    }
+  });
+
+  it("refuses a missing status value", () => {
+    assert.throws(() => explorerArgsFrom(argv("--checked", "2026-10-05", "--explorer")), /status/i);
+  });
+
+  it("refuses a missing date", () => {
+    assert.throws(() => explorerArgsFrom(argv("--explorer", "verified-in-ui")), /--checked/);
+    assert.throws(() => explorerArgsFrom(argv("--explorer", "verified-in-ui", "--checked")), /date/i);
+  });
+
+  it("refuses a malformed or impossible date", () => {
+    for (const date of ["2026-10-5", "26-10-05", "2026/10/05", "2026-13-01", "2026-02-30", "2026-10-05T00:00", "x2026-10-05", "2026-10-05x", ""]) {
+      assert.throws(() => explorerArgsFrom(argv("--explorer", "verified-in-ui", "--checked", date)), /date/i, date);
+    }
+  });
+
+  it("refuses a flag used without --explorer", () => {
+    assert.throws(() => explorerArgsFrom(argv("--checked", "2026-10-05")), /--explorer/);
+  });
+
+  it("refuses an unknown extra argument", () => {
+    assert.throws(() => explorerArgsFrom(argv("--explorer", "verified-in-ui", "--checked", "2026-10-05", "--force")), /--force/);
+  });
+
+  it("refuses a chain id that is not a positive whole number", () => {
+    for (const chain of ["abc", "0", "-1", "1.5", "", "1e3", "0x10", " 5042"]) {
+      assert.throws(() => explorerArgsFrom([chain, "--explorer", "verified-in-ui", "--checked", "2026-10-05"]), /chain/i, chain);
+    }
+  });
+});
+
+describe("LLR-DP-007 recording the explorer status", () => {
+  const stored = () =>
+    `${JSON.stringify(
+      {
+        chainId: 5042,
+        contract: "SatStake",
+        address: ADDRESS,
+        blockNumber: 42,
+        compiler: { version: "0.8.28", settings: { optimizer: { enabled: true, runs: 200 } } },
+        verification: { sourcify: { match: "exact_match", perfectMatch: true }, explorer: { status: "unchecked" } },
+        trailing: [3, 1, 2],
+      },
+      null,
+      2,
+    )}\n`;
+  const request = (overrides = {}) => ({ chainId: 5042, status: "verified-in-ui", checked: "2026-10-05", ...overrides });
+
+  it("sets only the explorer status and leaves every other field and the key order alone", () => {
+    const before = JSON.parse(stored());
+    const after = JSON.parse(recordExplorer(stored(), request()));
+    assert.deepEqual(after.verification.explorer, { status: "verified-in-ui", checked: "2026-10-05" });
+    assert.deepEqual(Object.keys(after), Object.keys(before));
+    assert.deepEqual(Object.keys(after.verification), ["sourcify", "explorer"]);
+    delete after.verification.explorer;
+    delete before.verification.explorer;
+    assert.deepEqual(after, before);
+  });
+
+  it("writes the file in the same shape: two-space indent and a final newline", () => {
+    const text = recordExplorer(stored(), request());
+    assert.ok(text.endsWith("}\n"));
+    assert.equal(text, `${JSON.stringify(JSON.parse(text), null, 2)}\n`);
+  });
+
+  it("changes nothing else in the text when the same status is recorded again", () => {
+    const once = recordExplorer(stored(), request());
+    assert.equal(recordExplorer(once, request()), once);
+  });
+
+  it("adds the explorer status after the Sourcify fields when the record has none", () => {
+    const old = JSON.parse(stored());
+    delete old.verification.explorer;
+    const text = recordExplorer(`${JSON.stringify(old, null, 2)}\n`, request({ status: "verified-by-sourcify" }));
+    assert.deepEqual(Object.keys(JSON.parse(text).verification), ["sourcify", "explorer"]);
+    assert.equal(JSON.parse(text).verification.explorer.status, "verified-by-sourcify");
+  });
+
+  it("refuses a record for another chain", () => {
+    assert.throws(() => recordExplorer(stored(), request({ chainId: 5042002 })), /5042002/);
+  });
+
+  it("refuses a record that names no chain", () => {
+    const text = `${JSON.stringify({ verification: {} })}\n`;
+    assert.throws(() => recordExplorer(text, request()), /chain/i);
+  });
+
+  it("refuses a record with no verification object", () => {
+    const text = `${JSON.stringify({ chainId: 5042 })}\n`;
+    assert.throws(() => recordExplorer(text, request()), /verification/i);
+  });
+
+  it("refuses a status or date that the argument parser would refuse", () => {
+    assert.throws(() => recordExplorer(stored(), request({ status: "unchecked" })), /status/i);
+    assert.throws(() => recordExplorer(stored(), request({ checked: "2026-02-30" })), /date/i);
   });
 });

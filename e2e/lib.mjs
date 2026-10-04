@@ -45,6 +45,13 @@ export function parseEnvKey(text) {
   return value;
 }
 
+// A browser wallet bridge that holds a funded key signs whatever a page asks. Limiting the target to
+// SatStake and its tokens means a page that went wrong cannot move the key's funds anywhere else.
+export function allowedSendTarget(to, allowed) {
+  if (typeof to !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(to)) return false;
+  return allowed.some((a) => a.toLowerCase() === to.toLowerCase());
+}
+
 function* causes(err) {
   const seen = new Set();
   for (let e = err; e && typeof e === "object" && !seen.has(e); e = e.cause) {

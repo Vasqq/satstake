@@ -35,6 +35,10 @@
       "creationMatch": "exact_match",
       "runtimeMatch": "exact_match",
       "perfectMatch": true
+    },
+    "explorer": {
+      "status": "verified-by-sourcify",
+      "checked": "2026-10-03"
     }
   }
 }

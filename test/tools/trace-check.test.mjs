@@ -29,6 +29,13 @@ const DP1 = L("DP", 1); // method D, implemented in script
 const INSPECTION_SC2 = `| ${SC2} | 2026-09-24 | src/A.sol | Pass | none |`;
 const ACCEPT_U2 = `| ${U(2)} | Operator | Deployed | Evid | Pass | 2026-09-24 |`;
 
+// The mainnet deployment record that condition 8 reads at release.
+function record({ perfectMatch = true, explorer = { status: "verified-in-ui", checked: "2026-10-05" } } = {}) {
+  const verification = { sourcify: { match: "exact_match", perfectMatch } };
+  if (explorer !== null) verification.explorer = explorer;
+  return JSON.stringify({ chainId: 5042, verification }, null, 2);
+}
+
 function baseline() {
   return {
     "docs/03_USER_JOURNEYS.md": [
@@ -103,6 +110,7 @@ function baseline() {
     "app/src/lib/amount.test.ts": `describe("${FE1} amount parsing", () => {});\n`,
     "script/Deploy.s.sol": `// @trace ${DP1}\n`,
     "foundry.toml": `# @trace ${SC3}\nsolc_version = "0.8.28"\n`,
+    "deployments/5042.json": record(),
   };
 }
 
@@ -346,5 +354,52 @@ describe("LLR-VV-009 journey acceptance", () => {
   it("rejects Awaiting walkthrough at release for a journey without a walkthrough step", () => {
     const files = edit("docs/ACCEPTANCE.md", "Evid | Pass |", "Evid | Awaiting walkthrough |");
     expectFailure(run(files, ["--release"]), U(2), 'has result "Awaiting walkthrough"');
+  });
+});
+
+describe("LLR-VV-002 condition 8: the mainnet record at release", () => {
+  const RECORD = "deployments/5042.json";
+  const withRecord = (content) => withFiles({ [RECORD]: content });
+
+  it("passes with a perfect Sourcify match and either accepted explorer status", () => {
+    for (const status of ["verified-by-sourcify", "verified-in-ui"]) {
+      expectPass(run(withRecord(record({ explorer: { status, checked: "2026-10-05" } })), ["--release"]));
+    }
+  });
+
+  it("does not read the record before the release gate", () => {
+    expectPass(run(withRecord(record({ perfectMatch: false, explorer: { status: "unchecked" } }))));
+    expectPass(run({ ...baseline(), [RECORD]: null }));
+  });
+
+  it("fails at release when the record is missing", () => {
+    expectFailure(run({ ...baseline(), [RECORD]: null }, ["--release"]), RECORD, "does not exist");
+  });
+
+  it("fails at release when the record is not JSON", () => {
+    expectFailure(run(withRecord("{ nope"), ["--release"]), RECORD, "not valid JSON");
+  });
+
+  it("fails at release when the Sourcify match is not perfect, missing, or only truthy", () => {
+    expectFailure(run(withRecord(record({ perfectMatch: false })), ["--release"]), RECORD, "perfectMatch");
+    expectFailure(run(withRecord(record({ perfectMatch: "true" })), ["--release"]), RECORD, "perfectMatch");
+    expectFailure(
+      run(withRecord(JSON.stringify({ verification: { explorer: { status: "verified-in-ui" } } })), ["--release"]),
+      RECORD,
+      "perfectMatch",
+    );
+    expectFailure(run(withRecord(JSON.stringify({})), ["--release"]), RECORD, "perfectMatch");
+  });
+
+  it("fails at release when the explorer status is unchecked, missing, or not one of the two accepted", () => {
+    for (const explorer of [{ status: "unchecked" }, { status: "verified" }, { status: "Verified-In-Ui" }, {}, null]) {
+      expectFailure(run(withRecord(record({ explorer })), ["--release"]), RECORD, "explorer");
+    }
+  });
+
+  it("reports both defects in one run", () => {
+    const r = run(withRecord(record({ perfectMatch: false, explorer: { status: "unchecked" } })), ["--release"]);
+    expectFailure(r, RECORD, "perfectMatch");
+    expectFailure(r, RECORD, "explorer");
   });
 });

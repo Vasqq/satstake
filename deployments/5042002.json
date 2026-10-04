@@ -35,6 +35,9 @@
       "creationMatch": "exact_match",
       "runtimeMatch": "exact_match",
       "perfectMatch": true
+    },
+    "explorer": {
+      "status": "unchecked"
     }
   }
 }

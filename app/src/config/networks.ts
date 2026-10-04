@@ -1,6 +1,8 @@
 import { type Address, getAddress } from "viem";
 import deployment from "../../../deployments/5042002.json" with { type: "json" };
 import tokenConfig from "../../../deployments/config/5042002.json" with { type: "json" };
+import mainnetDeployment from "../../../deployments/5042.json" with { type: "json" };
+import mainnetTokenConfig from "../../../deployments/config/5042.json" with { type: "json" };
 
 export interface TokenConfig {
   symbol: string;
@@ -23,14 +25,22 @@ export interface NetworkConfig {
 export type NetworkName = "testnet" | "mainnet";
 export type SelectedNetwork = NetworkConfig & { contract: Address };
 
+if (mainnetDeployment.chainId !== 5042) {
+  throw new Error("deployments/5042.json does not name Arc mainnet");
+}
+
+if (mainnetTokenConfig.chainId !== mainnetDeployment.chainId) {
+  throw new Error("deployments/config/5042.json does not name Arc mainnet");
+}
+
 if (tokenConfig.chainId !== deployment.chainId) {
   throw new Error("deployments/config and the deployment record name different chains");
 }
 
 /**
- * Testnet values come from the deployment record and the deploy script's token config, so the app cannot
- * drift from what was deployed. Mainnet values are the addresses in deployments/accounts.md, each checked
- * against Circle's and Arc's published lists on 2026-09-24.
+ * Both contract addresses come from their deployment records, so the app cannot drift from what was
+ * deployed. Both networks' tokens come from the deploy script's token config, the file the contract was
+ * constructed from, whose entries carry the official page each address was confirmed against.
  *
  * @trace LLR-FE-001
  */
@@ -56,14 +66,17 @@ export const networks: Record<NetworkName, NetworkConfig> = {
     // Listed on the same page; the other mainnet providers it names are permissioned (01 V-02).
     rpcUrls: ["https://rpc.mainnet.arc.io"],
     explorerUrl: "https://explorer.arc.io",
-    contract: null,
-    // Set to a seeded pledge when the mainnet group deploys; the build refuses until the contract exists.
-    examplePledgeId: 1n,
-    tokens: [
-      // The ERC-20 interface of native USDC reports 6 decimals; the native balance uses 18 (01 V-05).
-      { symbol: "USDC", address: "0x3600000000000000000000000000000000000000", decimals: 6 },
-      { symbol: "cirBTC", address: "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0", decimals: 8 },
-    ],
+    contract: getAddress(mainnetDeployment.address),
+    // The seeded cirBTC pledge, left Active until 2026-11-01. Identifiers are assigned in order from 1, and
+    // the seed's create phase refuses unless the contract is fresh or already holds a matching prefix of the
+    // seed, so the four seed pledges are ids 1 to 4; every later phase refuses a pledge that is not the seed's.
+    examplePledgeId: 4n,
+    // The ERC-20 interface of native USDC reports 6 decimals; the native balance uses 18 (01 V-05).
+    tokens: mainnetTokenConfig.tokens.map((t) => ({
+      symbol: t.symbol,
+      address: getAddress(t.address),
+      decimals: t.decimals,
+    })),
   },
 };
 

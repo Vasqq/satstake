@@ -20,7 +20,8 @@ export default tseslint.config(
   },
   {
     // Node scripts run outside the browser bundle, such as the screenshot capture for design review.
+    // The dry run's callbacks run inside the page through Playwright, so they see browser globals too.
     files: ["scripts/**/*.mjs"],
-    languageOptions: { globals: globals.node },
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
 );

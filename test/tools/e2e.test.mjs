@@ -12,6 +12,7 @@ import {
   assertBalanceDelta,
   assertChainId,
   assertStakeTransfer,
+  allowedSendTarget,
   decodeRevert,
   explorerTx,
   expectRevert,
@@ -499,5 +500,30 @@ describe("LLR-VV-005 evidence", () => {
     assert.ok(renderEvidence(e.toJSON()).includes("Result: pass"));
     e.finish(false);
     assert.ok(renderEvidence(e.toJSON()).includes("Result: fail"));
+  });
+});
+
+describe("LLR-VV-005 a wallet bridge sends only to SatStake and its tokens", () => {
+  const allowed = [CONTRACT, CIRBTC, USDC];
+
+  it("accepts each allowed target in any letter case", () => {
+    for (const to of allowed) {
+      assert.equal(allowedSendTarget(to, allowed), true);
+      assert.equal(allowedSendTarget(to.toLowerCase(), allowed), true);
+    }
+  });
+
+  it("refuses any other address, a missing target, and a malformed one", () => {
+    assert.equal(allowedSendTarget(OTHER, allowed), false);
+    assert.equal(allowedSendTarget(OPERATOR, allowed), false);
+    assert.equal(allowedSendTarget(undefined, allowed), false);
+    assert.equal(allowedSendTarget(null, allowed), false);
+    assert.equal(allowedSendTarget("", allowed), false);
+    assert.equal(allowedSendTarget("0x1234", allowed), false);
+    assert.equal(allowedSendTarget("not an address", allowed), false);
+  });
+
+  it("refuses everything when nothing is allowed", () => {
+    assert.equal(allowedSendTarget(CONTRACT, []), false);
   });
 });

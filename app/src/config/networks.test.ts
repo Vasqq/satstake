@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getAddress } from "viem";
 import { type NetworkConfig, networks, selectNetwork } from "./networks";
 
@@ -55,6 +55,39 @@ describe("LLR-FE-001 network configuration", () => {
     ]);
   });
 
+  it("reads the mainnet tokens from deployments/config/5042.json, with no address typed into the source", () => {
+    const config = readJson("deployments/config/5042.json") as {
+      tokens: { symbol: string; address: string; decimals: number }[];
+    };
+    expect(networks.mainnet.tokens).toEqual(
+      config.tokens.map((x) => ({ symbol: x.symbol, address: getAddress(x.address), decimals: x.decimals })),
+    );
+    const source = readFileSync(resolve(import.meta.dirname, "networks.ts"), "utf8");
+    expect(source).not.toMatch(/0x[0-9a-fA-F]{40}/);
+  });
+
+  it("refuses to load when the mainnet token config names another chain", async () => {
+    vi.resetModules();
+    vi.doMock("../../../deployments/config/5042.json", () => ({ default: { chainId: 5042002, tokens: [] } }));
+    try {
+      await expect(import("./networks")).rejects.toThrow(/config\/5042\.json/);
+    } finally {
+      vi.doUnmock("../../../deployments/config/5042.json");
+      vi.resetModules();
+    }
+  });
+
+  it("carries the SatStake address of the mainnet deployment record and the seeded cirBTC pledge as the example", () => {
+    const record = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../../deployments/5042.json"), "utf8")) as {
+      chainId: number;
+      address: string;
+    };
+    expect(record.chainId).toBe(5042);
+    expect(networks.mainnet.contract).toBe(getAddress(record.address));
+    expect(networks.mainnet.contract).toBe("0xEbcda489EB528c573E9a190eB8EfE63b44d9204e");
+    expect(networks.mainnet.examplePledgeId).toBe(4n);
+  });
+
   it("lists the primary RPC first and gives each network an explorer", () => {
     expect(networks.testnet.rpcUrls[0]).toBe("https://rpc.testnet.arc.io");
     expect(networks.mainnet.rpcUrls[0]).toBe("https://rpc.mainnet.arc.io");
@@ -84,7 +117,7 @@ describe("LLR-FE-001 network configuration", () => {
 });
 
 describe("LLR-FE-002 build target selection", () => {
-  const withContract: NetworkConfig = { ...networks.mainnet, contract: "0x3Ae26b15B9085ddB223FfEb503B4f713e682Cac4" };
+  const withContract: NetworkConfig = networks.mainnet;
 
   it("selects the testnet or mainnet configuration by name", () => {
     expect(selectNetwork("testnet").chainId).toBe(5042002);
@@ -92,14 +125,15 @@ describe("LLR-FE-002 build target selection", () => {
   });
 
   it("fails when the selected configuration has no contract address", () => {
-    expect(() => selectNetwork("mainnet")).toThrow(/mainnet has no SatStake contract address/);
+    const none = { testnet: networks.testnet, mainnet: { ...networks.mainnet, contract: null } };
+    expect(() => selectNetwork("mainnet", none)).toThrow(/mainnet has no SatStake contract address/);
     expect(() => selectNetwork("testnet", { testnet: { ...networks.testnet, contract: null }, mainnet: withContract })).toThrow(
       /testnet has no SatStake contract address/,
     );
   });
 
   it("ignores a missing address in the target that was not selected", () => {
-    expect(selectNetwork("testnet", { testnet: networks.testnet, mainnet: networks.mainnet }).contract).toBe(
+    expect(selectNetwork("testnet", { testnet: networks.testnet, mainnet: { ...networks.mainnet, contract: null } }).contract).toBe(
       networks.testnet.contract,
     );
   });

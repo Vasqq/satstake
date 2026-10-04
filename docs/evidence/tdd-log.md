@@ -5747,3 +5747,290 @@ referenced, 9/55 journeys passing.` Every mutant was restored and compared with 
 ### Lead fix after the sweep
 
 - Row 9 follow-up (LLR-FE-033): the allowance re-read after an approval was taken at `latest`, which a public endpoint one block behind (01 V-11) answers with the old allowance and no error, so a genuine approval would read as failed. Test `flow.test.ts` "reads the allowance after the approval at the approval's own block, so a lagging endpoint cannot answer with the old one": red, the second read was unpinned (`"allowance"` where `"allowance@77"` was expected). Green: `runCreate` passes the approval receipt's `blockNumber`, and `CreateView` hands it to `readContract`; 354 create tests pass.
+
+## DP mainnet and seed
+
+Requirement: LLR-DP-009 (script), LLR-DP-002 (config, inspection), LLR-DP-003 and 012 (procedure). Tests: `test/Seed.t.sol`
+(22 tests, `@custom:verifies LLR-DP-009`), run against a local SatStake with `MockFiatToken` code etched at the two mainnet token
+addresses.
+
+### Config and endpoint
+
+`deployments/config/5042.json` written with the two source URLs of `deployments/accounts.md`. Read-only checks against
+`https://rpc.mainnet.arc.io` on 2026-10-03: `eth_chainId` 5042; `0x3600...0000` `decimals()` 6, `symbol()` "USDC";
+`0x171A...bAA0` `decimals()` 8, `symbol()` "cirBTC". `foundry.toml` gains the `arc_mainnet` alias.
+
+### Red
+
+Against an inert `script/Seed.s.sol` (constants and error declarations, three empty phase functions). 22 tests: 2 pass at once
+(`thePromiseTextsAreWithinTheLimitAndHaveNoEmDash`, `theRolesAndTokensAreTheOnesAccountsAndTheMainnetConfigRecord`, both about
+constants the stub already carries; the mutants below are their red), 20 fail for the reason their requirement predicts:
+
+- `everyPhaseRefusesAChainThatIsNotMainnetOrTheLocalOne`, `anyOtherChainIsRefused`, `createRefusesAContractThatAlreadyHoldsPledges`,
+  `createCannotRunTwice`, `verdictsRefuse*`, `settleRefuses*`: "next call did not revert as expected".
+- `createMakesTheFourPledges...`, `createSetsTheFourDeadlines`, `theExpiringPledge...`, `verdictsMark...`, `settlePays...`:
+  `PledgeNotFound(n)` or "0 != 4", no pledge was created.
+- `createApprovesExactlyTheAmountItSpends...`: "one approval of exactly 2 USDC: 0 != 1".
+- `theTotalStakeStaysUnderFiveDollars`: "0 != 2000000".
+
+Mutation 1136 to 1138 first survived (the fourth pledge, the staker, and the promise text were not compared); two tests that
+build look-alike seeds with one wrong field in each of the four pledges (`...DiffersFromTheSeedInAnyOneField`, verdicts and settle)
+were added and the 40-mutant pass below was run against the 24-test suite.
+
+### Finding while simulating on a mainnet fork: forge cannot move USDC on Arc
+
+`forge script` against a fork of Arc mainnet reverts in `USDC.transferFrom` with `OpcodeNotFound` on calls to `0x1800...0001`
+(`isBlocklisted`) and then `0x1800...0000` (`transfer`): Arc's system precompiles do not exist in Foundry's EVM (forge 1.0.0).
+`forge script` runs the script locally, then replays its transactions; both steps fail for any USDC movement. Four more tests
+(red: 4 of 29 fail, 25 pass; the one that passes at once is the negative case "on the local chain nothing is stubbed") drive a
+local-run stub of the two precompiles, installed by `create()` and `settle()` on chain 5042 only (see Green).
+
+### Green
+
+`forge test --match-path test/Seed.t.sol`: 29 passed. Implementation: `script/Seed.s.sol` (`create`, `verdicts`, `settle`, the chain
+guard, `SeedNotFresh`, per-pledge identity and state checks, exact approvals, and the local-run stub of the two Arc precompiles).
+Pledges are found by identifier 1 to 4 rather than by a file: `create` refuses a contract with any pledge, and every later phase
+compares each pledge field by field before it acts, so a record file could add nothing and could go stale. Full run: `forge fmt
+--check` clean, `forge test` 236 passed, `node tools/trace-check.mjs` OK 98/113 (DP-003 and DP-009 newly referenced).
+
+### Mutations (script logic; `cache/mutants/seed_mut.py`, restore checked with `cmp` after each pass)
+
+1100 to 1139, against the 24 tests that existed (before the stub tests): all 40 killed. Chain guard (1100 to 1102, only-mainnet,
+only-local, no guard), guard missing from each phase (1103 to 1105), stake constants (1106, 1107), approval amounts (1108 to
+1111), either approval missing (1110, 1111), fixed deadline (1112), verdict window (1113), expiry margin (1114 to 1116), freshness
+check weakened or removed (1117, 1118), verdict-phase state checks (1119, 1120), settle-phase state checks (1121 to 1123), verdict
+or settle target changed (1124 to 1128), broadcast sender changed (1129, 1130), identity check: wrong token (1131), fourth pledge
+unchecked (1132), staker (1133), token (1134), amount (1135), referee (1136), beneficiary (1137), promise text (1138), wrong
+promise in a creation (1139). Before the look-alike tests existed, the fourth-pledge, staker, and text checks survived.
+1140 to 1151 (the stub, 29 tests): 11 killed; 1147 (`vm.allowCheatcodes` removed) survives under `forge test`, where the test
+EVM allows cheatcodes from every address; the fork run needs it (without it the run stops with "cheatcodes are not enabled for
+0x1800...0000"). Not equivalent, only unobservable in this harness. The number range ran 12 past 1139.
+Not mutated, as an equivalent: the text of PROMISE_B (a constant the tests read back through the harness).
+
+### Simulation on a fork of Arc mainnet (2026-10-03, no keystore, no broadcast)
+
+A throwaway `SeedSim` (deleted afterwards) deployed a fresh SatStake with the mainnet token pair and ran `create()`, `verdicts()`,
+a warp of 130 s, and `settle()` against `https://rpc.mainnet.arc.io` with `--sender 0xd1728F74...809f --skip-simulation`: "Script
+ran successfully", events PledgeCreated 1 to 4 (1000 sats, 1 USDC, 1 USDC, 1000 sats), VerdictRecorded 1 kept and 3 broken,
+PledgeSettled 1 to the staker and 2 and 3 to the beneficiary; final states Kept->SettledToStaker, Expired->SettledToBeneficiary,
+Broken->SettledToBeneficiary, Active; deployer USDC 12.000778 -> 10.000778, beneficiary USDC 0 -> 2, deployer cirBTC 4487 ->
+3487 sats, contract holds 1000 sats; estimated gas for `create` 433732 (0.0173 USDC at 40 gwei). Without `--skip-simulation`
+the same run fails with "Simulated execution failed" at the replay, as above. Limits: USDC transfers ran against the
+stubbed native-transfer precompile, and the blocklist answer was the stub's. The real accounts' blocklist state is read with
+`cast call` in the procedure.
+
+Total stake: 2 USDC (2 USD) plus 2000 sats. 2000 sats is 0.00002 BTC: 2 USD at 100,000 USD per bitcoin, 3 USD at 150,000. Total at
+most 5 USD up to 150,000 USD per bitcoin. Gas on top, in USDC, is about 0.02 per phase.
+
+### App on mainnet
+
+LLR-FE-001, 002, 073, 2026-10-03. Mainnet `contract` now read from `deployments/5042.json` (one source, like testnet), `examplePledgeId`
+4n (seed ids are 1 to 4; the cirBTC pledge stays Active until 2026-11-01).
+
+Red (`npx vitest run src/config/networks.test.ts src/build.test.ts`, 4 failed, 26 passed), each for the reason predicted:
+- `carries the SatStake address of the mainnet deployment record and the seeded cirBTC pledge as the example`: null != address.
+- `selects the testnet or mainnet configuration by name` (mainnet no longer needs a stub address): `mainnet has no SatStake contract address`.
+- `builds the mainnet target with the mainnet contract address inside it`: build status 1.
+- `names exactly the mainnet RPC URLs in connect-src of the mainnet build, and no testnet URL`: no `index.html`, build failed.
+Also added `names exactly the testnet RPC URLs in connect-src of the testnet build, and no mainnet URL` (passes at once, guards the other target; its red is mutation 1201). The null-contract refusal tests now pass an explicit null table, since the real mainnet table has an address.
+
+Green: 35 of 35 in those files; full `npm test` 1065 passed, 9 skipped. A bundle assertion "no testnet address in the mainnet bundle" was dropped: the bundle carries both network tables by design and no requirement asks for stripping one.
+
+Mutations (`cache/mutants/app_mut.py`, restore checked by comparing both files with the originals):
+| # | Mutant | Killed by |
+|---|---|---|
+| 1200 | CSP plugin in `vite.config.ts` built from `networks.testnet` (was mutation 490) | mainnet connect-src build test |
+| 1201 | CSP plugin built from `networks.mainnet` always | selected-network policy test, testnet connect-src build test |
+| 1202 | mainnet contract read from the testnet record | mainnet address test |
+| 1203 | `examplePledgeId` 1n | mainnet address test |
+| 1204 | testnet RPC URL appended to the mainnet list | four tests (csp, networks, both build tests) |
+
+CI: the interim "refuses without a contract address" step is replaced by `npm run build:mainnet` and a step comparing the mainnet
+`dist/index.html` connect-src to `networks.mainnet.rpcUrls`. Run locally against the extracted script: exit 0 on a mainnet build,
+exit 1 on a testnet `dist`. `src/live.test.ts` selects only `selectNetwork("testnet")`; no mainnet target added.
+
+Final: typecheck clean, `build:testnet` and `build:mainnet` succeed, `npm test` 1065 passed. Lint: 12 errors, all `no-undef` for
+`window`/`document` in the other agent's untracked `app/scripts/ui-dry-run.mjs`; none in files of this change. Trace check: 2 failures,
+LLR-DP-002 and LLR-DP-007 have no source reference (belong to the seed work, not this change).
+
+### Rework to cast (05 v1.21)
+
+The Foundry version above (`script/Seed.s.sol`, `test/Seed.t.sol`, mutations 1100 to 1151) is withdrawn and both files are
+deleted; nothing else referenced them. Why: `forge script` cannot simulate a USDC transfer on Arc, because Foundry 1.0.0 has no
+Arc precompiles, and the version above got past that only by stubbing the precompiles locally and passing `--skip-simulation`.
+A simulation against a stand-in proves nothing about the real precompile, and gas limits derived from the stand-in could
+revert on mainnet. The seed is now `script/seed.mjs`, which simulates each transaction with `cast call` against the live chain
+and sends it with `cast send`. `cast` is the transport and `viem` only encodes and decodes ABI (already a root dependency, no
+network): `cast call <to> <calldata>` with raw calldata prints the raw return data, which keeps every command line an exact,
+testable array.
+
+Proof that `eth_call` on Arc mainnet runs the real precompiles, read-only, no keystore (2026-10-03):
+
+- `cast call` of `USDC.transfer(beneficiary, 1)` with `--from` the deployer, against `arc_mainnet`: `0x...0001` (true).
+- The same call with an amount of 1,000,000,000,000 (more than the deployer holds): reverts `ERC20: transfer amount exceeds
+  balance`. So a simulated transfer is checked against real balances by the node, which a stand-in would not do.
+
+Tests: `test/tools/seed.test.mjs`, 92 tests, with a fake `cast` over a small world that has the semantics of SatStake and the
+two tokens (a simulation of a call that would revert fails; a send applies its effects; time and blocks advance). Run as the
+other tool tests are: `node --test test/tools/*.test.mjs`.
+
+Red: against an inert `script/seed.mjs` (every export throws "not implemented") 91 of 91 tests failed. That is red for the
+whole file, not per behaviour; the per-behaviour red is the mutation pass below, run against the green suite. Two tests were
+added after the first mutation run (a config for the wrong chain with otherwise valid tokens; a contract holding exactly one
+pledge) because mutants 1164 and 1174 survived. A third, for the config entry's source and confirmation date (LLR-DP-002),
+was written red first (1 failed) and then made green.
+
+Green: 92 passed (`node --test test/tools/seed.test.mjs`), 346 passed for all tool tests. `forge fmt --check` clean, `forge test`
+207 passed, trace check one failure left, LLR-DP-007, which the mainnet deployment evidence names and no source satisfies.
+
+Mutations 1160 to 1199 (`cache/mutants/seed_mjs_mut.py`, restore checked with `cmp`): 40 of 40 killed after the two tests
+above. Covered: chain guard removed or inverted, constant chain id, record and config chain checks, missing address, missing
+token, simulation skipped, send without `--send`, simulation from the wrong sender, status 0 ignored, allowance check removed,
+allowance read without the receipt block, approval amount, freshness check, both signer checks, deadline arithmetic (margin,
+seven days, fixed date, stale block time), each of the six identity fields and the fourth pledge, each of the five state checks,
+settle and verdict targets, explorer link, a shell in the runner, the `--send` flag. One more by hand: the source and
+confirmation check of LLR-DP-002 removed, killed.
+
+Not covered by a test, stated: a dry run (no `--send`) of `create` cannot simulate `createPledge`, because it needs the
+approval mined, and `cast call` in this version has no state override. It simulates both approvals and says plainly that the
+four creations are not simulated; with `--send` each creation is simulated after its approval is mined.
+
+### Explorer status (LLR-DP-007)
+
+Red: with `explorerArgsFrom` and `recordExplorer` as stubs that throw "not implemented", 21 of 50 tests in
+`test/tools/record-deployment.test.mjs` failed (the 2 build-record tests that read `verification.explorer`, 10 argument tests,
+8 recording tests, and the key-order test). The one new test that passed against the stub, "keeps the Sourcify fields as
+before", guards against a regression and has no new behaviour to fail. The first run, before the stubs, failed on the missing
+export, which is a compile-level red and is not counted.
+
+Green: 50 passed (`node --test test/tools/record-deployment.test.mjs`).
+
+Mutations 1220 to 1239 (`cache/mutants/explorer_mut.mjs`, restore checked with `cmp`): 18 killed, 2 survived as equivalent.
+1227 (date regex anchors dropped) is caught anyway by the round-trip comparison of the parsed date. 1239 (existence check
+before reading the record removed) only changes the message, since `readFileSync` throws on a missing file. One test row was
+added after the first run (chain ids `1e3`, `0x10`, and a padded one) because 1235 survived. Covered: chain check removed and
+inverted, kept explorer status dropped or emptied, `unchecked` accepted or `verified-by-sourcify` refused as a status, date
+round trip, month and day range, extra fields, missing `verification`, missing flags, unknown flags, indentation, and the
+no-flag path.
+
+### Review fixes (mainnet group)
+
+Red, recorded before any code changed (`node --test test/tools/seed.test.mjs`, then the other three files, then
+`npx vitest run src/config/networks.test.ts` from `app/`). Mutations for this subsection are numbered 1240 to 1279.
+
+| Finding | New or changed tests | Observed failure |
+|---|---|---|
+| M1 resume | "continues at pledge 2/3/4 when 1/2/3 seed pledge(s) exist"; deadlines of resumed pledges; stopped between approvals; allowance short of, or above, the remainder; no approval for a token nothing locks; dry run with and without an approval to mine; six "refuses to resume over a pledge whose <field> differs"; unreadable prefix | 17 of 18 fail with `pledgeCount is k, the seed needs a fresh deployment` (the unreadable-prefix test on the same message). "All four exist" passes already and guards the refusal. |
+| M1/L6 deadline of D | "verdicts/settle name pledge 4 when its deadline is off by 1 and -1" | 4 of 4 fail: `Missing expected rejection` (verdicts) and a different message (settle). The test that pledges 1 to 3 are not pinned passes already and guards against over-checking. |
+| L7 contract check | "refuses a record address that holds no code" (3 phases); "allowedTokens() holds ..." (6 shapes) | 9 of 9 fail: `Missing expected rejection` (the verdicts and settle ones on a different message). "accepts either order" passes already and guards the comparison. |
+| L8 redaction | "redacts home directories from a failing cast call / failed simulation" | 2 of 2 fail: the message holds `/Users/jane/...` unredacted. |
+| M2 testnet plan | `parseArgs` takes `--testnet` and the keystore option; the keystore option only with `--testnet`; stops at chain id on mainnet (3 phases); no mainnet file or endpoint read; no fallback to the mainnet record; record or config naming mainnet refused; bad roles refused; full create, verdicts, settle with 100 sats and 0.1 USDC and testnet explorer links; mainnet staker refused; resume; the mainnet plan needs chain 5042 | 13 of 13 fail: `unknown argument --testnet` and `cast chain-id failed: unexpected rpc`. |
+| existing, changed | `parseArgs` result gains two fields; allowance reads filtered to those at a receipt block; the single-pledge refusal now needs a pledge that is not the seed's | 2 fail (`parseArgs` shape, single pledge) until the code changes. |
+| M3 condition 8 | "fails at release when the record is missing / not JSON / Sourcify match not perfect, missing or only truthy / explorer status unchecked, missing or not accepted / reports both" | 5 of 7 fail (no check exists). "passes with either status" and "does not read the record before release" pass already and guard the pass path. |
+| M5 | "drops it when the existing record is of another contract / names no address" | 2 of 2 fail: the explorer status was carried over. The case-insensitive test passes already and guards against a strict comparison. |
+| L10 | "reads the mainnet tokens from deployments/config/5042.json, with no address typed into the source"; "refuses to load when the mainnet token config names another chain" | 2 of 2 fail: addresses are literals in `networks.ts`; the module loads. |
+| L12 | "a wallet bridge sends only to SatStake and its tokens" (3 tests) | the file fails to load: `allowedSendTarget` is not exported. |
+
+Stated so the table reads correctly:
+the keystore-on-mainnet refusal and its test were added after the code, so the test has no recorded red; mutation 1264 shows it bites.
+
+Green: `node --test test/tools/seed.test.mjs` 142 passed (was 92); `record-deployment` 53, `trace-check` 44, `e2e` 80 including the
+three bridge tests; `node --test test/tools/*.test.mjs` 430 passed; `forge fmt --check` clean; `forge test` 207 passed; from
+`app/`: lint and typecheck clean, `npm test` alone 1067 passed and 9 skipped, `build:testnet` and `build:mainnet` built;
+`node tools/trace-check.mjs` OK, 101 of 113 LLRs referenced. `trace-check --release` now fails on
+`deployments/5042.json` for the explorer status alone, which is Liam's step (the Sourcify side passes).
+
+Edits made in the green step, one line each: M1 resume and the seed-wide checks in `script/seed.mjs` (prefix compared with
+the seed, allowance read before every approval and left alone when it already equals the remainder, creations only for the
+remainder); M2 per-chain plans, `--testnet`, `--keystore`; L7 `cast code` and `allowedTokens()`; L8 `redact`; L6 the fixed
+deadline compared exactly and the `networks.ts` comment; M3 condition 8 in `tools/trace-check.mjs`; M5 `sameAddress` in
+`tools/record-deployment.mjs`; L10 mainnet tokens from `deployments/config/5042.json` with a chain guard; L12 `allowedSendTarget`
+in `e2e/lib.mjs`, used by the dry-run wallet bridge; L13 the `HEX` spacing.
+
+Mutations 1240 to 1279 (`cache/mg-mutate.py`, originals copied to `cache/mutants/` and compared after each run): 40 of 40
+killed. 1240 to 1257 seed resume, prefix and deadline checks, contract checks, redaction; 1258 to 1274 the testnet plan (chain,
+record, config, explorer and endpoint each swapped for the mainnet value), the keystore guards, roles validation and use,
+amounts, signer arguments; 1275 to 1277 condition 8 (set narrowed, truthy perfect match, explorer check dropped); 1278 case-
+sensitive address comparison in the record tool; 1279 the bridge allowing every target. Mutant 1244 (allowance `>=` instead of
+`===`) is killed only by the test that approves exactly the remainder when the allowance is larger, as intended.
+
+L9: the `"explorer": {"status": "unchecked"}` lines in `deployments/5042.json` and `deployments/5042002.json` were added by hand,
+in the form `buildRecord` writes, because the tool that now writes them did not exist when those records were made; the comment at
+`tools/record-deployment.mjs` says so. L10's test is source-reading and a mocked chain mismatch (a literal address in the source
+fails it); no mutation is numbered for `networks.ts` because the module has no branch beyond the two guards.
+
+Live rehearsal: `docs/evidence/seed-rehearsal-testnet.md`. All three phases ran with and without `--send` on Arc testnet,
+including a create killed after its first `createPledge` and resumed. Nothing broke on the real node.
+
+### Confirmation fixes (mainnet group, 05 v1.24)
+
+Mutations for this subsection are numbered 1280 to 1299.
+
+Red (`node --test test/tools/seed.test.mjs`, before any code changed): 142 passed, 15 failed.
+
+| Finding | Test | Failure |
+|---|---|---|
+| 1 verdicts resume | "run a second time sends nothing and says every pledge is already judged"; "resumes after markKept 1 was mined and markBroken 3 failed"; "without --send simulates only what remains" | `pledge 1 is Kept, this phase needs it Active` |
+| 1 verdicts resume | "resumes when only pledge 1 is still Active, whatever happened to pledge 3" | `pledge 3 is Broken, this phase needs it Active` |
+| 1 settle resume | "run a second time sends nothing and says every pledge is already settled"; "resumes after settle 1 was mined and settle 2 failed"; "resumes with only the third pledge left" | `pledge 1 is SettledToStaker, this phase needs it Kept` |
+| 2 failed send | "reports the hash cast gave ..."; "still says it may be pending when cast gave no hash"; "re-reads pledgeCount ..."; "re-reads the state of the pledge after a failed verdict or settlement"; "does not report a failed re-read as the state"; "a rerun after the earlier transaction landed late creates no duplicate"; "an approval that fails after broadcast reports the allowance it re-read" | message is only `cast send failed: error: failed to get the receipt`, with no pending warning and no re-read |
+| 3 non-seed pledge | "is refused by create in words that say a non-seed pledge exists" | message ends at `staker differ` |
+
+The two "still refuses a pledge in a state that is neither the start nor the end" tests pass already and guard the refusal
+that the resume must keep. The two former "refuses to run twice" tests were changed to the new behaviour (nothing sent, said so).
+Added after the first mutation run: a check that the explorer link of the reported hash is in the message (1284 survived on
+the hash alone, since cast's own text carried it) and a redaction test for the send-failure message (1292 survived).
+
+Green: `node --test test/tools/seed.test.mjs` 158 passed (was 142); `node --test test/tools/*.test.mjs` 446 passed;
+`node tools/trace-check.mjs` OK, 102 of 113 LLRs referenced; `npm run lint` from `app/` clean.
+
+Mutations 1280 to 1296 (`script/seed.mjs`, original copied to `cache/mutants/`, restore checked with `cmp`, tests rerun green): 17 of 17 killed.
+
+| # | Mutant | Killed by |
+|---|---|---|
+| 1280 | verdicts/settle: skip of a pledge already in its end state removed | "run a second time ... already judged", "resumes after markKept 1 ..." |
+| 1281 | refusal of a pledge in a wrong state removed | "still refuses a pledge in a state that is neither ...", "refuses when only the third pledge is out of state" |
+| 1282 | "nothing to send" branch removed | both "run a second time" tests |
+| 1283 | state re-read after a failed send dropped | "re-reads pledgeCount ...", "re-reads the state of the pledge ..." |
+| 1284 | hash taken from the failure text always undefined | "reports the hash cast gave" (after the explorer-link assertion was added; first survived) |
+| 1285 | pending warning replaced by "Rerun." | "reports the hash ...", "still says it may be pending ..." |
+| 1286 | referee signer check removed | "refuses a signer that is not the referee" |
+| 1287 | non-seed pledge hint removed | "is refused by create in words that say a non-seed pledge exists" |
+| 1288 | settle 2 start state Expired to Active | "refuses until the second pledge has expired" |
+| 1289 | settle 3 end state wrong | "run a second time ... settled", "still refuses ..." |
+| 1290 | failed re-read propagated instead of reported | "does not report a failed re-read as the state" |
+| 1291 | every step sent, not only the remaining | "resumes after markKept 1 ...", "resumes when only pledge 1 ..." |
+| 1292 | failure text not redacted | "redacts a home directory from what cast reported" (added after it survived) |
+| 1293 | pledgeCount reported off by one | "re-reads pledgeCount ..." |
+| 1294 | verdict 3 end state Kept | "run a second time ...", "resumes when only pledge 1 ..." |
+| 1295 | verdict 1 end state Broken | "run a second time ...", "resumes after markKept 1 ..." |
+| 1296 | simulation skipped when sending | "with --send approves, then creates ...", "sends nothing after a simulation that fails" |
+
+Other edits in this round: the `redact` line lost its `LLR-DP-003` tag for a why-comment; `ui-dry-run.mjs` sets `timezoneId: "UTC"` and
+the two local-zone deadlines in `ui-dry-run-testnet.md` are converted (the file held two, not three); an "Accepted risk" section
+was added to `seed-rehearsal-testnet.md`. The deleted `requireState` helper had no other caller.
+
+### Narrow confirmation fixes (mainnet group), applied by the lead
+
+The narrow Opus confirmation of v1.24 found two Medium and two Low, none able to send a wrong transaction. Small, so the lead
+applied them; the reviewer stays the independent party.
+
+Red (`node --test test/tools/seed.test.mjs`, before any code changed): 1 of 162 failed.
+
+| Test | Observed |
+|---|---|
+| takes no hash out of longer revert data, which no broadcast produced | fails: the unbounded pattern took the first 64 hex digits of 72-digit revert data and printed an explorer link for it |
+| re-reads the pledge that failed, not the first one | passes on correct code; written against the reviewer's surviving mutant A (1300) |
+| says to rerun the same command once the transaction is mined or dropped | passes on correct code; against mutant C (1302) |
+| reports a failed simulation in a dry run and does not call it ok | passes on correct code; against mutant B (1301), since every earlier failing-simulation test used `--send` |
+
+Green: 162 passed; `node --test test/tools/*.test.mjs` 450 passed. Edit: the hash pattern in `transact` is bounded on both sides.
+
+| # | Mutant | Result |
+|---|---|---|
+| 1300 | failed-send re-read reads pledge 1 whatever failed | killed |
+| 1301 | failed simulation ignored without `--send` | killed |
+| 1302 | rerun instruction removed from the message | killed |
+| 1303 | hash pattern unbounded again | killed |
+
+Restore checked with `cmp`; the copy in `cache/mutants/` deleted.

@@ -43,12 +43,11 @@ function build(name: string, network: string | undefined): Build {
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 describe("LLR-FE-002 the build selects its target from VITE_NETWORK", () => {
-  it("fails a mainnet build while the mainnet configuration has no contract address", () => {
-    expect(networks.mainnet.contract).toBeNull();
+  it("builds the mainnet target with the mainnet contract address inside it", () => {
     const result = build("mainnet", "mainnet");
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("mainnet has no SatStake contract address");
-    expect(existsSync(resolve(result.out, "index.html"))).toBe(false);
+    expect(result.status).toBe(0);
+    expect(existsSync(resolve(result.out, "index.html"))).toBe(true);
+    expect(result.bundle.toLowerCase()).toContain((networks.mainnet.contract as string).toLowerCase());
   }, 120_000);
 
   it("fails when the variable is unset", () => {
@@ -195,6 +194,23 @@ describe("LLR-FE-073 the built page carries the policy and loads nothing from el
     expect(svg).toMatch(/^<svg\b/);
     // The xmlns attribute names the SVG vocabulary and is never fetched, so it is set aside before the scan.
     expect(svg.replace(/ xmlns="http:\/\/www\.w3\.org\/2000\/svg"/, "")).not.toMatch(/https?:|href=|<script|<image|<foreignObject|url\(|data:/i);
+  }, 120_000);
+
+  it("names exactly the mainnet RPC URLs in connect-src of the mainnet build, and no testnet URL", () => {
+    const page = html(build("csp-mainnet", "mainnet").out);
+    const meta = /<meta http-equiv="Content-Security-Policy" content="([^"]*)"/.exec(page);
+    const policy = (meta?.[1] ?? "").replaceAll("&#39;", "'");
+    expect(policy).toBe(contentSecurityPolicy(networks.mainnet));
+    const connect = /connect-src ([^;]*)/.exec(policy)?.[1]?.split(" ");
+    expect(connect).toEqual([...networks.mainnet.rpcUrls]);
+    for (const url of networks.testnet.rpcUrls) expect(page).not.toContain(url);
+  }, 120_000);
+
+  it("names exactly the testnet RPC URLs in connect-src of the testnet build, and no mainnet URL", () => {
+    const page = html(build("csp-testnet", "testnet").out);
+    const connect = /connect-src ([^;"]*)/.exec(page)?.[1]?.split(" ");
+    expect(connect).toEqual([...networks.testnet.rpcUrls]);
+    for (const url of networks.mainnet.rpcUrls) expect(page).not.toContain(url);
   }, 120_000);
 
   it("is not applied by the source index.html, so the development server is not locked out", () => {
