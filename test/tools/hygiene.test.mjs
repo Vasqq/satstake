@@ -116,7 +116,7 @@ function trackedFiles() {
 
 // Spelled out again, so a change to the words the scan looks for cannot also change what the fixtures use.
 const MARKER = "TO" + "DO";
-const FIXME = "FIX" + "ME";
+const SECOND_MARKER = "FIX" + "ME";
 
 describe("LLR-SB-005 the repository scans read the repository", () => {
   it("reads the contract, the application, the scripts, and the documents, each with its text", () => {
@@ -131,19 +131,19 @@ describe("LLR-SB-005 the marker scan", () => {
   it("flags both marker words, in any file type, with its location", () => {
     const files = [
       { path: "src/A.sol", text: `// ok\n// ${MARKER}: later\n` },
-      { path: "README.md", text: `${FIXME} this\n` },
+      { path: "README.md", text: `${SECOND_MARKER} this\n` },
       { path: "app/src/a.ts", text: `const x = 1; // ${MARKER}\n` },
     ];
     assert.deepEqual(findMarkers(files), ["src/A.sol:2", "README.md:1", "app/src/a.ts:1"]);
   });
 
   it("flags a marker word in any case (05 v1.25)", () => {
-    const files = [{ path: "app/src/a.ts", text: `// ${MARKER.toLowerCase()}: later\n// ${FIXME[0]}${FIXME.slice(1).toLowerCase()} this\n` }];
+    const files = [{ path: "app/src/a.ts", text: `// ${MARKER.toLowerCase()}: later\n// ${SECOND_MARKER[0]}${SECOND_MARKER.slice(1).toLowerCase()} this\n` }];
     assert.deepEqual(findMarkers(files), ["app/src/a.ts:1", "app/src/a.ts:2"]);
   });
 
   it("ignores a word that merely contains a marker and hyphenated prose", () => {
-    const files = [{ path: "docs/a.md", text: `${MARKER}S and A${FIXME} and the to-do list\n` }];
+    const files = [{ path: "docs/a.md", text: `${MARKER}S and A${SECOND_MARKER} and the to-do list\n` }];
     assert.deepEqual(findMarkers(files), []);
   });
 

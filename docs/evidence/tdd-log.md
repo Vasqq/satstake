@@ -6142,7 +6142,7 @@ Red (`node --test test/tools/hygiene.test.mjs`): 3 of 21 failed.
 | flags a log passed as a value or taken apart from console | fails: `p.catch(console.log)` and `const { log } = console` escaped |
 
 Green: 21 passed after the marker pattern took the `i` flag and the console pattern matched any use. The wider scan then found
-four real hits: a variable named `todo` in `script/seed.mjs`, renamed `pending`, and one TDD-log line quoting the searched
+four real hits: a variable in `script/seed.mjs` named after the marker word, renamed `pending`, and one TDD-log line quoting the searched
 words, reworded. `node --test test/tools/*.test.mjs` 475 passed. LLR-VV-001: `@trace` added to `isRetryableStatus` and
 `customDeadlineMessage`.
 
