@@ -1,0 +1,505 @@
+<title>SatStake Countdown</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@700;800;900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one 1120 px column on warm near-black; hairlines split rows; the countdown carries the drama. */
+:root {
+  --bg: #171717;
+  --card: rgba(255, 255, 255, 0.022);
+  --line: #2b2b2b;
+  --fg: #f0eee8;
+  --dim: #b4b1aa;
+  --label: #8f8c86;
+  --accent: #ec7432;
+  --accent-ink: #1b1005;
+  --display: "Inter Tight", "Inter", system-ui, sans-serif;
+  --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 17px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+/* Film grain: a fixed noise layer, so the black reads as printed rather than flat. */
+.grain { position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: 0.09; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+h1, h2, h3, p, dl, dd, blockquote, ol, ul { margin: 0; }
+ol, ul { list-style: none; padding: 0; }
+a { color: inherit; }
+button { font: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.screen { position: relative; z-index: 1; scroll-margin-top: 0; }
+.screen + .screen { border-top: 1px solid var(--line); }
+.wrap { max-width: 1120px; margin-inline: auto; padding-inline: clamp(16px, 4vw, 32px); }
+
+/* Header */
+.hdr { display: flex; align-items: center; gap: 28px; padding-block: 30px 28px; border-bottom: 1px solid var(--line); }
+.logo { font-family: var(--sans); font-weight: 700; font-size: 22px; letter-spacing: -0.02em; text-decoration: none; color: var(--fg); }
+.logo b { color: var(--accent); font-weight: 700; }
+.hdr nav { display: flex; gap: 6px; margin-left: auto; }
+.hdr nav a { color: var(--dim); text-decoration: none; font-size: 15px; font-weight: 500; padding: 8px 12px; border-radius: 999px; transition: color 160ms ease; }
+.hdr nav a:hover { color: var(--fg); }
+.ghost { color: var(--fg); text-decoration: none; font-size: 15px; font-weight: 600; padding: 9px 18px; border: 1px solid #4a4845; border-radius: 999px; transition: border-color 160ms ease; }
+.ghost:hover { border-color: var(--fg); }
+.wallet { font-family: var(--mono); font-size: 14px; letter-spacing: 0.04em; color: var(--dim); text-transform: uppercase; }
+.wallet code { font: inherit; text-transform: none; color: var(--fg); }
+
+/* Type */
+.label { font-family: var(--sans); font-size: 13px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--label); }
+.mono { font-family: var(--mono); }
+.display { font-family: var(--display); font-weight: 900; letter-spacing: -0.055em; line-height: 0.86; text-transform: lowercase; text-wrap: balance; }
+.display .hot { color: var(--accent); }
+h2.display { font-size: clamp(44px, 6vw, 76px); margin-bottom: 48px; }
+
+/* Buttons */
+.cta { display: inline-flex; align-items: center; gap: 10px; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 17px; text-decoration: none; padding: 16px 30px; border-radius: 999px; border: 0; transition: transform 160ms cubic-bezier(.23,1,.32,1), filter 160ms ease; }
+.cta:hover { filter: brightness(1.06); }
+.cta:active { transform: scale(0.97); }
+.cta .arr { transition: transform 200ms cubic-bezier(.23,1,.32,1); }
+@media (hover: hover) and (pointer: fine) { .cta:hover .arr { transform: translateX(3px); } }
+.textlink { color: var(--fg); font-weight: 600; text-decoration: underline; text-decoration-color: #5a5753; text-underline-offset: 6px; text-decoration-thickness: 1px; transition: text-decoration-color 160ms ease; }
+.textlink:hover { text-decoration-color: var(--fg); }
+.pill { display: inline-block; background: transparent; color: var(--fg); border: 1px solid #4a4845; border-radius: 999px; padding: 4px 12px; font-family: var(--sans); font-size: 13px; font-weight: 600; text-decoration: none; }
+.pill:hover { border-color: var(--fg); }
+
+/* Hero */
+.hero { padding-block: clamp(64px, 9vw, 112px) 48px; display: grid; gap: 34px; }
+.eyebrow { display: inline-flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); text-decoration: none; justify-self: start; }
+.eyebrow::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #4fd38a; box-shadow: 0 0 0 4px rgba(79,211,138,.14); }
+.hero h1 { font-size: clamp(64px, 10.5vw, 148px); margin-bottom: 8px; }
+.lead { font-size: clamp(18px, 1.7vw, 21px); line-height: 1.5; color: var(--dim); max-width: 50ch; }
+.lead strong { color: var(--fg); font-weight: 500; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 28px; }
+.need { font-size: 14px; color: var(--label); }
+.need a { color: var(--label); text-underline-offset: 4px; }
+
+/* Promise card: the product is its own hero image */
+.pcard { border: 1px solid var(--line); background: var(--card); border-radius: 28px; padding: clamp(24px, 3.5vw, 42px); }
+.pcard-top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.state { font-family: var(--mono); font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.quote { margin-top: 14px; font-family: var(--sans); font-weight: 600; font-size: clamp(22px, 2.6vw, 30px); line-height: 1.25; letter-spacing: -0.01em; }
+.clock { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 0 0.34em; font-family: var(--mono); font-weight: 400; font-size: clamp(40px, 7.4vw, 104px); line-height: 1; letter-spacing: -0.02em; color: var(--accent); font-variant-numeric: tabular-nums; }
+.clock span { white-space: nowrap; }
+.clock .colon { animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .clock .colon { animation: none; } }
+.facts { margin-top: 34px; padding-top: 30px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 1.25fr 1fr 1fr 1fr; gap: 24px 32px; }
+.facts dd { margin-top: 10px; font-family: var(--mono); font-size: 16px; color: var(--fg); }
+.facts dd small { display: block; color: var(--label); font-size: 13px; margin-top: 2px; }
+
+
+/* Rotating promise card. Every height is fixed so a short or long promise never moves the page. */
+.rot { position: relative; overflow: hidden; }
+.rot .pcard-top { align-items: center; }
+.rot-ctl { display: inline-flex; align-items: center; gap: 14px; }
+.count { font-size: 13px; letter-spacing: 0.08em; color: var(--label); font-variant-numeric: tabular-nums; }
+.rot-btn { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; border: 1px solid #4a4845; background: transparent; color: var(--fg); transition: border-color 160ms ease, transform 140ms cubic-bezier(0.23, 1, 0.32, 1); }
+.rot-btn:active { transform: scale(0.94); }
+@media (hover: hover) and (pointer: fine) { .rot-btn:hover { border-color: var(--fg); } }
+.rot-btn svg { width: 12px; height: 12px; fill: currentColor; }
+.rot-btn .i-play, .rot.paused .rot-btn .i-pause { display: none; }
+.rot.paused .rot-btn .i-play { display: block; }
+.rot .quote { min-height: 2.5em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.rot .slot { margin-top: 26px; }
+.rot .clock { margin-top: 0; min-height: 1em; }
+.rot .clock.ended { color: var(--fg); }
+.rot .sub { margin-top: 14px; font-size: 14px; color: var(--label); min-height: 1.5em; }
+.rot .sub code { font: inherit; color: var(--dim); }
+.rot .state.ended { color: var(--label); }
+.rot .facts dd { min-height: 2.6em; }
+.bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: transparent; }
+.bar .fill { display: block; height: 100%; background: var(--accent); transform-origin: left center; transform: scaleX(0); }
+.bar .fill.run { animation: fill 8s linear forwards; }
+.rot.paused .bar .fill.run { animation-play-state: paused; }
+@keyframes fill { to { transform: scaleX(1); } }
+.mock-note { margin-top: 14px; font-family: var(--mono); font-size: 12px; color: var(--label); }
+
+/* Sections */
+.sec { padding-block: clamp(80px, 10vw, 128px) 0; }
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; }
+.steps li { display: grid; gap: 14px; align-content: start; }
+.rule { display: flex; align-items: center; gap: 0; height: 10px; }
+.rule::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex: none; }
+.rule::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+.steps h3 { margin-top: 18px; }
+.steps p { color: var(--fg); font-size: 17px; line-height: 1.55; }
+.steps p em { color: var(--fg); font-style: italic; }
+.endings { margin-top: 64px; display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.endings > div { padding: 28px 28px 30px 0; }
+.endings > div + div { padding-left: 28px; border-left: 1px solid var(--line); }
+.endings dd { margin-top: 12px; font-family: var(--display); font-weight: 800; font-size: clamp(28px, 3.4vw, 42px); letter-spacing: -0.035em; line-height: 1; }
+.endings .k dd { color: var(--accent); }
+.silence { margin-top: 30px; font-size: 19px; font-weight: 600; }
+.uses { margin-top: 8px; color: var(--dim); font-style: italic; }
+.before { margin-top: 26px; color: var(--dim); }
+.before strong { color: var(--fg); }
+
+.claims { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 40px; }
+.claims li { padding-top: 22px; border-top: 1px solid var(--line); color: var(--dim); font-size: 16px; }
+.claims strong { display: block; color: var(--fg); font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+.limits { margin-top: 40px; padding: 24px 28px; border: 1px solid var(--line); border-radius: 20px; color: var(--dim); max-width: 860px; }
+.limits strong { color: var(--fg); }
+.proof { margin-top: 56px; padding-block: 26px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; font-family: var(--mono); font-size: 15px; color: var(--dim); }
+.proof b { display: block; font-weight: 400; font-size: clamp(28px, 3vw, 38px); color: var(--fg); letter-spacing: -0.02em; line-height: 1.1; margin-bottom: 6px; }
+.proof > div:nth-child(2) { text-align: center; } .proof > div:nth-child(3) { text-align: right; }
+
+.rev { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; }
+.why { font-size: 18px; line-height: 1.55; color: var(--fg); }
+.why + .label { margin-top: 36px; display: block; }
+.contract { margin-top: 12px; font-family: var(--mono); font-size: 15px; color: var(--fg); overflow-wrap: anywhere; }
+.ctl { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 10px; }
+.more { margin-top: 30px; display: grid; gap: 8px; color: var(--dim); font-size: 15px; }
+.ex { margin-top: 14px; }
+.ex li { display: grid; grid-template-columns: 38px 1fr auto; gap: 14px; align-items: baseline; padding: 15px 0; border-top: 1px solid var(--line); font-size: 15px; }
+.ex li:last-child { border-bottom: 1px solid var(--line); }
+.ex .id { font-family: var(--mono); color: var(--label); }
+.ex .st { font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--label); white-space: nowrap; }
+.ex .st.open { color: var(--accent); }
+
+.faq { display: grid; grid-template-columns: 1fr 1fr; gap: 0 56px; }
+.faq > div { padding-block: 24px 26px; border-top: 1px solid var(--line); }
+.faq dt { font-weight: 600; font-size: 18px; }
+.faq dd { margin-top: 8px; color: var(--dim); font-size: 16px; }
+
+.close { padding-block: clamp(96px, 12vw, 152px) clamp(80px, 10vw, 120px); display: grid; gap: 36px; justify-items: start; }
+.close h2 { font-size: clamp(52px, 8vw, 112px); margin: 0; }
+.ftr { display: flex; flex-wrap: wrap; gap: 12px 28px; padding-block: 26px 120px; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--label); }
+.ftr a { color: var(--dim); text-decoration: none; }
+.ftr a:hover { color: var(--fg); }
+.ftr span { margin-left: auto; }
+
+/* Pledge page */
+.mock-tag { display: block; padding-top: 28px; font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--label); }
+.banner { margin-top: 44px; display: flex; gap: 16px; align-items: flex-start; border: 1px solid #3b2a1f; background: rgba(236,116,50,.06); border-radius: 20px; padding: 20px 24px; font-size: 17px; color: var(--fg); }
+.banner::before { content: ""; flex: none; width: 9px; height: 9px; margin-top: 9px; border-radius: 50%; background: var(--accent); }
+.banner code { font-family: var(--mono); font-size: 15px; }
+.banner em { font-style: normal; font-weight: 600; }
+.pgrid { margin-top: 56px; display: grid; gap: 24px; }
+.ptitle { font-family: var(--display); font-weight: 800; font-size: clamp(36px, 5vw, 64px); line-height: 1.02; letter-spacing: -0.04em; text-wrap: balance; max-width: 18ch; }
+.stake { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; font-family: var(--mono); font-size: 17px; }
+.stake small { flex-basis: 100%; font-family: var(--sans); font-size: 14px; color: var(--label); }
+.timeline { margin-top: 30px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+.timeline li { display: grid; gap: 12px; align-content: start; }
+.timeline .rule::before { background: #4a4845; }
+.timeline .done .rule::before, .timeline .now .rule::before { background: var(--accent); }
+.timeline .done .rule::after { background: var(--accent); opacity: .6; }
+.timeline .now .rule::before { box-shadow: 0 0 0 5px rgba(236,116,50,.22); }
+.timeline .label { color: var(--label); }
+.timeline .now .label { color: var(--fg); }
+.people { margin-top: 8px; display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); }
+.people li { padding: 24px 24px 26px 0; }
+.people li + li { padding-left: 24px; border-left: 1px solid var(--line); }
+.people code { display: block; margin-top: 10px; font-family: var(--mono); font-size: 17px; }
+.people .you { font-family: var(--sans); font-size: 13px; color: var(--accent); font-weight: 600; margin-left: 6px; }
+.people .ctl { margin-top: 12px; }
+.verdict { margin-top: 24px; border: 1px solid var(--line); background: var(--card); border-radius: 28px; padding: clamp(24px, 3.5vw, 40px); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 24px; }
+.verdict h2 { font-family: var(--display); font-weight: 800; font-size: clamp(28px, 3.4vw, 40px); letter-spacing: -0.035em; line-height: 1.05; }
+.vbtns { display: flex; gap: 14px; }
+.vbtns button { padding: 15px 38px; border-radius: 999px; font-weight: 700; font-size: 17px; transition: transform 160ms cubic-bezier(.23,1,.32,1); }
+.vbtns button:active { transform: scale(0.97); }
+.vbtns .kept { background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent); }
+.vbtns .broken { background: transparent; color: var(--fg); border: 1px solid #6a6763; }
+.vbtns .broken:hover { border-color: var(--fg); }
+
+/* Screen switcher, only for this mockup */
+.switch { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 5; display: flex; gap: 4px; padding: 6px; background: rgba(10,10,10,.86); border: 1px solid #2f2f2f; border-radius: 999px; backdrop-filter: blur(8px); }
+.switch a { color: var(--dim); text-decoration: none; font-size: 14px; font-weight: 600; padding: 9px 18px; border-radius: 999px; white-space: nowrap; }
+.switch a:hover { color: var(--fg); }
+.switch a.on { background: var(--accent); color: var(--accent-ink); }
+body:has(#referee:target) .switch a.on { background: transparent; color: var(--dim); }
+body:has(#referee:target) .switch a[href="#referee"] { background: var(--accent); color: var(--accent-ink); }
+
+@media (max-width: 860px) {
+  .hdr nav { display: none; }
+  .facts, .steps, .endings, .claims, .rev, .faq, .people, .proof { grid-template-columns: 1fr; }
+  .facts { grid-template-columns: 1fr 1fr; }
+  .endings > div + div, .people li + li { padding-left: 0; border-left: 0; border-top: 1px solid var(--line); }
+  .proof > div:nth-child(n) { text-align: left; }
+  .steps, .claims { gap: 32px; }
+  .timeline { grid-template-columns: 1fr; gap: 20px; }
+}
+</style>
+
+<div class="grain" aria-hidden="true"></div>
+
+<!-- ============================ LANDING ============================ -->
+<div class="screen" id="landing">
+  <div class="wrap">
+    <header class="hdr">
+      <a class="logo" href="#landing">Sat<b>Stake</b>.</a>
+      <nav aria-label="Main"><a href="#how">How it works</a><a href="#faq">FAQ</a><a href="#landing">About</a></nav>
+      <a class="ghost" href="#referee">Open the app</a>
+    </header>
+
+    <section class="hero" aria-labelledby="h-hero">
+      <a class="eyebrow" href="https://explorer.arc.io/address/0xEbcda489EB528c573E9a190eB8EfE63b44d9204e" rel="noreferrer">Live on Arc mainnet</a>
+      <h1 class="display" id="h-hero">Put money behind your <span class="hot">promise.</span></h1>
+      <p class="lead">Lock USDC or Bitcoin-backed cirBTC against something you said you would do. A friend you choose confirms whether you kept it. <strong>Kept, and your money comes back.</strong> Missed, or no answer by the deadline, and it goes to the person you named.</p>
+      <div class="actions"><a class="cta" href="#referee">Make a promise <span class="arr" aria-hidden="true">→</span></a><a class="textlink" href="#referee">See a live promise</a></div>
+      <p class="need"><a href="#faq">You need a browser wallet on Arc with a little USDC for network fees.</a></p>
+    </section>
+
+    <article class="pcard rot" id="rot" aria-roledescription="carousel" aria-label="Recent promises on Arc mainnet">
+      <div class="pcard-top">
+        <span class="part"><span class="label" data-f="id">Promise #4</span> <span class="state" data-f="state">Open</span></span>
+        <span class="rot-ctl">
+          <span class="count mono" data-f="count" aria-hidden="true">01 / 04</span>
+          <button type="button" class="rot-btn" id="rot-pause" aria-label="Pause the rotation" aria-pressed="false">
+            <svg class="i-pause" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1.5" width="2.6" height="9" rx="1"/><rect x="7.4" y="1.5" width="2.6" height="9" rx="1"/></svg>
+            <svg class="i-play" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4c0 .5.5.8.9.5l6.6-4.2c.4-.2.4-.8 0-1L3.9 1.3C3.5 1 3 1.3 3 1.8z"/></svg>
+          </button>
+        </span>
+      </div>
+      <blockquote class="quote part" data-f="text">“Publish the first release notes by the end of October.”</blockquote>
+      <div class="slot part">
+        <p class="clock" data-f="big" aria-label="Time left"><span>26d</span><span>04h</span><span>12m</span><span>09s</span></p>
+        <p class="sub mono" data-f="sub">Deadline Nov 1, 2026, 12:00 AM UTC</p>
+      </div>
+      <dl class="facts part">
+        <div><dt class="label">Stake</dt><dd data-f="stake">1,000 sats<small>0.00001 cirBTC</small></dd></div>
+        <div><dt class="label">Made it</dt><dd>0xd172…809f</dd></div>
+        <div><dt class="label">Judges it</dt><dd>0x0Fb1…E4B9</dd></div>
+        <div><dt class="label">Gets it if missed</dt><dd>0x8bc7…1cad</dd></div>
+      </dl>
+      <span class="bar" aria-hidden="true"><span class="fill" id="rot-fill"></span></span>
+    </article>
+    <p class="mock-note">Mockup: the four promises seeded on mainnet, newest first. Their outcomes here are placeholders until read from the chain.</p>
+
+    <section class="sec" id="how" aria-labelledby="h-how">
+      <h2 class="display" id="h-how">How it works</h2>
+      <ol class="steps">
+        <li><span class="rule" aria-hidden="true"></span><h3 class="label">01. Promise and lock.</h3><p>Alex promises: <em>I'll run three times this week.</em> Alex locks $20 in USDC, picks Sunday 9 pm as the deadline, and names a brother, Jo, to receive it if the promise is missed.</p></li>
+        <li><span class="rule" aria-hidden="true"></span><h3 class="label">02. Share and judge.</h3><p>Alex sends the promise's link to Sam, the referee. SatStake sends no messages; the link is how Sam finds it. Before Sunday 9 pm, Sam marks it kept or broken. Only Sam can mark it, and once marked it is final.</p></li>
+        <li><span class="rule" aria-hidden="true"></span><h3 class="label">03. The money moves.</h3><p>Anyone can then send the stake where the rules say:</p></li>
+      </ol>
+      <dl class="endings">
+        <div class="k"><dt class="label">Kept</dt><dd>Back to Alex</dd></div>
+        <div><dt class="label">Broken</dt><dd>To Jo</dd></div>
+        <div><dt class="label">No answer by the deadline</dt><dd>To Jo</dd></div>
+      </dl>
+      <p class="silence">Silence counts as broken, so make sure your referee answers in time.</p>
+      <p class="uses">People use it for habits, friendly bets, work deadlines, or a donation to a cause if they miss.</p>
+      <p class="before"><strong>Before you start:</strong> a promise cannot be cancelled or changed once made, and every promise is public.</p>
+    </section>
+
+    <section class="sec" aria-labelledby="h-trust">
+      <h2 class="display" id="h-trust">Why you can trust it</h2>
+      <ul class="claims">
+        <li><strong>Rules, not people, move the money.</strong>After a promise is made, the stake can only go back to you or to the person you named, by the rules above.</li>
+        <li><strong>No owner, no fees, no admin.</strong>Not even the builder can touch a promise.</li>
+        <li><strong>Anyone can check.</strong>Every promise is public and readable without a wallet, and the source code is verified.</li>
+      </ul>
+      <p class="limits"><strong>What it cannot do, said plainly:</strong> your referee is trusted by you and could judge you unfairly. Circle, which issues USDC and cirBTC, can pause a token or block an address, which can hold a payout until it is lifted. It is tested, not audited.</p>
+      <div class="proof">
+        <div><b>4</b>Promises made</div>
+        <div><b>$1 in USDC</b>Locked now</div>
+        <div><b>1,000 sats</b>Locked now, 0.00001 cirBTC</div>
+      </div>
+    </section>
+
+    <section class="sec" aria-labelledby="h-rev">
+      <h2 class="display" id="h-rev">For reviewers</h2>
+      <div class="rev">
+        <div>
+          <span class="label">Why Arc</span>
+          <p class="why" style="margin-top:12px">“SatStake uses cirBTC as the stake, USDC as gas so a $5 promise costs cents to make, and Arc's deterministic finality so a forfeit is final the moment it lands.”</p>
+          <span class="label">Contract</span>
+          <p class="contract">0xEbcda489EB528c573E9a190eB8EfE63b44d9204e</p>
+          <div class="ctl"><button class="pill" type="button">Copy</button><a class="pill" href="https://repo.sourcify.dev/5042/0xEbcda489EB528c573E9a190eB8EfE63b44d9204e">Verified on Sourcify</a><a class="pill" href="https://explorer.arc.io/address/0xEbcda489EB528c573E9a190eB8EfE63b44d9204e" rel="noreferrer">View on explorer</a></div>
+          <div class="more"><span><a class="textlink" href="https://github.com/Vasqq/satstake">GitHub repository</a>, built test first, every requirement traced to its test</span><span><a class="textlink" href="#landing">Demo video</a></span></div>
+        </div>
+        <div>
+          <span class="label">Examples made by the builder</span>
+          <ol class="ex">
+            <li><span class="id">#1</span><span>Walk for thirty minutes every day this week.</span><span class="st">Kept</span></li>
+            <li><span class="id">#2</span><span>Send the draft to the editor before the deadline.</span><span class="st">No answer by the deadline</span></li>
+            <li><span class="id">#3</span><span>Cook dinner at home on all five weekdays.</span><span class="st">Broken</span></li>
+            <li><span class="id">#4</span><span>Publish the first release notes by the end of October.</span><span class="st open">Open</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" id="faq" aria-labelledby="h-faq">
+      <h2 class="display" id="h-faq">Questions</h2>
+      <dl class="faq">
+        <div><dt>What do I need?</dt><dd>A browser wallet with <a class="textlink" href="https://docs.arc.io">the Arc network</a> added, and <a class="textlink" href="https://www.circle.com">some USDC on Arc</a>: fees are paid in USDC and cost cents.</dd></div>
+        <div><dt>What if my referee does not answer?</dt><dd>After the deadline the referee can no longer answer, and the stake goes to the person you named. Pick someone who will reply.</dd></div>
+        <div><dt>Can I cancel or change a promise?</dt><dd>No. Only the referee's verdict or the deadline decides it.</dd></div>
+        <div><dt>Does SatStake charge anything?</dt><dd>No. Only Arc's network fee, a few cents in USDC.</dd></div>
+        <div><dt>Who can see my promise?</dt><dd>Anyone. Promises are public on the blockchain, with or without the link. Do not write anything private in one.</dd></div>
+      </dl>
+    </section>
+
+    <section class="close" aria-labelledby="h-close">
+      <h2 class="display" id="h-close">Ready to put something on <span class="hot">it?</span></h2>
+      <a class="cta" href="#referee">Make a promise <span class="arr" aria-hidden="true">→</span></a>
+    </section>
+
+    <footer class="ftr"><a href="#landing">About and limits</a><a href="https://github.com/Vasqq/satstake">GitHub</a><a href="https://explorer.arc.io/address/0xEbcda489EB528c573E9a190eB8EfE63b44d9204e" rel="noreferrer">Contract on the explorer</a><span>Built on Arc</span></footer>
+  </div>
+</div>
+
+<!-- ============================ REFEREE VIEW ============================ -->
+<div class="screen" id="referee">
+  <div class="wrap">
+    <span class="mock-tag">Pledge page, as the referee sees it while the promise is open</span>
+    <header class="hdr">
+      <a class="logo" href="#landing">Sat<b>Stake</b>.</a>
+      <nav aria-label="App"><a href="#referee">My promises</a><a href="#referee">New promise</a></nav>
+      <span class="wallet">Connected: <code>0x0Fb1…E4B9</code></span>
+    </header>
+
+    <div class="banner" role="note"><p><code>0xd172…809f</code> named you the referee. By <em>Nov 1, 2026, 12:00 AM UTC</em>, decide: was this promise kept? Your answer is final. The stake never passes through you. Silence counts as broken. Answering needs a wallet on Arc with a few cents of USDC for the network fee.</p></div>
+
+    <div class="pgrid">
+      <span class="label">Promise #4</span>
+      <h1 class="ptitle">“Publish the first release notes by the end of October.”</h1>
+      <p class="stake"><span>1,000 sats, 0.00001 cirBTC</span><small>a sat is the smallest unit of Bitcoin</small></p>
+    </div>
+
+    <article class="pcard" style="margin-top:40px" aria-label="Progress">
+      <ol class="timeline">
+        <li class="done"><span class="rule" aria-hidden="true"></span><span class="label">Made</span></li>
+        <li class="now" aria-current="step"><span class="rule" aria-hidden="true"></span><span class="label">Judged</span></li>
+        <li><span class="rule" aria-hidden="true"></span><span class="label">Paid out</span></li>
+      </ol>
+      <p class="clock" aria-label="Time left: 26 days 4 hours"><span>26d</span><span>04h</span><span>12m</span><span>09s</span></p>
+      <ul class="people" style="margin-top:34px">
+        <li><span class="label">Made it</span><code title="0xd1728F74Ac083a0F9B41a3Ec16ed3A25af33809f">0xd172…809f</code><div class="ctl"><button class="pill" type="button">Copy</button><a class="pill" href="https://explorer.arc.io/address/0xd1728F74Ac083a0F9B41a3Ec16ed3A25af33809f" rel="noreferrer">View on explorer</a></div></li>
+        <li><span class="label">Judges it</span><code title="0x0Fb1b0C69dD6bD29C8Ec3057a3cF16d0ABD9E4B9">0x0Fb1…E4B9<span class="you">(you)</span></code><div class="ctl"><button class="pill" type="button">Copy</button><a class="pill" href="https://explorer.arc.io/address/0x0Fb1b0C69dD6bD29C8Ec3057a3cF16d0ABD9E4B9" rel="noreferrer">View on explorer</a></div></li>
+        <li><span class="label">Gets it if missed</span><code title="0x8bc7639eB29f2CaEc085E52eC1Fe0D0Ee8581cad">0x8bc7…1cad</code><div class="ctl"><button class="pill" type="button">Copy</button><a class="pill" href="https://explorer.arc.io/address/0x8bc7639eB29f2CaEc085E52eC1Fe0D0Ee8581cad" rel="noreferrer">View on explorer</a></div></li>
+      </ul>
+    </article>
+
+    <section class="verdict" aria-labelledby="h-verdict">
+      <h2 id="h-verdict">Was this promise kept?</h2>
+      <div class="vbtns"><button type="button" class="kept">Kept</button><button type="button" class="broken">Broken</button></div>
+    </section>
+
+    <footer class="ftr" style="margin-top:96px"><a href="#landing">About and limits</a><a href="https://github.com/Vasqq/satstake">GitHub</a><a href="https://explorer.arc.io/address/0xEbcda489EB528c573E9a190eB8EfE63b44d9204e" rel="noreferrer">Contract on the explorer</a><span>Built on Arc</span></footer>
+  </div>
+</div>
+
+<nav class="switch" aria-label="Mockup screens"><a class="on" href="#landing">Landing</a><a href="#referee">Referee view</a></nav>
+
+<script>
+(() => {
+  // The four seeded mainnet promises, newest first. The live site reads the latest few from the contract.
+  const PROMISES = [
+    { id: 4, text: "Publish the first release notes by the end of October.", deadline: 1793491200, state: "Open",
+      stake: "1,000 sats", stakeSub: "0.00001 cirBTC" },
+    { id: 3, text: "Cook dinner at home on all five weekdays.", state: "Broken", big: "Broken",
+      sub: "The stake goes to <code>0x8bc7…1cad</code>", stake: "$1 in USDC" },
+    { id: 2, text: "Send the draft to the editor before the deadline.", state: "No answer by the deadline", big: "No answer",
+      sub: "Silence counts as broken. The stake goes to <code>0x8bc7…1cad</code>", stake: "$1 in USDC" },
+    { id: 1, text: "Walk for thirty minutes every day this week.", state: "Kept", big: "Kept",
+      sub: "The stake goes back to <code>0xd172…809f</code>", stake: "1,000 sats", stakeSub: "0.00001 cirBTC" },
+  ];
+  const EASE_OUT = "cubic-bezier(0.23, 1, 0.32, 1)";
+  const card = document.getElementById("rot");
+  if (!card) return;
+  const f = (k) => card.querySelector(`[data-f="${k}"]`);
+  const parts = [...card.querySelectorAll(".part")];
+  const fill = document.getElementById("rot-fill");
+  const btn = document.getElementById("rot-pause");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+  const pad = (n) => String(n).padStart(2, "0");
+  const fmtDate = new Intl.DateTimeFormat("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC", timeZoneName: "short" });
+  let i = 0, userPaused = false, hovering = false, hidden = false, offscreen = false;
+
+  function clockParts(deadline) {
+    let s = Math.max(0, deadline - Math.floor(Date.now() / 1000));
+    const d = Math.floor(s / 86400); s -= d * 86400;
+    const h = Math.floor(s / 3600); s -= h * 3600;
+    const m = Math.floor(s / 60); s -= m * 60;
+    return { d, h, m, s };
+  }
+  function renderClock() {
+    const p = PROMISES[i];
+    if (p.state !== "Open") return;
+    const c = clockParts(p.deadline);
+    const big = f("big");
+    big.innerHTML = `<span>${pad(c.d)}d</span><span>${pad(c.h)}h</span><span>${pad(c.m)}m</span><span>${pad(c.s)}s</span>`;
+    big.setAttribute("aria-label", `Time left: ${c.d} days ${c.h} hours`);
+  }
+  function render() {
+    const p = PROMISES[i];
+    const open = p.state === "Open";
+    f("id").textContent = `Promise #${p.id}`;
+    f("state").textContent = p.state;
+    f("state").classList.toggle("ended", !open);
+    f("text").textContent = `“${p.text}”`;
+    f("count").textContent = `${pad(i + 1)} / ${pad(PROMISES.length)}`;
+    f("stake").innerHTML = p.stake + (p.stakeSub ? `<small>${p.stakeSub}</small>` : "");
+    const big = f("big");
+    big.classList.toggle("ended", !open);
+    if (open) {
+      renderClock();
+      f("sub").textContent = `Deadline ${fmtDate.format(new Date(p.deadline * 1000))}`;
+    } else {
+      big.textContent = p.big;
+      big.setAttribute("aria-label", p.state);
+      f("sub").innerHTML = p.sub;
+    }
+  }
+
+  // The bar's own animation is the timer, so pausing the bar pauses the rotation with it.
+  function restartBar() {
+    fill.classList.remove("run");
+    void fill.offsetWidth;
+    fill.classList.add("run");
+  }
+  function go(next) {
+    i = (next + PROMISES.length) % PROMISES.length;
+    parts.forEach((el) => el.getAnimations().forEach((a) => a.cancel()));
+    if (reduce.matches) {
+      // Fewer and gentler: a plain crossfade, no movement or blur.
+      render();
+      parts.forEach((el) => el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: "ease" }));
+    } else {
+      const out = parts.map((el) => el.animate(
+        [{ opacity: 1, transform: "none", filter: "blur(0)" }, { opacity: 0, transform: "translateY(-6px)", filter: "blur(4px)" }],
+        { duration: 180, easing: EASE_OUT, fill: "forwards" }));
+      out[0].finished.then(() => {
+        render();
+        parts.forEach((el, k) => {
+          el.getAnimations().forEach((a) => a.cancel());
+          el.animate(
+            [{ opacity: 0, transform: "translateY(10px)", filter: "blur(4px)" }, { opacity: 1, transform: "none", filter: "blur(0)" }],
+            { duration: 420, delay: k * 50, easing: EASE_OUT, fill: "backwards" });
+        });
+      }).catch(() => {});
+    }
+    restartBar();
+  }
+  function syncPaused() {
+    const paused = userPaused || hovering || hidden || offscreen;
+    card.classList.toggle("paused", paused);
+  }
+
+  fill.addEventListener("animationend", () => go(i + 1));
+  btn.addEventListener("click", () => {
+    userPaused = !userPaused;
+    btn.setAttribute("aria-pressed", String(userPaused));
+    btn.setAttribute("aria-label", userPaused ? "Resume the rotation" : "Pause the rotation");
+    syncPaused();
+  });
+  card.addEventListener("pointerenter", () => { hovering = true; syncPaused(); });
+  card.addEventListener("pointerleave", () => { hovering = false; syncPaused(); });
+  card.addEventListener("focusin", () => { hovering = true; syncPaused(); });
+  card.addEventListener("focusout", (e) => { if (!card.contains(e.relatedTarget)) { hovering = false; syncPaused(); } });
+  document.addEventListener("visibilitychange", () => { hidden = document.hidden; syncPaused(); });
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(([e]) => { offscreen = !e.isIntersecting; syncPaused(); }, { threshold: 0.25 }).observe(card);
+  }
+  setInterval(renderClock, 1000);
+  render();
+  restartBar();
+})();
+</script>
