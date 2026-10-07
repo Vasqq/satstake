@@ -1,8 +1,6 @@
 name: Pages
 
-# Publishes the site. It builds testnet until the mainnet contract exists; the mainnet deployment group
-# switches the build target (UJ-84). The working branch deploys too, because work lands there first
-# and the testnet dry run of every journey needs the real site.
+# Publishes the mainnet site (UJ-84). The working branch deploys too, because work lands there first.
 on:
   push:
     branches: [main, worktree-fe-config-reading]
@@ -33,9 +31,10 @@ jobs:
       - name: Install dependencies
         working-directory: app
         run: npm ci --ignore-scripts
-      - name: Build for testnet
+      # LLR-DP-008: the published site is the mainnet build.
+      - name: Build for mainnet
         working-directory: app
-        run: npm run build:testnet
+        run: npm run build:mainnet
       # LLR-FE-070: the published home view must carry the one sentence of NS section 1, read from the
       # North Star itself, so a placeholder or an edited sentence never reaches the public site.
       - name: The site carries the North Star sentence
