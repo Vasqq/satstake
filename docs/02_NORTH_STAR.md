@@ -1,12 +1,14 @@
 # 02 North Star
 
-Version 1.1, 2026-09-24. This document states what SatStake is, who it serves, and which properties it must never lose. Every high-level requirement traces to a section here.
+Version 1.2, 2026-10-07 (section 1: where the sentence appears, since the landing page now leads with a plain-words heading; 05 v1.26). This document states what SatStake is, who it serves, and which properties it must never lose. Every high-level requirement traces to a section here.
 
 Tags: [D] decided. [S] supported by evidence (see 01_VERIFICATION_PASS.md). [A] assumption. [Q] open question. Open questions are not decisions.
 
 ## 1. The one sentence
 
 Lock Bitcoin against a promise. Keep it and you get your sats back. Miss it and they go to someone else. [D]
+
+The sentence opens the README and the submission. The landing page leads instead with "Put money behind your promise.", which says the same thing to a reader who has not met cirBTC, and carries the sentence in its footer. [D]
 
 ## 2. Problem
 
