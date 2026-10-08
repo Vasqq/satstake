@@ -6153,3 +6153,16 @@ words, reworded. `node --test test/tools/*.test.mjs` 475 passed. LLR-VV-001: `@t
 | 1352 | console pattern matches only a call | killed |
 
 Restore checked with `cmp`; the copy deleted.
+
+## 05 v1.27: wording and style released to Liam (2026-10-08)
+
+Liam takes over the look and the words of the application. Per section 10 of the verification plan, the tests that pinned released wording or style are removed or narrowed in the same change as the requirements (05 v1.27), and nothing that guards behaviour, security, or honesty is weakened.
+
+- `app/src/chain/errors.test.ts`: every listed ABI error and the token revert must have a message with words in it; the shown message is compared with the application's own map, no longer with the 05 section 2.2 wording. The NS P7 claim check stays.
+- `app/src/userStrings.test.ts`: the scan keeps the four claim words of LLR-FE-071 (trustless, guaranteed, unstoppable, 100% secure); the em dash and the two hype words are no longer requirements.
+- `app/src/views/HomeView.test.tsx`: the North Star sentence, the step wording, the title, and the Arc sentence are gone; the calls to action, the network, the full contract address with its copy control, and the explorer and Sourcify links are found by what they do (hrefs, the address text), not by labels. The live count tests stay.
+- `app/src/views/AboutView.test.tsx` removed: it checked phrasing; the About content is discharged by the LLR-FE-071 inspection row.
+- `app/src/views/pledge/pledgeStyles.test.ts` removed and `app/src/styles.test.ts` reduced to LLR-FE-073 (no import, no off-origin url()), a visible focus outline, and the viewport declaration. AA contrast is now checked by inspection of the final styles.
+- `.github/workflows/pages.yml`: the step that failed the deploy unless the site quoted NS section 1 is removed.
+
+Result: app 992 passed, 9 skipped; lint and typecheck clean; tool tests 475 passed; trace check OK, 106 of 113.

@@ -1,6 +1,6 @@
 # Brief: the restyle and the landing structure
 
-Written by the lead on 2026-10-07, before any code, for the groups that carry out 05 v1.26. Requirement text wins over this brief; the copy comes from `docs/BRIEF_LANDING.md` (version 2) and, for strings that brief does not change, from `docs/BRIEF_PLEDGE_AND_VIEWS.md`. Implementers do not invent user-facing copy: if a string is missing, stop and ask the lead.
+Guidance only (05 v1.27, 2026-10-08): Liam owns the look and the words, so nothing here binds; it records the approved design. Written by the lead on 2026-10-07. Requirement text wins over this brief; the copy comes from `docs/BRIEF_LANDING.md` (version 2) and, for strings that brief does not change, from `docs/BRIEF_PLEDGE_AND_VIEWS.md`. Implementers do not invent user-facing copy: if a string is missing, stop and ask the lead.
 
 The approved look is `docs/design/mockup-landing-and-referee.html` (open it in a browser). It is a reference, not code to copy: it loads fonts from Google, which the app may not (LLR-FE-073), and its rotating card uses the four seeded promises with placeholder outcomes.
 

@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import { satStakeAbi } from "../abi";
 import { ERROR_MESSAGES, TOKEN_REVERT_MESSAGE, userMessageFor } from "./errors";
 
-// The normative table, read from the requirements document itself, so a message that drifts from 05
-// section 2.2 fails here and nobody has to remember to update a copy.
+// Section 2.2 is read for its list of errors, which says which ones need a message. Its wording is not
+// binding (05 v1.27), so the messages themselves are free to change.
 const llr = readFileSync(resolve(import.meta.dirname, "../../../docs/05_LLR.md"), "utf8");
 const section = llr.slice(llr.indexOf("### 2.2 Error messages"), llr.indexOf("### 2.3 Requirements"));
 const table = new Map(
@@ -22,29 +22,21 @@ const abiErrorNames = abiErrors.map((e) => e.name);
 // produce it, and 2.2 gives it no row.
 const CONSTRUCTOR_ONLY = ["InvalidAllowlist"];
 
-describe("LLR-FE-060 LLR-VV-006 every custom error in the contract ABI has the message of section 2.2", () => {
+describe("LLR-FE-060 LLR-VV-006 every custom error in the contract ABI has a message", () => {
   it("reads the table and the ABI, and not nothing", () => {
     expect(table.size).toBeGreaterThanOrEqual(20);
-    expect(table.get("ZeroAmount")).toBe("Enter an amount above zero.");
     expect(abiErrorNames.length).toBeGreaterThanOrEqual(20);
     expect(abiErrorNames).toContain("SafeERC20FailedOperation");
     expect(abiErrorNames).toContain("ReentrancyGuardReentrantCall");
   });
 
-  it("maps each ABI error that section 2.2 lists to the words of its row", () => {
+  it("gives each ABI error that section 2.2 lists a message with words in it", () => {
     const missing: string[] = [];
     for (const name of abiErrorNames) {
-      const row = table.get(name);
-      if (row === undefined) continue;
-      if (ERROR_MESSAGES[name] !== row) missing.push(name);
+      if (!table.has(name)) continue;
+      if (!(ERROR_MESSAGES[name] ?? "").trim()) missing.push(name);
     }
     expect(missing).toEqual([]);
-  });
-
-  it("says nothing changed for a token that refused the transfer, since settle raises it too and nothing is locked there", () => {
-    expect(ERROR_MESSAGES.SafeERC20FailedOperation).toBe(
-      "The token refused the transfer. Nothing changed. You can try again later.",
-    );
   });
 
   it("leaves unmapped only the constructor-only errors that LLR-FE-060 excludes, which are the ones section 2.2 does not list", () => {
@@ -65,14 +57,13 @@ describe("LLR-FE-060 LLR-VV-006 every custom error in the contract ABI has the m
     expect(other.sort()).toEqual(["Token revert on transfer", "Wallet rejection (4001)"]);
   });
 
-  it("gives the token revert the words of its row", () => {
-    expect(TOKEN_REVERT_MESSAGE).toBe(table.get("Token revert on transfer"));
-    expect(TOKEN_REVERT_MESSAGE).not.toBe("");
+  it("gives the token revert a message with words in it", () => {
+    expect(TOKEN_REVERT_MESSAGE.trim()).not.toBe("");
   });
 
-  it("uses no em dash, no hype word, and no first person plural in any message", () => {
+  it("claims nothing NS P7 rules out in any message", () => {
     for (const message of [...Object.values(ERROR_MESSAGES), TOKEN_REVERT_MESSAGE]) {
-      expect(message).not.toMatch(/—|trustless|guaranteed|seamless|\bwe\b/i);
+      expect(message).not.toMatch(/trustless|guaranteed|unstoppable|100% secure/i);
     }
   });
 });
@@ -96,20 +87,20 @@ describe("LLR-FE-060 a failed request shows the message of the error the contrac
     "shows the message of %s when a send fails with it",
     (name, item) => {
       const error = revert(satStakeAbi as Abi, name, item.inputs.map((i) => sample(i.type)));
-      expect(userMessageFor(error)).toBe(table.get(name));
+      expect(userMessageFor(error)).toBe(ERROR_MESSAGES[name]);
     },
   );
 
   it("finds the error however deep in the cause chain it sits", () => {
     const inner = revert(satStakeAbi as Abi, "DeadlineTooSoon", [1n]);
     const wrapped = new BaseError("outer", { cause: new BaseError("middle", { cause: inner }) });
-    expect(userMessageFor(wrapped)).toBe(table.get("DeadlineTooSoon"));
+    expect(userMessageFor(wrapped)).toBe(ERROR_MESSAGES.DeadlineTooSoon);
   });
 
   it("shows the token's message for a revert string, which SatStake never raises itself", () => {
     const error = revert(errorString, "Error", ["Blacklistable: account is blacklisted"], "approve");
-    expect(userMessageFor(error)).toBe(table.get("Token revert on transfer"));
-    expect(userMessageFor(new BaseError("wrapped", { cause: error }))).toBe(table.get("Token revert on transfer"));
+    expect(userMessageFor(error)).toBe(TOKEN_REVERT_MESSAGE);
+    expect(userMessageFor(new BaseError("wrapped", { cause: error }))).toBe(TOKEN_REVERT_MESSAGE);
   });
 
   it("shows nothing for a panic, an unknown error, an empty revert, or a failure that is not a revert", () => {

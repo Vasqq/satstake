@@ -1,6 +1,6 @@
 # Brief: landing page and app structure
 
-Status: version 2, 2026-10-05, accepted on 2026-10-07: 05 v1.26 and NS v1.2 carry its changes, and the requirements name its texts. Content and structure only; the theme is the dark design approved on 2026-10-06. Each change it implies goes into 02, 04, or 05 first, with a change-log row, before any code (06 section 10). Section 9 lists them. Version 2 applies an independent content review (Sonnet): a shorter page, two overclaims removed, and pledge-page banners rewritten for someone arriving cold.
+Status: version 2, 2026-10-05. Guidance only (05 v1.27): Liam owns the words and the look of the application, and the requirements bind only behaviour, security, and honesty. Kept as a record of the content thinking. Each change it implies goes into 02, 04, or 05 first, with a change-log row, before any code (06 section 10). Section 9 lists them. Version 2 applies an independent content review (Sonnet): a shorter page, two overclaims removed, and pledge-page banners rewritten for someone arriving cold.
 
 Why this exists: the current home page explains the contract, not the product. Someone landing on it, Liam included, could not say what SatStake is for. The North Star's first success criterion is that a grant reviewer understands the product within 10 seconds of landing (NS 9).
 

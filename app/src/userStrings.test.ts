@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import { networks } from "./config/networks";
 
 const SRC = import.meta.dirname;
-const EM_DASH = String.fromCharCode(0x2014);
-const BANNED_WORDS = ["trustless", "guaranteed", "unstoppable", "seamless", "revolutionary", "100% secure"];
+// The words that would claim more than NS P7 allows. Wording and style are otherwise free (05 v1.27).
+const BANNED_WORDS = ["trustless", "guaranteed", "unstoppable", "100% secure"];
 
 /**
  * Every string a source file can show a visitor: string literals, the pieces of template literals, and the
@@ -34,9 +34,7 @@ function userStrings(source: string, fileName = "file.tsx"): string[] {
 
 function problemsIn(text: string): string[] {
   const lower = text.toLowerCase();
-  const problems = BANNED_WORDS.filter((word) => lower.includes(word));
-  if (text.includes(EM_DASH)) problems.push("U+2014");
-  return problems;
+  return BANNED_WORDS.filter((word) => lower.includes(word));
 }
 
 /** Test files and test support hold the banned words on purpose, as examples to refuse, and show no one anything. */
@@ -49,9 +47,8 @@ function applicationSources(dir: string): string[] {
 }
 
 describe("LLR-FE-071 the scan refuses exactly what the requirement names", () => {
-  it("lists the six banned words of the requirement, so the list cannot be shortened unseen", () => {
-    expect(BANNED_WORDS).toEqual(["trustless", "guaranteed", "unstoppable", "seamless", "revolutionary", "100% secure"]);
-    expect(EM_DASH).toBe("\u2014");
+  it("lists the four banned words of the requirement, so the list cannot be shortened unseen", () => {
+    expect(BANNED_WORDS).toEqual(["trustless", "guaranteed", "unstoppable", "100% secure"]);
   });
 });
 
@@ -63,12 +60,6 @@ describe("LLR-FE-071 the scan reads every kind of user-facing string", () => {
     expect(strings).toEqual(expect.arrayContaining(["plain", "head ", " tail", "jsx text"]));
     expect(strings.join("|")).not.toContain("comment words");
     expect(strings.join("|")).not.toContain("block words");
-  });
-
-  it("reports the em dash in a literal, a template, and JSX text", () => {
-    for (const source of [`const a = "one ${EM_DASH} two";`, `const a = \`x ${EM_DASH} \${1}\`;`, `const a = <p>one ${EM_DASH} two</p>;`]) {
-      expect(userStrings(source).flatMap(problemsIn), source).toEqual(["U+2014"]);
-    }
   });
 
   it("reports each banned word whatever its case, and a clean string passes", () => {
@@ -98,8 +89,8 @@ function htmlStrings(html: string): string[] {
 
 describe("LLR-FE-071 the scan also reads the page shell and the network names", () => {
   it("reads the title and the meta content of an HTML file", () => {
-    const html = `<head><meta name="description" content="one ${EM_DASH} two" /><title>Seamless</title></head>`;
-    expect(htmlStrings(html).flatMap(problemsIn)).toEqual(["seamless", "U+2014"]);
+    const html = `<head><meta name="description" content="fully trustless" /><title>Guaranteed</title></head>`;
+    expect(htmlStrings(html).flatMap(problemsIn)).toEqual(["guaranteed", "trustless"]);
   });
 
   it("holds for the title and meta content of app/index.html", () => {
@@ -116,7 +107,7 @@ describe("LLR-FE-071 the scan also reads the page shell and the network names", 
   });
 });
 
-describe("LLR-FE-071 LLR-VV-006 no user-facing string holds U+2014 or a banned word", () => {
+describe("LLR-FE-071 LLR-VV-006 no user-facing string holds a banned word", () => {
   it("holds for every string in app/src", () => {
     const offences = applicationSources(SRC).flatMap((path) =>
       userStrings(readFileSync(path, "utf8"), path).flatMap((text) =>
