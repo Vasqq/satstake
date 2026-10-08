@@ -115,7 +115,7 @@ export function WalletBar({ network }: { network: SelectedNetwork }) {
         )
       ) : options.length > 0 ? (
         <>
-          <p>Connect a wallet to create or settle a pledge. You can read every page without one.</p>
+          <p>Connect a wallet to create or settle a promise. You can read every page without one.</p>
           <ul>
             {options.map(({ connector, label }) => (
               <li key={connector.uid}>
@@ -128,7 +128,7 @@ export function WalletBar({ network }: { network: SelectedNetwork }) {
         </>
       ) : (
         <p>
-          Creating or settling a pledge needs a browser wallet. On a phone, open this page in your wallet app&apos;s
+          Creating or settling a promise needs a browser wallet. On a phone, open this page in your wallet app&apos;s
           browser. You can read every page without one.
         </p>
       )}

@@ -38,10 +38,11 @@ describe("LLR-FE-073 the Content-Security-Policy limits connect-src to the confi
     expect(d["script-src"]).toEqual(["'self'"]);
     expect(d["style-src"]).toEqual(["'self'"]);
     expect(d["img-src"]).toEqual(["'self'"]);
+    expect(d["font-src"]).toEqual(["'self'"]);
     expect(d["base-uri"]).toEqual(["'none'"]);
     expect(d["form-action"]).toEqual(["'none'"]);
     expect(Object.keys(d).sort()).toEqual(
-      ["base-uri", "connect-src", "default-src", "form-action", "img-src", "script-src", "style-src"].sort(),
+      ["base-uri", "connect-src", "default-src", "font-src", "form-action", "img-src", "script-src", "style-src"].sort(),
     );
   });
 

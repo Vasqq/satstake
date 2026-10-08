@@ -62,13 +62,13 @@ describe("LLR-FE-040 the pledge page shows the pledge", () => {
   it("shows the stake with its token's symbol", async () => {
     await openPledge({ token: usdc.address, amount: 5_000_000n });
     await main().findByText("Stake", { selector: "dt" });
-    expect(fact("Stake").textContent).toBe("5 USDC");
+    expect(fact("Stake").textContent).toBe("$5 in USDC");
   });
 
   it("shows a cirBTC stake with its value in sats as well", async () => {
     await openPledge({ token: cirbtc.address, amount: 10_000n });
     await main().findByText("Stake", { selector: "dt" });
-    expect(fact("Stake").textContent).toBe("0.0001 cirBTC (10,000 sats)");
+    expect(fact("Stake").textContent).toBe("10,000 sats, 0.0001 cirBTC");
   });
 
   it("shows the deadline in the visitor's local time", async () => {

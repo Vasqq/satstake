@@ -188,10 +188,10 @@ describe("LLR-FE-050 the list", () => {
     expect(first!.textContent).toContain("Read a book");
     expect(second!.textContent).toContain("You are the staker");
     expect(second!.textContent).toContain("Settled to beneficiary");
-    expect(second!.textContent).toContain("5 USDC");
+    expect(second!.textContent).toContain("$5 in USDC");
     expect(third!.textContent).toContain("You are the referee");
     expect(third!.textContent).toContain("Active");
-    expect(third!.textContent).toContain("0.0001 cirBTC (10,000 sats)");
+    expect(third!.textContent).toContain("10,000 sats, 0.0001 cirBTC");
     expect(third!.textContent).toMatch(/Deadline \w{3} \d{1,2}, 2026, \d{1,2}:\d{2} [AP]M/);
   });
 

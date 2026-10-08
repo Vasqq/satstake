@@ -1,7 +1,8 @@
 import { BaseError, ContractFunctionRevertedError } from "viem";
 
 /**
- * The wording of 05 section 2.2, by the name of the error in the contract ABI. `InvalidAllowlist` has no entry:
+ * The current wording of 05 section 2.2 (guidance, not binding), by the name of the error in the contract ABI,
+ * with "promise" as the visitor's word for a pledge. `InvalidAllowlist` has no entry:
  * only the constructor raises it, and the application never deploys.
  *
  * @trace LLR-FE-060
@@ -18,12 +19,12 @@ export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   PromiseEmpty: "Write the promise you are making.",
   PromiseTooLong: "Shorten the promise to 280 bytes or fewer.",
   UnexpectedTransferAmount: "The token transferred a different amount than expected, so nothing was locked.",
-  PledgeNotFound: "This pledge does not exist. Check the link.",
-  NotReferee: "Only this pledge's referee can record a verdict.",
-  NotActive: "A verdict has already been recorded for this pledge.",
+  PledgeNotFound: "This promise does not exist. Check the link.",
+  NotReferee: "Only this promise's referee can record a verdict.",
+  NotActive: "A verdict has already been recorded for this promise.",
   VerdictWindowClosed: "The deadline has passed, so a verdict can no longer be recorded. The stake now goes to the beneficiary.",
-  NotSettleable: "This pledge cannot be settled until the referee rules or the deadline passes.",
-  AlreadySettled: "This pledge has already been settled.",
+  NotSettleable: "This promise cannot be settled until the referee rules or the deadline passes.",
+  AlreadySettled: "This promise has already been settled.",
   SafeERC20FailedOperation: "The token refused the transfer. Nothing changed. You can try again later.",
   ReentrancyGuardReentrantCall: "This request called SatStake again before the first call finished. Nothing changed.",
 };

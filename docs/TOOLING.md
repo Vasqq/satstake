@@ -22,6 +22,7 @@ Every skill, MCP server, and non-trivial package or tool used to build SatStake,
 | `vitest`, `jsdom`, `@testing-library/react` | 5.0.3, 30.1.1, 16.3.3 | https://github.com/vitest-dev/vitest, https://github.com/jsdom/jsdom, https://github.com/testing-library/react-testing-library | Frontend unit and component tests (LLR-VV-006). `npm audit` on `app/` reports 0 vulnerabilities |
 | `@types/react`, `@types/react-dom`, `@types/node` | 19.3.0, 19.3.0, 26.6.3 | https://github.com/DefinitelyTyped/DefinitelyTyped | Type declarations only |
 | `playwright` | 1.63.0, exact pin in `app/package-lock.json`; Chromium headless shell kept in `app/node_modules` via `PLAYWRIGHT_BROWSERS_PATH=0` | https://github.com/microsoft/playwright, npm, Microsoft maintainers | `app/scripts/screenshots.mjs` captures every view at 360 and 1440 px, light and dark, into the gitignored `cache/screenshots/`, so the frontend reviewer reads the rendered app. A review aid, not a test. `npm audit` reports 0 vulnerabilities |
+| Fonts: Inter Tight 800 and 900, Inter 400 to 700, IBM Plex Mono 400 and 500 | `@fontsource/inter-tight`, `@fontsource/inter`, `@fontsource/ibm-plex-mono` 5.3.0, Latin subset woff2 only, copied into `app/public/fonts/` with each OFL licence; tarball SHA-256 `827a0047…07ef`, `02034af8…8fd6`, `60d3c0cf…d029` | https://github.com/fontsource/font-files, npm; faces by the Inter Project (rsms) and IBM | The approved design's display, body, and chain-data faces, self-hosted because LLR-FE-073 forbids runtime third-party fonts. Not a package dependency: the files are committed and served from the site's own origin |
 | Slither (`slither-analyzer`) | 0.11.6, exact pin | https://github.com/crytic/slither, PyPI, Trail of Bits | Static analysis of the contract (LLR-VV-008) in the CI `slither` job, and locally from a gitignored venv in `cache/`. It runs `forge clean` before compiling, so run `forge build` after a local run: the app imports its ABI from `out/` |
 
 ## Agent safeguards
@@ -34,3 +35,15 @@ Every skill, MCP server, and non-trivial package or tool used to build SatStake,
 | `.claude/agents/requirements-reviewer.md` | Reviews each group's diff against requirement text only (06 section 8 step 5) |
 | `.claude/agents/frontend-reviewer.md` | Reviews frontend groups for clarity, copy rules, accessibility, and privacy |
 | `.githooks/pre-commit` | Runs gitleaks on staged changes; enabled with `git config core.hooksPath .githooks` |
+
+## Agent skills
+
+Installed at project scope in `.claude/skills/` with `npx -y skills@1.7.0 add ... -a claude-code --copy`, hashes in `skills-lock.json`. Read before use: instructions and data only, plus offline Python search scripts in `ui-ux-pro-max`; no network calls, no credential or environment reads. Used for the frontend restyle (2026-10-08).
+
+| Skill | Source | Reason |
+|---|---|---|
+| `ui-ux-pro-max` | https://github.com/nextlevelbuilder/ui-ux-pro-max-skill | Accessibility and UX pass on every view (contrast, touch targets, forms, focus) and its pre-delivery checklist before review (LLR-FE-072) |
+| `emil-design-eng` | https://github.com/emilkowalski/skills | Polish rules: press feedback, easing, no `transition: all`, hover gating |
+| `animate` | https://github.com/emilkowalski/skills | Building the rotating promise card and the press feedback (LLR-FE-070) |
+| `review-animations` | https://github.com/emilkowalski/skills | Review of all motion before commit |
+| `break-ui` | https://github.com/emilkowalski/skills | Stress-testing the promise card, the pledge page, and My promises with worst-case data |

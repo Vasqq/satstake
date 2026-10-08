@@ -239,7 +239,7 @@ describe("LLR-FE-044 Broken asks for confirmation first", () => {
     expect(dialogOpen()).toBe(true);
     expect(dialog().dataset.modal).toBe("true");
     expect(within(dialog()).getByRole("heading", { name: "Mark this promise broken?" })).toBeTruthy();
-    expect(dialog().textContent).toContain("The stake of 2.5 USDC will go to the beneficiary, 0x3333…3333. Your verdict cannot be changed.");
+    expect(dialog().textContent).toContain("The stake of $2.5 in USDC will go to the beneficiary, 0x3333…3333. Your verdict cannot be changed.");
     expect(sent(world)).toBe(0);
   });
 
@@ -248,7 +248,7 @@ describe("LLR-FE-044 Broken asks for confirmation first", () => {
     const heading = within(dialog()).getByRole("heading");
     expect(dialog().getAttribute("aria-labelledby")).toBe(heading.id);
     const body = document.getElementById(dialog().getAttribute("aria-describedby") ?? "");
-    expect(body?.textContent).toBe("The stake of 2.5 USDC will go to the beneficiary, 0x3333…3333. Your verdict cannot be changed.");
+    expect(body?.textContent).toBe("The stake of $2.5 in USDC will go to the beneficiary, 0x3333…3333. Your verdict cannot be changed.");
   });
 
   it("has Cancel then Mark it broken, with focus on Cancel", async () => {
@@ -435,7 +435,7 @@ describe("LLR-FE-046 progress and result of a verdict or settle request", () => 
     await loaded();
     wallet.failNext("eth_sendTransaction", revertedWith("NotActive", [2]));
     fireEvent.click(await screen.findByRole("button", { name: "Kept" }));
-    const message = await within(notices()).findByText("A verdict has already been recorded for this pledge.");
+    const message = await within(notices()).findByText("A verdict has already been recorded for this promise.");
     expect(message.className).toContain("notice-failure");
     expect(sent(world)).toBe(0);
     await waitFor(() => expect(isDisabled(button("Kept"))).toBe(false));
@@ -480,10 +480,10 @@ describe("LLR-FE-046 progress and result of a verdict or settle request", () => 
     await loaded();
     wallet.failNext("eth_sendTransaction", revertedWith("NotActive", [2]));
     fireEvent.click(await screen.findByRole("button", { name: "Kept" }));
-    await within(notices()).findByText("A verdict has already been recorded for this pledge.");
+    await within(notices()).findByText("A verdict has already been recorded for this promise.");
     act(() => wallet.changeChain(FOREIGN_CHAIN));
     await pause();
-    expect(within(notices()).getByText("A verdict has already been recorded for this pledge.")).toBeTruthy();
+    expect(within(notices()).getByText("A verdict has already been recorded for this promise.")).toBeTruthy();
   });
 
   it("shows the neutral message for a wallet rejection, with no error styling, and brings the controls back", async () => {
@@ -814,7 +814,7 @@ describe("LLR-FE-046 a mined revert is replayed where it happened", () => {
     await loaded();
     fireEvent.click(await screen.findByRole("button", { name: "Kept" }));
     await within(notices()).findByText(FAILED_MESSAGE);
-    expect(within(notices()).queryByText("A verdict has already been recorded for this pledge.")).toBeNull();
+    expect(within(notices()).queryByText("A verdict has already been recorded for this promise.")).toBeNull();
   });
 });
 

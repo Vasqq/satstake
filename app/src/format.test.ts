@@ -28,27 +28,37 @@ describe("LLR-FE-040 amounts as the pledge page writes them", () => {
   const cirbtc = token("cirBTC");
 
   it.each([
-    [5_000_000n, "5 USDC"],
-    [1_500_000n, "1.5 USDC"],
-    [1n, "0.000001 USDC"],
-    [0n, "0 USDC"],
-    [123_456_789_000_000n, "123456789 USDC"],
+    [20_000_000n, "$20 in USDC"],
+    [5_000_000n, "$5 in USDC"],
+    [1_500_000n, "$1.5 in USDC"],
+    [1_234_500_000n, "$1,234.5 in USDC"],
+    [1n, "$0.000001 in USDC"],
+    [0n, "$0 in USDC"],
+    [123_456_789_000_000n, "$123,456,789 in USDC"],
+    [1_000_000_000_000n, "$1,000,000 in USDC"],
+    [999_000_000n, "$999 in USDC"],
   ])("writes %s units of USDC with its 6 decimals as %s", (amount, text) => {
     expect(formatAmount(network, usdc.address, amount)).toBe(text);
   });
 
   it.each([
-    [10_000n, "0.0001 cirBTC (10,000 sats)"],
-    [1n, "0.00000001 cirBTC (1 sat)"],
-    [150_000_000n, "1.5 cirBTC (150,000,000 sats)"],
-  ])("writes %s units of cirBTC with its 8 decimals and in sats as %s", (amount, text) => {
+    [1_000n, "1,000 sats, 0.00001 cirBTC"],
+    [10_000n, "10,000 sats, 0.0001 cirBTC"],
+    [1n, "1 sat, 0.00000001 cirBTC"],
+    [2n, "2 sats, 0.00000002 cirBTC"],
+    [150_000_000n, "150,000,000 sats, 1.5 cirBTC"],
+  ])("writes %s units of cirBTC in sats first and then in cirBTC as %s", (amount, text) => {
     expect(formatAmount(network, cirbtc.address, amount)).toBe(text);
   });
 
+  it("gives cirBTC no dollar sign, because no price feed turns it into dollars", () => {
+    expect(formatAmount(network, cirbtc.address, 10_000n)).not.toContain("$");
+  });
+
   it("matches the token address whatever the case of the letters", () => {
-    expect(formatAmount(network, usdc.address.toLowerCase() as `0x${string}`, 2_000_000n)).toBe("2 USDC");
+    expect(formatAmount(network, usdc.address.toLowerCase() as `0x${string}`, 2_000_000n)).toBe("$2 in USDC");
     expect(formatAmount(network, cirbtc.address.toLowerCase() as `0x${string}`, 10_000n)).toBe(
-      "0.0001 cirBTC (10,000 sats)",
+      "10,000 sats, 0.0001 cirBTC",
     );
   });
 
@@ -64,6 +74,24 @@ describe("LLR-FE-040 amounts as the pledge page writes them", () => {
   it("looks the token up in the network it is given, not in a fixed list", () => {
     const custom = { ...network, tokens: [{ symbol: "XYZ", address: usdc.address, decimals: 2 }] };
     expect(formatAmount(custom, usdc.address, 250n)).toBe("2.5 XYZ");
+  });
+
+  // LLR-FE-045: the decimals come from the configuration, not from what USDC and cirBTC happen to use today.
+  it("reads USDC and cirBTC with the decimals the network configures for them", () => {
+    const custom = {
+      ...network,
+      tokens: [
+        { ...usdc, decimals: 2 },
+        { ...cirbtc, decimals: 4 },
+      ],
+    };
+    expect(formatAmount(custom, usdc.address, 123_456n)).toBe("$1,234.56 in USDC");
+    expect(formatAmount(custom, cirbtc.address, 15n)).toMatch(/, 0\.0015 cirBTC$/);
+  });
+
+  it("leaves a configured token that is neither USDC nor cirBTC as units and symbol, with no dollar sign", () => {
+    const custom = { ...network, tokens: [{ symbol: "XYZ", address: usdc.address, decimals: 2 }] };
+    expect(formatAmount(custom, usdc.address, 123_456n)).toBe("1234.56 XYZ");
   });
 });
 

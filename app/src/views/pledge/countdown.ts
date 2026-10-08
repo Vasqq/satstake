@@ -9,6 +9,25 @@ const DAY = 86_400n;
 
 const unit = (count: bigint, word: string) => `${count.toString()} ${word}${count === 1n ? "" : "s"}`;
 
+const twoDigits = (n: bigint) => n.toString().padStart(2, "0");
+
+/**
+ * The time left as four units for the large clock face. Days are not capped and take as many digits as they
+ * need; the other units carry at their boundary. Zero or below reads as all zeros, since a clock never counts
+ * past the deadline.
+ *
+ * @trace LLR-FE-012
+ */
+export function formatClock(remaining: bigint): { d: string; h: string; m: string; s: string } {
+  const left = remaining > 0n ? remaining : 0n; // LLR-FE-012
+  return {
+    d: twoDigits(left / DAY),
+    h: twoDigits((left % DAY) / HOUR),
+    m: twoDigits((left % HOUR) / MINUTE),
+    s: twoDigits(left % MINUTE),
+  };
+}
+
 /**
  * The time left as the two largest units that apply, so a reader sees the part that changes the plan: days and
  * hours far out, seconds close in. The input is chain time remaining, never the device clock.

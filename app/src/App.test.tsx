@@ -74,7 +74,7 @@ describe("LLR-FE-013 the shell shows the view for each route", () => {
   it("shows the not-found view for a pledge id the contract does not recognize, in the words of section 2.2", async () => {
     setup("#/p/99");
     expect((await screen.findByRole("heading", { name: "Pledge not found" })).tagName).toBe("H1");
-    expect(screen.getByText("This pledge does not exist. Check the link.")).toBeTruthy();
+    expect(screen.getByText("This promise does not exist. Check the link.")).toBeTruthy();
     expect(screen.queryByText("Page not found")).toBeNull();
   });
 
@@ -304,7 +304,7 @@ describe("LLR-FE-006 a notice names a token whose creation is disabled", () => {
     expect(notices()).toHaveLength(1);
     expect(notices()[0]).toContain("USDC");
     expect(notices()[0]).not.toContain("cirBTC");
-    expect(notices()[0]).toContain("new pledges");
+    expect(notices()[0]).toContain("new promises");
   });
 
   it("names the token whose symbol differs only in case", async () => {
@@ -433,29 +433,48 @@ describe("LLR-FE-011 the pledge page in plain words, and a failed first read is 
 });
 
 describe("LLR-FE-013 the header and footer", () => {
+  const nameOf = (a: Element) => a.getAttribute("aria-label") ?? a.textContent;
+
   it("links the brand to the home page and the nav only to routes that exist", async () => {
     setup("#/about");
     const header = (await screen.findByRole("banner")) as HTMLElement;
-    const links = Array.from(header.querySelectorAll("a")).map((a) => [a.textContent, a.getAttribute("href")]);
+    const links = Array.from(header.querySelectorAll("a")).map((a) => [nameOf(a), a.getAttribute("href")]);
     expect(links).toEqual([
       ["SatStake", "#/"],
-      ["Create", "#/create"],
-      ["My pledges", "#/mine"],
+      ["New promise", "#/create"],
+      ["My promises", "#/mine"],
       ["About", "#/about"],
     ]);
     for (const [, href] of links) expect(parseRoute(href as string).name, String(href)).not.toBe("notFound");
   });
 
+  it("writes the logo as Sat, an accented Stake, and a full stop, and names it SatStake to assistive technology", async () => {
+    setup("#/about");
+    const logo = await screen.findByRole("link", { name: "SatStake" });
+    expect(logo.textContent).toBe("SatStake.");
+    expect(logo.querySelector("span.accent")?.textContent).toBe("Stake");
+  });
+
+  it("keeps the nav in the header with the wallet control, and never hides the nav", async () => {
+    setup("#/");
+    const header = (await screen.findByRole("banner")) as HTMLElement;
+    const nav = within(header).getByRole("navigation", { name: "Main" });
+    expect(nav.hasAttribute("hidden")).toBe(false);
+    expect(nav.getAttribute("aria-hidden")).toBeNull();
+    expect(within(header).getByRole("region", { name: "Wallet" })).toBeTruthy();
+    expect(header.contains(nav)).toBe(true);
+  });
+
   it.each([
     ["#/", "SatStake"],
-    ["#/create", "Create"],
-    ["#/mine", "My pledges"],
+    ["#/create", "New promise"],
+    ["#/mine", "My promises"],
     ["#/about", "About"],
   ])("on %s marks exactly the %s link as the current page", async (hash, label) => {
     setup(hash);
     const header = (await screen.findByRole("banner")) as HTMLElement;
     const current = Array.from(header.querySelectorAll("a")).filter((a) => a.getAttribute("aria-current") === "page");
-    expect(current.map((a) => a.textContent)).toEqual([label]);
+    expect(current.map(nameOf)).toEqual([label]);
   });
 
   it("marks no link on a pledge page or an unknown route", async () => {
@@ -470,9 +489,30 @@ describe("LLR-FE-013 the header and footer", () => {
   it("has a footer on every page that names the network", async () => {
     for (const hash of ["#/", "#/p/1", "#/nowhere"]) {
       setup(hash);
-      expect((await screen.findByRole("contentinfo")).textContent, hash).toContain(network.name);
+      const footer = await screen.findByRole("contentinfo");
+      expect(footer.textContent, hash).toContain(`Runs on ${network.name}`);
       cleanup();
     }
+  });
+
+  it("links the about page, the source repository, and the contract on the explorer from the footer", async () => {
+    setup("#/");
+    const footer = await screen.findByRole("contentinfo");
+    const hrefOf = (name: string) => within(footer).getByRole("link", { name }).getAttribute("href");
+    expect(hrefOf("About and limits")).toBe("#/about");
+    expect(hrefOf("GitHub")).toBe("https://github.com/Vasqq/satstake");
+    expect(hrefOf("Contract on the explorer")).toBe(`${network.explorerUrl}/address/${network.contract}`);
+    expect(footer.textContent).toContain("Built on Arc");
+  });
+
+  it("puts the footer links in the order About and limits, GitHub, Contract on the explorer", async () => {
+    setup("#/");
+    const footer = await screen.findByRole("contentinfo");
+    expect(Array.from(footer.querySelectorAll("a")).map((a) => a.textContent)).toEqual([
+      "About and limits",
+      "GitHub",
+      "Contract on the explorer",
+    ]);
   });
 });
 

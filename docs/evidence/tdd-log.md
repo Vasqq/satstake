@@ -6166,3 +6166,52 @@ Liam takes over the look and the words of the application. Per section 10 of the
 - `.github/workflows/pages.yml`: the step that failed the deploy unless the site quoted NS section 1 is removed.
 
 Result: app 992 passed, 9 skipped; lint and typecheck clean; tool tests 475 passed; trace check OK, 106 of 113.
+
+## FE restyle: foundation (2026-10-08)
+
+Scope: the approved dark design's tokens, self-hosted fonts and film grain, shared component classes, one header and footer for every view, `font-src 'self'` in the policy, the new amount and clock formats, and "promise" as the visitor's word in shared strings. Views keep their behaviour; their redesign is the next groups.
+
+Process note: the Sonnet implementer was stopped by the user mid-group and could not be resumed. Its edits were on disk and green; it had not written this log, so its red runs are not on record. The lead finished the group and observed the red side through the mutation pass below: each of 1400, 1402, 1404, and 1407 removes or reverts one new behaviour, and the tests written for it fail, which is the failure those tests were written to show. No requirement changed.
+
+Tests added or changed:
+- `csp.test.ts` (LLR-FE-073): the policy names `font-src 'self'` and no other directive. Red: no `font-src` (mutation 1400).
+- `styles.test.ts` (LLR-FE-073, 072): the eight @font-face rules, each a woff2 file that exists under `public/fonts`, each `font-display: swap`; every `url()` a same-origin file, including `/grain.svg`, and no `data:` url, which `img-src 'self'` refuses; no `transition: all`; a reduced-motion rule and hover gated on `(hover: hover) and (pointer: fine)`; `color-scheme: dark` and no `prefers-color-scheme`.
+- `format.test.ts` (LLR-FE-045): USDC as "$20 in USDC" with the whole part grouped and no rounding; cirBTC as "1,000 sats, 0.00001 cirBTC", singular at one sat; an unknown token unchanged. Red: the old "20 USDC" and "0.00001 cirBTC (1,000 sats)" (mutations 1402, 1404).
+- `countdown.test.ts` (LLR-FE-012): `formatClock` gives two-digit units, days uncapped, carries at each boundary, all zeros at or past the deadline. Red: no padding (1407).
+- Label updates in the same change as the labels: header nav (New promise, My promises, About), footer, the 05 section 2.2 messages with "promise", the wallet sentences, and every test naming an amount.
+
+Green: app 1015 passed, 9 skipped; lint and typecheck clean; `build:testnet` and `build:mainnet` clean, built CSS references `../fonts/*.woff2` and `../grain.svg` relative to `assets/`, so the Pages subpath resolves; trace check OK, 106 of 113.
+
+Contrast, measured with `cache/contrast.mjs` (WCAG 2.1 relative luminance; `--card` composites to `#1c1c1c` over `--bg`):
+
+| Pair | Ratio | Needed | Result |
+|---|---|---|---|
+| --fg on --bg | 15.45:1 | 4.5:1 | Pass |
+| --dim on --bg | 8.37:1 | 4.5:1 | Pass |
+| --label on --bg | 5.35:1 | 4.5:1 | Pass |
+| --accent on --bg, as text | 6.07:1 | 4.5:1 | Pass |
+| --fg on --card | 14.69:1 | 4.5:1 | Pass |
+| --label on --card | 5.08:1 | 4.5:1 | Pass |
+| --accent on --card | 5.77:1 | 4.5:1 | Pass |
+| --accent-ink on --accent, button text | 6.33:1 | 4.5:1 | Pass |
+| --error-fg on --error-bg | 9.53:1 | 4.5:1 | Pass |
+| --notice-fg on --notice-bg | 10.54:1 | 4.5:1 | Pass |
+| --control-border on --bg, control border | 3.19:1 | 3:1 | Pass |
+| --accent on --bg, focus ring and primary button edge | 6.07:1 | 3:1 | Pass |
+
+Mutations, logic only, run by `cache/mutate-foundation.mjs` (applies each, runs the named test files, restores in a finally block; sources confirmed restored by `git diff --stat` after the run):
+
+| # | Mutation | Result |
+|---|---|---|
+| 1400 | csp: drop `font-src 'self'` | killed, csp.test |
+| 1401 | csp: `font-src 'self' https:` | killed, csp.test |
+| 1402 | format: USDC branch never taken | killed, 11 in format.test |
+| 1403 | format: whole part not grouped | killed, 4 |
+| 1404 | format: cirBTC without sats | killed, 7 |
+| 1405 | format: USDC decimals fixed at 6 instead of configured | first SURVIVED: every test used USDC's real 6 decimals, so LLR-FE-045's "configured decimals" had no test for USDC. New test "reads USDC and cirBTC with the decimals the network configures for them" (red under this mutant: "$0.123456 in USDC" for "$1,234.56 in USDC"); now killed, 1 |
+| 1406 | countdown: negative remaining read as its absolute value | killed, 1 |
+| 1407 | countdown: no two-digit padding | killed, 4 |
+| 1408 | countdown: hours not taken modulo a day | killed, 3 |
+| 1409 | countdown: minutes not taken modulo an hour | killed, 3 |
+
+Found: the first run of the mutation script passed each mutant through `String.replace` with a replacement string, which reads `$$` as one `$`, so mutant 1405 silently became "drop the dollar sign" and was reported killed. The script now passes a replacer function; every row above is from the corrected run. Final: app 1016 passed, 9 skipped.

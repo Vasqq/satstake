@@ -19,8 +19,8 @@ import { NotFoundView } from "./views/Views";
 import { WalletBar } from "./wallet/WalletBar";
 
 const NAV: { route: Route["name"]; href: string; label: string }[] = [
-  { route: "create", href: "#/create", label: "Create" },
-  { route: "mine", href: "#/mine", label: "My pledges" },
+  { route: "create", href: "#/create", label: "New promise" },
+  { route: "mine", href: "#/mine", label: "My promises" },
   { route: "about", href: "#/about", label: "About" },
 ];
 
@@ -41,7 +41,7 @@ function tokenNotice(check: TokenCheck): string | null {
     check.status === "mismatch"
       ? "The token on the network does not match what this site expects."
       : "This site could not read the token from the network.";
-  return `${check.token.symbol} cannot be used for new pledges right now. ${cause}`;
+  return `${check.token.symbol} cannot be used for new promises right now. ${cause}`;
 }
 
 // A hash link would change the route, which lives in the hash, so the link focuses the heading by script.
@@ -60,19 +60,24 @@ function SkipLink() {
   );
 }
 
-function Header({ route }: { route: Route }) {
+function Header({ route, network }: { route: Route; network: SelectedNetwork }) {
   return (
     <header className="site-header">
-      <a className="brand" href="#/" aria-current={route.name === "home" ? "page" : undefined}>
-        SatStake
-      </a>
-      <nav aria-label="Main">
-        {NAV.map((item) => (
-          <a key={item.route} href={item.href} aria-current={route.name === item.route ? "page" : undefined}>
-            {item.label}
-          </a>
-        ))}
-      </nav>
+      <div className="wrap site-header-row">
+        {/* The accessible name is the plain word; the visible text splits it only to colour its second half. */}
+        <a className="brand" href="#/" aria-label="SatStake" aria-current={route.name === "home" ? "page" : undefined}>
+          Sat<span className="accent">Stake</span>.
+        </a>
+        {/* Never hidden at any width: on a phone it wraps below the logo, so every page stays one tap away. */}
+        <nav aria-label="Main">
+          {NAV.map((item) => (
+            <a key={item.route} href={item.href} aria-current={route.name === item.route ? "page" : undefined}>
+              {item.label}
+            </a>
+          ))}
+        </nav>
+        <WalletBar network={network} />
+      </div>
     </header>
   );
 }
@@ -80,10 +85,13 @@ function Header({ route }: { route: Route }) {
 function Footer({ network }: { network: SelectedNetwork }) {
   return (
     <footer className="site-footer">
-      <p>SatStake runs on {network.name}.</p>
-      <p>
-        <a href="https://github.com/Vasqq/satstake">Source code on GitHub</a>
-      </p>
+      <div className="wrap footer-row">
+        <p>Runs on {network.name}</p>
+        <a href="#/about">About and limits</a>
+        <a href="https://github.com/Vasqq/satstake">GitHub</a>
+        <a href={`${network.explorerUrl}/address/${network.contract}`}>Contract on the explorer</a>
+        <p>Built on Arc</p>
+      </div>
     </footer>
   );
 }
@@ -101,22 +109,23 @@ function Shell({ client, network }: { client: PublicClient; network: SelectedNet
   return (
     <NavigatedContext.Provider value={navigated}>
       <SkipLink />
-      <Header route={route} />
-      <WalletBar network={network} />
+      <Header route={route} network={network} />
       {error && (
-        <p className="banner banner-error" role="alert">
-          {error}
-        </p>
+        <div className="wrap">
+          <p className="banner banner-error" role="alert">
+            {error}
+          </p>
+        </div>
       )}
       {/* Mounted from the first render and filled later, which is what a screen reader announces. */}
-      <div role="status" aria-label="Token notices">
+      <div className="wrap" role="status" aria-label="Token notices">
         {notices.map((notice) => (
           <p className="banner banner-notice" key={notice}>
             {notice}
           </p>
         ))}
       </div>
-      <main>
+      <main className="wrap">
         {route.name === "home" && <HomeView reads={reads} network={network} />}
         {route.name === "create" && (
           <CreateView client={client} reads={reads} network={network} health={health} onCreated={setCreated} />

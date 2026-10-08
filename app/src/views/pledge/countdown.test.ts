@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEADLINE_PASSED, NOT_SYNCED, formatRemaining } from "./countdown";
+import { DEADLINE_PASSED, NOT_SYNCED, formatClock, formatRemaining } from "./countdown";
 
 const MIN = 60n;
 const HOUR = 3600n;
@@ -43,5 +43,33 @@ describe("LLR-FE-012 the countdown text from the time remaining", () => {
     expect(formatRemaining(MIN - 1n)).toBe("59 seconds");
     expect(formatRemaining(2n)).toBe("2 seconds");
     expect(formatRemaining(1n)).toBe("1 second");
+  });
+});
+
+describe("LLR-FE-012 the countdown as a clock of four units", () => {
+  it("writes each unit with at least two digits", () => {
+    expect(formatClock(26n * DAY + 4n * HOUR + 12n * MIN + 9n)).toEqual({ d: "26", h: "04", m: "12", s: "09" });
+    expect(formatClock(5n * DAY + 3n * HOUR + 7n * MIN + 1n)).toEqual({ d: "05", h: "03", m: "07", s: "01" });
+  });
+
+  it("keeps three digits for a hundred days or more and does not cap the days", () => {
+    expect(formatClock(100n * DAY)).toEqual({ d: "100", h: "00", m: "00", s: "00" });
+    expect(formatClock(365n * DAY + 23n * HOUR + 59n * MIN + 59n)).toEqual({ d: "365", h: "23", m: "59", s: "59" });
+  });
+
+  it("carries each unit at its boundary", () => {
+    expect(formatClock(59n)).toEqual({ d: "00", h: "00", m: "00", s: "59" });
+    expect(formatClock(60n)).toEqual({ d: "00", h: "00", m: "01", s: "00" });
+    expect(formatClock(3599n)).toEqual({ d: "00", h: "00", m: "59", s: "59" });
+    expect(formatClock(3600n)).toEqual({ d: "00", h: "01", m: "00", s: "00" });
+    expect(formatClock(86_399n)).toEqual({ d: "00", h: "23", m: "59", s: "59" });
+    expect(formatClock(86_400n)).toEqual({ d: "01", h: "00", m: "00", s: "00" });
+  });
+
+  it("reads zero and anything below as all zeros", () => {
+    const zero = { d: "00", h: "00", m: "00", s: "00" };
+    expect(formatClock(0n)).toEqual(zero);
+    expect(formatClock(-1n)).toEqual(zero);
+    expect(formatClock(-100_000n)).toEqual(zero);
   });
 });

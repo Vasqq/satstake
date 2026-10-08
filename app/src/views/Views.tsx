@@ -1,7 +1,7 @@
 import { PageHeading } from "./PageHeading";
 
 /** The wording of 05 section 2.2 for PledgeNotFound. */
-export const PLEDGE_NOT_FOUND_MESSAGE = "This pledge does not exist. Check the link.";
+export const PLEDGE_NOT_FOUND_MESSAGE = "This promise does not exist. Check the link.";
 
 /** @trace LLR-FE-013 */
 export function NotFoundView() {

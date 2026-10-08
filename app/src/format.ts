@@ -13,18 +13,27 @@ export function formatSats(units: bigint): string {
   return `${units.toLocaleString("en-US")} ${units === 1n ? "sat" : "sats"}`; // LLR-FE-045
 }
 
+/** formatUnits with the whole part grouped, for the same reason as formatSats: one reading for every visitor. */
+function groupedUnits(amount: bigint, decimals: number): string {
+  const [whole = "0", fraction] = formatUnits(amount, decimals).split(".");
+  const grouped = BigInt(whole).toLocaleString("en-US");
+  return fraction === undefined ? grouped : `${grouped}.${fraction}`;
+}
+
 /**
- * An amount with its token's symbol, and for cirBTC its value in sats as well, since sats are how a holder of
- * the token counts it. A token the network does not list cannot be a pledge's token while the allowlist holds,
- * so it is written as raw units rather than guessed at.
+ * An amount in the words a holder of the token uses: dollars for USDC, sats first for cirBTC. Only USDC gets a
+ * dollar sign, because it is the one configured token pegged to a dollar; a cirBTC amount never gets one, since
+ * that would need a price feed. A token the network does not list cannot be a pledge's token while the
+ * allowlist holds, so it is written as raw units rather than guessed at.
  *
  * @trace LLR-FE-040 LLR-FE-045
  */
 export function formatAmount(network: Pick<NetworkConfig, "tokens">, token: string, amount: bigint): string {
   const match = network.tokens.find((t) => t.address.toLowerCase() === token.toLowerCase());
   if (match === undefined) return `${amount.toString()} units of ${shorten(token)}`; // LLR-FE-040
-  const text = `${formatUnits(amount, match.decimals)} ${match.symbol}`; // LLR-FE-040
-  return match.symbol === "cirBTC" ? `${text} (${formatSats(amount)})` : text; // LLR-FE-045
+  if (match.symbol === "USDC") return `$${groupedUnits(amount, match.decimals)} in USDC`; // LLR-FE-045
+  if (match.symbol === "cirBTC") return `${formatSats(amount)}, ${groupedUnits(amount, match.decimals)} cirBTC`; // LLR-FE-045
+  return `${formatUnits(amount, match.decimals)} ${match.symbol}`; // LLR-FE-040
 }
 
 /**

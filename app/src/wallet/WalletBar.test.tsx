@@ -20,8 +20,8 @@ const connectedAddress = (short = shortOf(ACCOUNT)) => screen.findByText(new Reg
 const isPending = (button: HTMLElement) => button.getAttribute("aria-disabled") === "true";
 const PROMPTS = ["eth_requestAccounts", "wallet_requestPermissions"];
 const NO_WALLET =
-  "Creating or settling a pledge needs a browser wallet. On a phone, open this page in your wallet app's browser. You can read every page without one.";
-const CONNECT_PROMPT = "Connect a wallet to create or settle a pledge. You can read every page without one.";
+  "Creating or settling a promise needs a browser wallet. On a phone, open this page in your wallet app's browser. You can read every page without one.";
+const CONNECT_PROMPT = "Connect a wallet to create or settle a promise. You can read every page without one.";
 // Lets a reconnect that finds nothing finish, so a test that expects no prompt has given one time to appear.
 const settleReconnect = async (wallet: FakeWallet) => {
   await waitFor(() => expect(wallet.count("eth_accounts")).toBeGreaterThan(0));
