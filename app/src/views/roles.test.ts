@@ -1,7 +1,7 @@
 import { getAddress } from "viem";
 import { describe, expect, it } from "vitest";
 import type { Pledge } from "../chain/reads";
-import { ROLE_NAMES, roleOf } from "./roles";
+import { ROLE_LABELS, ROLE_NAMES, roleOf } from "./roles";
 
 const addr = (byte: string) => getAddress(`0x${byte.repeat(20)}`);
 // Letters in the hex digits, so a checksum differs from the lower-case form and a case-sensitive comparison fails.
@@ -42,5 +42,11 @@ describe("LLR-FE-041 the connected account's role on a pledge", () => {
 
   it("writes each role as a capitalised word", () => {
     expect(ROLE_NAMES).toEqual({ staker: "Staker", referee: "Referee", beneficiary: "Beneficiary" });
+  });
+});
+
+describe("LLR-FE-041 the plain labels of the three parties", () => {
+  it("names each party by what they do, in the words the pledge page columns use", () => {
+    expect(ROLE_LABELS).toEqual({ staker: "Made it", referee: "Judges it", beneficiary: "Gets it if missed" });
   });
 });

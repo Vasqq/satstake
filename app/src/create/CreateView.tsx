@@ -10,6 +10,7 @@ import type { Reads } from "../chain/reads";
 import type { Health } from "../chain/useHealth";
 import type { SelectedNetwork, TokenConfig } from "../config/networks";
 import { PageHeading } from "../views/PageHeading";
+import "../styles/forms.css";
 import { RequestNotice, useConnectionFailure } from "../wallet/failure";
 import { useWriteGate } from "../wallet/gate";
 import { formatLocalTime, formatSats } from "../format";
@@ -54,10 +55,10 @@ const STAGE_TEXT: Record<Step["stage"], string> = {
 };
 
 /** The wording of LLR-FE-062 for a creation the wallet sent whose receipt could not be read. */
-const UNCONFIRMED_MESSAGE = "Your pledge was sent, but its confirmation could not be read. Check My pledges before trying again.";
+const UNCONFIRMED_MESSAGE = "Your promise was sent, but its confirmation could not be read. Check My promises before trying again.";
 
 /** Said before the first prompt (LLR-FE-033), when the allowance has not been read yet. */
-const PROMPT_COUNT_HINT = "Your wallet may ask twice: first to let SatStake take exactly this amount, then to create the pledge.";
+const PROMPT_COUNT_HINT = "Your wallet may ask twice: first to let SatStake take exactly this amount, then to create the promise.";
 
 /** What the progress area shows: the steps, the amount in words, and whether a confirmed approval is being kept on screen. */
 interface Progress {
@@ -69,8 +70,11 @@ interface Progress {
 function stepLabel(step: Step, progress: Progress): string {
   const numbered = progress.steps.some((s) => s.id === "approve");
   if (step.id === "approve") return `Step 1 of 2: let SatStake take ${progress.amountText}`;
-  return numbered ? "Step 2 of 2: create the pledge" : "Create the pledge";
+  return numbered ? "Step 2 of 2: create the promise" : "Create the promise";
 }
+
+/** Always shown beside the beneficiary field, since the mistake is made there and cannot be undone (LLR-FE-034). */
+const BENEFICIARY_CAUTION = "This address receives your stake if you miss. If nobody controls it, the stake is lost for good.";
 
 const WARNINGS = {
   referee:
@@ -93,16 +97,25 @@ interface FieldShellProps {
   warning?: string;
   /** One line each, in a container that is linked to the control. */
   hints?: readonly string[];
+  /** A warning that is always on the page, unlike `warning`, which comes and goes with what is typed. */
+  caution?: string;
   control: (props: ControlProps) => ReactNode;
 }
 
-function FieldShell({ id, label, error, warning, hints, control }: FieldShellProps) {
-  const describedBy = [hints !== undefined && `${id}-hint`, warning !== undefined && `${id}-warning`, `${id}-error`]
+function FieldShell({ id, label, error, warning, hints, caution, control }: FieldShellProps) {
+  const describedBy = [
+    hints !== undefined && `${id}-hint`,
+    caution !== undefined && `${id}-caution`,
+    warning !== undefined && `${id}-warning`,
+    `${id}-error`,
+  ]
     .filter((part): part is string => part !== false)
     .join(" ");
   return (
     <div className="field">
-      <label htmlFor={id}>{label}</label>
+      <label htmlFor={id} className="label">
+        {label}
+      </label>
       {control({ id, "aria-describedby": describedBy, "aria-invalid": error ? true : undefined })}
       {hints !== undefined && (
         <div id={`${id}-hint`} className="hint">
@@ -110,6 +123,11 @@ function FieldShell({ id, label, error, warning, hints, control }: FieldShellPro
             <p key={hint}>{hint}</p>
           ))}
         </div>
+      )}
+      {caution !== undefined && (
+        <p id={`${id}-caution`} className="field-caution">
+          {caution}
+        </p>
       )}
       {warning !== undefined && (
         <p id={`${id}-warning`} className="field-warning" aria-live="polite">
@@ -415,9 +433,11 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
 
   return (
     <>
-      <PageHeading title="Create a pledge | SatStake">Create a pledge</PageHeading>
-      <p>{INTRO}</p>
-      <form aria-label="New pledge" noValidate onSubmit={(event) => void submit(event)}>
+      <PageHeading title="New promise | SatStake" className="display">
+        New <span className="hot">promise</span>
+      </PageHeading>
+      <p className="lead">{INTRO}</p>
+      <form className="create-form" aria-label="New promise" noValidate onSubmit={(event) => void submit(event)}>
         <FieldShell
           id={`${ids}-promise`}
           label="Promise"
@@ -490,6 +510,7 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
           label="Beneficiary address"
           error={shown("beneficiary")}
           hints={[HINTS.beneficiary]}
+          caution={BENEFICIARY_CAUTION} // LLR-FE-034
           warning={shown("beneficiary") === undefined && beneficiaryHasCode ? WARNINGS.beneficiary : ""}
           control={(props) => (
             <input
@@ -512,7 +533,7 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
             if (!event.currentTarget.contains(event.relatedTarget as Node | null)) touch("deadline");
           }}
         >
-          <legend>Deadline</legend>
+          <legend className="label">Deadline</legend>
           <div className="choices">
             {choices.map((option) => (
               <label className="choice" key={option.key}>
@@ -533,7 +554,9 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
           </p>
           {choice.kind === "custom" && (
             <div className="field">
-              <label htmlFor={`${ids}-custom`}>Custom date and time</label>
+              <label htmlFor={`${ids}-custom`} className="label">
+                Custom date and time
+              </label>
               <input
                 id={`${ids}-custom`}
                 type="datetime-local"
@@ -556,7 +579,7 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
         </fieldset>
 
         <div className="field">
-          <label className="choice">
+          <label className="choice ack">
             <input
               id={`${ids}-acknowledged`}
               type="checkbox"
@@ -576,8 +599,11 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
 
         <div className="submit-area">
           {/* aria-disabled and not the disabled attribute, so the control stays reachable by keyboard and its reasons can be heard. */}
-          <button type="submit" className="button-primary" aria-disabled={!canSubmit} aria-describedby={`${ids}-prompts ${ids}-submit-help`}>
-            Create pledge
+          <button type="submit" className="cta button-primary" aria-disabled={!canSubmit} aria-describedby={`${ids}-prompts ${ids}-submit-help`}>
+            Create promise
+            <span className="arr" aria-hidden="true">
+              →
+            </span>
           </button>
           <p id={`${ids}-prompts`} className="hint">
             {progress === null ? PROMPT_COUNT_HINT : ""}
@@ -589,7 +615,7 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
             {health.tokens === null && <p>Checking the tokens.</p>}
             {incomplete.length > 0 && <p>Still to complete: {incomplete.join(", ")}.</p>}
           </div>
-          <div role="status" aria-label="Pledge progress" className="progress">
+          <div role="status" aria-label="Promise progress" className="progress">
             {progress !== null && (
               <>
                 <ul>
@@ -613,7 +639,7 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
                   Transaction: <code>{unconfirmed.hash}</code>
                 </p>
                 <p>
-                  <a href="#/mine">My pledges</a>
+                  <a href="#/mine">My promises</a>
                 </p>
               </>
             )}

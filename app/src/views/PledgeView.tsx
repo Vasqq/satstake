@@ -2,23 +2,26 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useRef } from "react";
 import type { PublicClient } from "viem";
 import { useConnection } from "wagmi";
+import "../styles/pledge.css";
 import { POLL_INTERVAL_MS } from "../chain/poller";
 import { type Reads, isPledgeNotFound } from "../chain/reads";
 import type { Health } from "../chain/useHealth";
 import { usePledgeLive } from "../chain/usePledgeLive";
 import { useTick } from "../chain/useTick";
 import type { SelectedNetwork } from "../config/networks";
+import { CopyLink } from "../create/CopyLink";
 import { useWriteGate } from "../wallet/gate";
 import { PageHeading } from "./PageHeading";
 import { PledgeActions } from "./pledge/PledgeActions";
-import { PledgeFacts } from "./pledge/PledgeFacts";
+import { PledgeBanner } from "./pledge/PledgeBanner";
+import { PledgeFacts, PledgeStake } from "./pledge/PledgeFacts";
 import { deadlineWarning } from "./pledge/warning";
 import { ROLE_NAMES, roleOf } from "./roles";
 import { ACTIVE_PAST_DEADLINE_MEANING, STATE_MEANINGS, STATE_NAMES } from "./stateLabels";
 import { PledgeNotFoundView } from "./Views";
 
 const READING = "Reading the pledge from the network.";
-const RETRYING = "Could not read this pledge. The site keeps trying while this page is open.";
+const RETRYING = "Could not read this promise. The site keeps trying while this page is open.";
 
 /** The deadline is reached at the second it names: the contract refuses a verdict from that block on. */
 const reachedAt = (deadline: bigint, chainNow: bigint) => deadline - chainNow <= 0n;
@@ -80,28 +83,43 @@ export function PledgeView({ reads, client, network, health, id, afterStatus }: 
 
   return (
     <article className="pledge-page">
-      <PageHeading title={`Pledge #${id.toString()} | SatStake`}>Pledge #{id.toString()}</PageHeading>
-      {(role !== null || showStateBadge) && (
-        <p className="pledge-badges">
+      {data !== null && live.state !== null && (
+        <PledgeBanner
+          pledge={data}
+          state={live.state}
+          role={role}
+          deadlineReached={deadlineReached}
+          network={network}
+          // The control for a pledge just created arrives as `afterStatus` and keeps one place on the page, since the
+          // wallet connects after the first render and moving it into the staker's text then would reset it.
+          copyLink={afterStatus === undefined ? <CopyLink id={id} bare /> : null}
+        />
+      )}
+      <PageHeading className="label pledge-label" title={`Promise #${id.toString()} | SatStake`}>
+        Promise #{id.toString()}
+      </PageHeading>
+      {data !== null && <p className="ptitle pledge-promise">{`“${data.promiseText}”`}</p>}
+      {data !== null && <PledgeStake pledge={data} network={network} />}
+      {afterStatus}
+      <section className="card pledge-card" aria-label="Progress">
+        <div className="pledge-state-row">
           {live.state !== null && showStateBadge && (
             <span className="state-badge" data-state={live.state}>
               {STATE_NAMES[live.state]}
             </span>
           )}
           {role !== null && <span className="role-badge">You are the {ROLE_NAMES[role].toLowerCase()}</span>}
-        </p>
-      )}
-      {data !== null && <p className="pledge-promise">{data.promiseText}</p>}
-      {/* The live region and the focus target are different elements, so a screen reader is not told the same text twice. */}
-      <div role="status" aria-label="Pledge status">
-        <p tabIndex={-1} ref={statusLine}>
-          {status}
-        </p>
-      </div>
-      {afterStatus}
-      {data !== null && <PledgeFacts pledge={data} state={live.state} network={network} role={role} remaining={remaining} />}
+          {/* The live region and the focus target are different elements, so a screen reader is not told the same text twice. */}
+          <div role="status" aria-label="Pledge status" className="pledge-status">
+            <p tabIndex={-1} ref={statusLine}>
+              {status}
+            </p>
+          </div>
+        </div>
+        {data !== null && <PledgeFacts pledge={data} state={live.state} network={network} role={role} remaining={remaining} />}
+      </section>
       <div role="status" aria-label="Deadline warning">
-        {warning !== null && <p className="pledge-warning">{warning}</p>}
+        {warning !== null && <p className="banner banner-notice pledge-warning">{warning}</p>}
       </div>
       <PledgeActions
         id={id}
@@ -117,7 +135,11 @@ export function PledgeView({ reads, client, network, health, id, afterStatus }: 
         onConfirmed={live.refresh}
         statusRef={statusLine}
       />
-      {failed && <p role="alert">{RETRYING}</p>}
+      {failed && (
+        <p role="alert" className="banner banner-error">
+          {RETRYING}
+        </p>
+      )}
     </article>
   );
 }

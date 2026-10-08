@@ -204,8 +204,8 @@ export function PledgeActions(props: PledgeActionsProps) {
       {(plan?.kind === "connect" || plan?.kind === "waiting" || plan?.kind === "hint") && <p className="pledge-hint">{plan.text}</p>}
 
       {plan?.kind === "verdict" && (
-        <div role="group" aria-labelledby={`${ids}-verdict`} className="pledge-actions">
-          <h2 id={`${ids}-verdict`}>Did the staker keep this promise?</h2>
+        <div role="group" aria-labelledby={`${ids}-verdict`} className="card pledge-actions pledge-verdict">
+          <h2 id={`${ids}-verdict`}>Was this promise kept?</h2>
           <div className="action-buttons">
             <button type="button" className="button-primary" {...controlProps} onClick={onKept}>
               Kept
@@ -220,7 +220,7 @@ export function PledgeActions(props: PledgeActionsProps) {
       )}
 
       {plan?.kind === "settle" && (
-        <div className="pledge-actions">
+        <div className="card pledge-actions">
           <div className="action-buttons">
             <button
               type="button"

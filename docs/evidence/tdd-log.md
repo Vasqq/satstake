@@ -6215,3 +6215,141 @@ Mutations, logic only, run by `cache/mutate-foundation.mjs` (applies each, runs 
 | 1409 | countdown: minutes not taken modulo an hour | killed, 3 |
 
 Found: the first run of the mutation script passed each mutant through `String.replace` with a replacement string, which reads `$$` as one `$`, so mutant 1405 silently became "drop the dollar sign" and was reported killed. The script now passes a replacer function; every row above is from the corrected run. Final: app 1016 passed, 9 skipped.
+
+## FE restyle: landing (2026-10-08)
+
+Files: `app/src/views/HomeView.tsx`, `app/src/views/home/PromiseRotator.tsx`, `app/src/views/home/live.ts`, `app/src/styles/home.css`; tests `app/src/views/HomeView.test.tsx`, `app/src/views/home/PromiseRotator.test.tsx`.
+
+### Red
+
+Rotator suite first, with a stub component that renders null (so the failures are about behaviour, not a missing module): 29 of 31 failed with `Unable to find role="region" and name /Recent promises/` or, for count 0, `expected +0 to be 1` (the count was never read). The two that passed against the stub are the two "shows nothing" tests (unknown count, every read failing); they are held by mutants 1503 and 1531 and by the later "no block read at count 0" assertion.
+
+Tests in the group (all `describe("LLR-FE-070 ...")` except the motion pair, `LLR-FE-072`): reads only from the views and never logs; at most 8 pledges, newest first, wraps; fewer than 8; nothing while count unknown; nothing at count 0 (and no block read); failed read skipped; every read failing shows no card; promise text, stake, three parties by short address; link to #/p/id; clock name in words from chain time; countdown follows chain time; deadline passed at the exact second; deadline passed past it; state table (Kept, Broken, No answer, Paid back, Paid out) with where the stake goes and that the silence line shows only for No answer; carousel labelling and no live region; pause control state and labels; no control and no timer or animation for one promise; padded counter hidden from assistive technology; advances at 8 s and not before; paused by button; by hover; by focus inside; focus moving between inner controls; page hidden; page already hidden at mount; under 25% visible; a late tick does not skip a slide; pause keeps the time already waited; motion 180 ms out and 420 ms in with 50 ms stagger; reduced motion is a 200 ms opacity fade only.
+
+HomeView suite, against the old landing page: 13 failed, for example `expected 'Lock Bitcoin against a promise.' to be 'Put money behind your promise.'`, `Unable to find role="region" and name "Recent promises on Arc Testnet"`, `expected 1 to be 3` (totalLocked calls per token), `Unable to find an accessible element with the role "heading" and name "Why you can trust it"`.
+
+Two test defects fixed during green, both mine: the text matchers kept a trailing space that Testing Library trims, and the visibility change was dispatched outside `act`, so the timer read a stale paused flag. A third: the "only the contract's views" assertion counted token calls the shell makes (`decimals`), so it now filters to calls addressed to the contract.
+
+### Green
+
+`npx vitest run src/views/home src/views/HomeView.test.tsx`: 59 passed. Full suite: 1117 passed, 1 failed (`src/create/CreateView.test.tsx`, copy-link ordering, another group's file), 9 skipped live. `tsc --noEmit` and `eslint .` clean. A lint rule (react-hooks/refs) refused a ref written during render; the paused flag now reaches the timer through an effect.
+
+Edits to tests I do not own, text only: `App.test.tsx` (3 places) and `wallet/WalletBar.test.tsx` (2 places), the old heading "Lock Bitcoin against a promise." to "Put money behind your promise.".
+
+### Mutation pass (`cache/mutate-landing.mjs`, numbers 1500 to 1547; 1521 was a no-op entry and is dropped)
+
+First pass: 41 killed, 6 survived (1519, 1526, 1529, 1531, 1534, 1542). Each survivor got a test: a media-query stub that matches the exact query (1519); the "Silence counts as broken" assertion on the No answer slide only (1526); a single-promise test that stubs `animate` and expects no call (1529); count 0 reads no block (1531); a page already hidden at mount (1534); a network configured with example id 7, since the testnet id equals the mutant's constant (1542). All six die on the rerun. The full pass was rerun after the lint-driven ref change: 47 of 47 killed.
+
+| # | Change | Result |
+|---|---|---|
+| 1500 | MAX_SLIDES 8 to 9 | killed |
+| 1501 | oldest id off by one | killed |
+| 1502 | ids pushed oldest first | killed |
+| 1503 | empty slide list no longer hides the card | killed |
+| 1504 | ROTATE_MS 8000 to 7000 | killed |
+| 1505 | pause flag ignored by the timer | killed |
+| 1506 to 1510 | each of the five pause conditions removed | killed |
+| 1511 | late-tick clamp removed | killed |
+| 1512 | focus-out ignores where focus went | killed |
+| 1513 | visibility threshold 0.25 to 0.5 | killed |
+| 1514 to 1517 | out, in, stagger, reduced fade durations | killed |
+| 1518, 1519 | reduced-motion branch skipped, wrong media query | killed |
+| 1520 | no wrap past the last slide | killed |
+| 1522, 1523 | deadline boundary `<=` to `<` in the state word and in the clock name | killed |
+| 1524, 1525 | where the stake goes, Kept and SettledToStaker | killed |
+| 1526 | silence line removed | killed after test |
+| 1527, 1528 | aria-pressed, aria-label swapped | killed |
+| 1529, 1530 | rotation or controls for a single promise | killed after test (1529) |
+| 1531 | reads before the count is known | killed after test |
+| 1532 to 1535 | counter, observer, initial hidden, roledescription | killed (1534 after test) |
+| 1536 to 1539 | retry interval, never retry, always retry, locked-now key without token | killed |
+| 1540 to 1547 | error text, locked label, example link, Sourcify URL, card removed, one token only, address not full, create link | killed (1542 after test) |
+
+### Motion review (review-animations)
+
+Purpose: state indication and preventing a jarring change on a card seen once per visit (occasional tier, not a high-frequency control). Properties: opacity, transform, filter (blur 4px, short). Curve: the strong ease-out `cubic-bezier(0.23, 1, 0.32, 1)`, no ease-in. Durations: out 180 ms, in 420 ms with a 50 ms stagger over four parts (the in-phase is the longer one on purpose: the system response is quick, the arrival is the part read). The bar is constant motion, so linear, on transform only. Reduced motion: opacity only, 200 ms, and the bar becomes a static dim line. Hover gating only on the pause button's border colour. The rotation pauses on hover, focus, hidden tab, under 25% visible, and by the button, and the card is not a live region. Not changed: the in-phase starts 10 px below (mockup) while the brief says 6 px out upward; both kept as in the mockup. Verdict: approve.
+
+## FE restyle: pledge page (2026-10-08)
+
+### Red
+Tests written first (stateLabels, roles, timeline, banner, PledgeDetails rewritten for the new page, PledgeActions label updates). First run, 59 failing plus two suites that could not load:
+- `timeline.test.ts`, `banner.test.ts`: `Failed to resolve import "./timeline"` and `"./banner"` (modules did not exist).
+- `stateLabels.test.ts`: `expected { Active: 'Active', ... } to deeply equal { Active: 'Open', ... }`, and `expected 'Active' not to match /Settled|Active|Expired/`.
+- `roles.test.ts`: `expected undefined to deeply equal { staker: 'Made it', ... }`.
+- `PledgeDetails.test.tsx`: 41 x `Unable to find an element with the text: /^“/, which matches selector 'p'` (promise not yet a quoted headline), `expected 'Pledge #1' to be 'Promise #1'`, `Unable to find an element with the text: Time left: 2 days 4 hours`, `expected undefined to be '00d00h00m00s'`, `Cannot read properties of null (reading 'textContent')` for the stake amount.
+- `PledgeActions.test.tsx`: `Unable to find role="group" and name "Was this promise kept?"`.
+Each failure is the predicted one (missing element or old wording), not a compile error elsewhere.
+
+### Green
+After the implementation: `PledgeDetails.test.tsx` 62 passed, `PledgeActions.test.tsx` 69 passed, timeline 7, banner 5, stateLabels 5, roles 8. Two test defects found on the first green run and fixed in the tests: a banner test used the fixture staker address while the connected account is the staker; a huge-amount regex ignored the decimals.
+Two tests added after mutation 1607 and 1623 survived (exactly zero seconds left; an Expired pledge before the clock syncs).
+Full suite at the end: 1117 passed, 1 failed (`CreateView.test.tsx` LLR-FE-037, create group's file: it expects the status region to be the heading's next sibling and the copy-link block to follow it).
+
+### Mutations (`node cache/mutate-pledge.mjs`)
+All 24 mutants (1600 to 1623) are killed; 1607 and 1623 survived the first pass and die after the two added tests. Sources verified restored by the green runs that followed.
+
+| id | file | mutant | result |
+|---|---|---|---|
+| 1600 | src/views/pledge/timeline.ts: `{ done: 1, current: 1 }` to `{ done: 0, current: 1 }` | killed, 1 failing |
+| 1601 | src/views/pledge/timeline.ts: `{ done: 3, current: 2 }` to `{ done: 2, current: 2 }` | killed, 2 failing |
+| 1602 | src/views/pledge/timeline.ts: `return { done: 2, current: 2 };` to `return { done: 2, current: 1 };` | killed, 3 failing |
+| 1603 | src/views/pledge/banner.ts: `deadlineReached === true` to `deadlineReached !== false` | killed, 1 failing |
+| 1604 | src/views/pledge/banner.ts: `role === null ? "open-visitor"` to `role === null ? "open-referee"` | killed, 3 failing |
+| 1605 | src/views/pledge/banner.ts: `if (state === "Kept") return "kept";` to `if (state === "Kept") return "broken";` | killed, 2 failing |
+| 1606 | src/views/pledge/PledgeFacts.tsx: `|| (remaining !== null && remaining <= 0n)` to `` | killed, 1 failing |
+| 1607 | src/views/pledge/PledgeFacts.tsx: `remaining <= 0n);` to `remaining < 0n);` | SURVIVED, then killed after added test |
+| 1608 | src/views/pledge/PledgeFacts.tsx: `symbol === "cirBTC"` to `symbol !== "cirBTC"` | killed, 2 failing |
+| 1609 | src/views/pledge/PledgeFacts.tsx: `{ended ? DEADLINE_PASSED : `Time left: ${formatRemaining(remaining)}`}` to `{`Time left: ${formatRemaining(remaining)}`}` | killed, 2 failing |
+| 1610 | src/views/pledge/PledgeFacts.tsx: `<p className={ended ? "clock ended" : "clock"} aria-hidden="true">` to `<p className={ended ? "clock ended" : "clock"}>` | killed, 1 failing |
+| 1611 | src/views/pledge/PledgeFacts.tsx: `state === "Active" || state === "Expired";` to `state === "Active";` | killed, 2 failing |
+| 1612 | src/views/pledge/PledgeBanner.tsx: `role === "staker" && " Withdraw it when you like."` to `role === "referee" && " Withdraw it when you like."` | killed, 1 failing |
+| 1613 | src/views/pledge/PledgeBanner.tsx: `role === "referee" && " The deadline has passed` to `role === "staker" && " The deadline has passed` | killed, 1 failing |
+| 1614 | src/views/pledge/PledgeBanner.tsx: `state === "SettledToStaker" ? staker : beneficiary` to `state === "SettledToStaker" ? beneficiary : staker` | killed, 1 failing |
+| 1615 | src/views/PledgeView.tsx: `afterStatus === undefined ?` to `afterStatus !== undefined ?` | killed, 1 failing |
+| 1616 | src/views/pledge/PledgeBanner.tsx: `role === "beneficiary" && " You can send it to yourself now."}
+| 1617 | src/views/pledge/PledgeFacts.tsx: `Number(pledge.deadline) * 1000).toISOString()` to `Number(pledge.deadline) * 100).toISOString()` | killed, 1 failing |
+| 1618 | src/views/PledgeView.tsx: `{`“${data.promiseText}”`}` to `{data.promiseText}` | killed, 41 failing |
+| 1619 | src/views/pledge/PledgeFacts.tsx: `index < timeline.done ?` to `index <= timeline.done ?` | killed, 2 failing |
+| 1620 | src/views/pledge/PledgeFacts.tsx: `role === party && (` to `role !== null && (` | killed, 3 failing |
+| 1621 | src/views/roles.ts: `referee: "Judges it"` to `referee: "Judge"` | killed, 1 failing |
+| 1622 | src/views/pledge/PledgeFacts.tsx: `index === timeline.current ? "step"` to `index === timeline.done ? "step"` | killed, 1 failing |
+| 1623 | src/views/pledge/PledgeFacts.tsx: `remaining !== null || state === "Expired" ?` to `remaining !== null ?` | SURVIVED, then killed after added test |
+
+## FE restyle: create, My promises, About (2026-10-08)
+
+### Red
+
+- `LLR-FE-034 the form warns beside the beneficiary field that an address nobody controls loses the stake` (4 tests in `app/src/create/CreateView.test.tsx`). Before the code, 3 failed and the referee-field control passed:
+  - "shows the warning before anything is typed ...": received `"Beneficiary addressReceives your stake if the promise is broken or not confirmed in time."`, expected a match for `nobody controls it, the stake is lost for good`.
+  - "links the warning to the field, so its accessible description includes it": received `"Receives your stake if the promise is broken or not confirmed in time.  "`.
+  - "stays while the field shows a failure and while the contract-code warning shows": same absence in the description.
+- `LLR-FE-072 a page heading can carry a class for the display voice` (`PageHeading.test.tsx`): failed with `expected '' to be 'display'` (the h1 had no class).
+- MineView: the test file was changed to the new words (My promises, "You made it", "You judge it", "You get it if missed", `STATE_NAMES` for the state, empty state with "Make a promise" and the friend line) and 14 of 30 failed on the old text, for the predicted reason (text not found). Two worst-case tests (280-byte unbroken promise, one-word promise with 1 sat and a huge USDC amount) passed at once: the text was already in the DOM; they stay as regression guards, never red.
+
+### Green
+
+- `CreateView.test.tsx` 183 passed with `PageHeading.test.tsx`; `MineView.test.tsx` 30 passed. The full suite was in flux while the other two groups were mid-change (missing `home.css`, banner and timeline modules), so a clean full run is the lead's after merging.
+
+### Words changed, with their tests
+
+Heading "New promise" (title "New promise | SatStake"), form name "New promise", submit "Create promise", progress status "Promise progress", step labels "create the promise", unconfirmed message and link "My promises", My promises view texts, "Promise not found". Tests changed in the same edit: `CreateView.test.tsx`, `test/createHarness.tsx` (submit name), `MineView.test.tsx`, and by targeted string replacement `App.test.tsx`, `wallet/WalletBar.test.tsx`, `liveApp.test.tsx`.
+
+### Mutation pass (`cache/mutate-forms.mjs`, numbers 1700 to 1710)
+
+| # | Mutant | Result |
+|---|---|---|
+| 1700 | caution id removed from the control's aria-describedby | killed, 2 failing |
+| 1701 | caution not passed | killed, 3 failing |
+| 1702 | caution only when the field has an error | killed, 3 failing |
+| 1703 | final full stop dropped from the caution text | SURVIVED: punctuation only, the test matches the meaning and not the full stop; accepted |
+| 1704 | caution also on the referee field | killed, 1 failing |
+| 1705 | staker role text changed | killed, 1 failing |
+| 1706 | beneficiary role text wrong | killed, 1 failing |
+| 1707 | friend line removed | killed, 1 failing |
+| 1708 | raw state instead of `STATE_NAMES` | killed, 1 failing |
+| 1709 | role never shown | killed, 1 failing |
+| 1710 | empty-state link points to #/about | killed, 1 failing |
+
+### Merge (lead)
+
+The three groups worked in parallel in one worktree with disjoint files. At merge, one test failed: the LLR-FE-037 copy-link order test found its block as the heading's second sibling, and the pledge page now opens with its banner and keeps the status line in its card. The test now finds the block by its own frame (`.copy-link`) and keeps its assertions on the order inside it. The copy-link sentence, its button, and the pledge page's read-retry alert said "pledge"; they say "promise", with their tests in the same change. Merged tree: app 1118 passed, 9 skipped; lint and typecheck clean; trace check OK, 106 of 113.

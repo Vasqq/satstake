@@ -1,0 +1,314 @@
+/* Create form, My promises, About and the not-found views. Tokens come from styles.css; nothing here sets a colour
+   of its own. */
+
+/* ---- Create form ---- */
+
+.create-form {
+  gap: 2rem;
+  max-width: 44rem;
+  margin-top: 2rem;
+}
+
+.create-form .field {
+  gap: 0.5rem;
+}
+
+.create-form textarea {
+  resize: vertical;
+  min-height: 7rem;
+}
+
+.create-form .hint {
+  line-height: 1.45;
+}
+
+/* The beneficiary caution is always on the page: the mistake it guards against cannot be undone, so it does
+   not wait for an error. A dot and a frame mark it as well as the colour. */
+.field-caution {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--notice-fg) 40%, transparent);
+  border-radius: 14px;
+  background: var(--notice-bg);
+  color: var(--notice-fg);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+.field-caution::before {
+  content: "";
+  flex: none;
+  width: 9px;
+  height: 9px;
+  margin-top: 0.5em;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* A failure sits right under its control, and a heavier frame keeps it from reading as a hint. */
+.create-form .field-error:not(:empty) {
+  border: 1px solid color-mix(in srgb, var(--error-fg) 40%, transparent);
+}
+
+.create-form legend {
+  margin-bottom: 0.5rem;
+  padding: 0;
+}
+
+/* Deadline presets read as a row of options; the chosen one takes the accent border, and the filled radio
+   inside it says so without colour. */
+.create-form .choices {
+  gap: 0.5rem;
+}
+
+.create-form fieldset .choice {
+  align-items: center;
+  padding: 0.5rem 1.1rem;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 160ms ease;
+}
+
+.create-form fieldset .choice:has(input:checked) {
+  border-color: var(--accent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .create-form fieldset .choice:hover {
+    border-color: var(--fg);
+  }
+
+  .create-form fieldset .choice:has(input:checked):hover {
+    border-color: var(--accent);
+  }
+}
+
+.create-form input[type="radio"],
+.create-form input[type="checkbox"] {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0;
+}
+
+/* The acknowledgement is the last thing between a person and an irreversible stake, so it is a card of its own. */
+.create-form .ack {
+  align-items: flex-start;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--control-border);
+  border-radius: 20px;
+  background: var(--card);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.create-form .ack:has(input:checked) {
+  border-color: var(--accent);
+}
+
+.create-form .ack input {
+  margin-top: 0.2rem;
+}
+
+.create-form .submit-area {
+  gap: 0;
+}
+
+.create-form .submit-area .hint {
+  max-width: 36rem;
+}
+
+.create-form .submit-area .cta {
+  margin-bottom: 0.25rem;
+}
+
+/* Progress: numbered by position, one accent dot per step, so the order is clear without the colour. */
+.progress ul {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.progress li {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.progress li::before {
+  content: "";
+  flex: none;
+  width: 9px;
+  height: 9px;
+  margin-top: 0.6em;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* ---- My promises ---- */
+
+.mine-count {
+  color: var(--dim);
+}
+
+.mine-empty {
+  display: grid;
+  gap: 1rem;
+  justify-items: start;
+  margin-top: 1.5rem;
+}
+
+.mine-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mine-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: var(--card);
+  color: var(--fg);
+  text-decoration: none;
+  transition: border-color 160ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mine-card:hover {
+    border-color: var(--control-border);
+  }
+}
+
+.mine-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.mine-card-id {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+  color: var(--label);
+}
+
+/* The state is a word in a frame and not a colour alone. */
+.mine-card-state {
+  padding: 0.125rem 0.75rem;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* Two lines at most; a 280-byte word with no spaces wraps inside the card instead of widening it. */
+.mine-card-promise {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-size: clamp(1.125rem, 2.2vw, 1.375rem);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mine-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  color: var(--dim);
+  font-size: 0.9375rem;
+}
+
+.mine-card-amount {
+  font-family: var(--mono);
+  color: var(--fg);
+}
+
+.mine-card-role {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.mine-card-failed {
+  color: var(--error-fg);
+}
+
+.mine-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.mine-pager p {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--dim);
+}
+
+/* ---- About and not found ---- */
+
+.about-lead {
+  max-width: 40rem;
+}
+
+.about-section {
+  max-width: 50rem;
+  margin-top: 2.5rem;
+  padding-top: 1.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.about-section h2 {
+  margin-bottom: 1rem;
+  font-family: var(--display);
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  font-weight: 900;
+  line-height: 0.95;
+  letter-spacing: -0.045em;
+}
+
+.about-section p {
+  max-width: 40rem;
+}
+
+.about-section strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.notfound {
+  display: grid;
+  gap: 1rem;
+  justify-items: start;
+}
+
+.notfound p {
+  margin: 0;
+  color: var(--dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .create-form fieldset .choice,
+  .mine-card {
+    transition: none;
+  }
+}

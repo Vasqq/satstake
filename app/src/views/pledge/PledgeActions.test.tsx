@@ -32,7 +32,7 @@ const UNCONFIRMED =
 const ACTION_NAMES = /^(Kept|Broken|Claim stake|Withdraw my stake|Send stake to (staker|beneficiary))$/;
 
 const main = () => within(screen.getByRole("main"));
-const loaded = () => main().findByText("Stake", { selector: "dt" });
+const loaded = () => main().findByText(/^“/, { selector: "p" });
 const dialog = () => document.querySelector("dialog") as HTMLDialogElement;
 const dialogOpen = () => document.querySelector("dialog[open]") !== null;
 /** Lets the effects of a change of connection run in real time. */
@@ -63,7 +63,7 @@ describe("LLR-FE-042 the pledge page offers exactly the actions of the matrix", 
     await openPledge({ who: "none", state: 4 });
     await loaded();
     expect(main().queryByText(/Connect a wallet/)).toBeNull();
-    expect(screen.queryByRole("group", { name: "Did the staker keep this promise?" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Was this promise kept?" })).toBeNull();
   });
 
   it("says it is waiting while the wallet connects, with no button", async () => {
@@ -85,7 +85,7 @@ describe("LLR-FE-042 the pledge page offers exactly the actions of the matrix", 
   it("offers the referee of an Active pledge Kept and Broken, in a group, with the finality note", async () => {
     await openPledge({ who: "referee" });
     await loaded();
-    const group = await screen.findByRole("group", { name: "Did the staker keep this promise?" });
+    const group = await screen.findByRole("group", { name: "Was this promise kept?" });
     expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(["Kept", "Broken"]);
     expect(
       main().getByText("Your verdict is final. Record it before the deadline, or the stake goes to the beneficiary."),
@@ -102,7 +102,7 @@ describe("LLR-FE-042 the pledge page offers exactly the actions of the matrix", 
   it("offers an unrelated account nothing on an Active pledge", async () => {
     await openPledge({ who: "other" });
     await loaded();
-    expect(screen.queryByRole("group", { name: "Did the staker keep this promise?" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Was this promise kept?" })).toBeNull();
     expect(maybeButton("Kept")).toBeNull();
     expect(maybeButton("Broken")).toBeNull();
     expect(main().queryByRole("button", { name: ACTION_NAMES })).toBeNull();
@@ -415,7 +415,7 @@ describe("LLR-FE-046 progress and result of a verdict or settle request", () => 
     fireEvent.click(button("Kept"));
     await advance(2500);
     // The next scheduled poll is 4 seconds after the first, so only a re-read on confirmation can have shown this.
-    expect(statusLine().textContent).toBe("Kept. The referee confirmed the promise. The stake can now be returned to the staker.");
+    expect(statusLine().textContent).toBe("Kept. The referee confirmed it, and the stake can be sent back to the staker.");
   });
 
   it("says where a confirmed settlement went, to the staker or to the beneficiary", async () => {
@@ -669,7 +669,7 @@ describe("LLR-FE-046 a confirmed request hides the controls until the polled sta
     expect(within(progress()).getByText("You marked this promise kept.")).toBeTruthy();
     expect(maybeButton("Kept")).toBeNull();
     expect(maybeButton("Broken")).toBeNull();
-    expect(screen.queryByRole("group", { name: "Did the staker keep this promise?" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Was this promise kept?" })).toBeNull();
     chain.states.set(1n, 2);
     await advance(5000);
     expect(statusLine().textContent).toContain("Kept.");

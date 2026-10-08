@@ -14,7 +14,7 @@ export const NavigatedContext = createContext(true);
  *
  * @trace LLR-FE-072
  */
-export function PageHeading({ title, children }: { title: string; children: ReactNode }) {
+export function PageHeading({ title, className, children }: { title: string; className?: string; children: ReactNode }) {
   const ref = useRef<HTMLHeadingElement>(null);
   const navigated = useContext(NavigatedContext);
   useEffect(() => {
@@ -22,7 +22,7 @@ export function PageHeading({ title, children }: { title: string; children: Reac
     if (navigated) ref.current?.focus();
   }, [title, navigated]);
   return (
-    <h1 ref={ref} tabIndex={-1}>
+    <h1 ref={ref} tabIndex={-1} className={className}>
       {children}
     </h1>
   );

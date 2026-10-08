@@ -1,18 +1,18 @@
 import type { PledgeState } from "../chain/reads";
 
 /**
- * The derived state in short words for lists and badges. The contract's names (SettledToStaker) are for code,
+ * The derived state in plain words for lists and badges. The contract's names (SettledToStaker) are for code,
  * not for the page.
  *
  * @trace LLR-FE-040
  */
 export const STATE_NAMES: Readonly<Record<PledgeState, string>> = {
-  Active: "Active",
-  Expired: "Expired",
+  Active: "Open",
+  Expired: "No answer by the deadline",
   Kept: "Kept",
   Broken: "Broken",
-  SettledToStaker: "Settled to staker",
-  SettledToBeneficiary: "Settled to beneficiary",
+  SettledToStaker: "Paid back",
+  SettledToBeneficiary: "Paid out",
 };
 
 /**
@@ -22,12 +22,12 @@ export const STATE_NAMES: Readonly<Record<PledgeState, string>> = {
  * @trace LLR-FE-040
  */
 export const STATE_MEANINGS: Readonly<Record<PledgeState, string>> = {
-  Active: "Active. Waiting for the referee's verdict.",
-  Expired: "Expired. The deadline passed with no verdict. The stake can now be sent to the beneficiary.",
-  Kept: "Kept. The referee confirmed the promise. The stake can now be returned to the staker.",
-  Broken: "Broken. The referee marked the promise broken. The stake can now be sent to the beneficiary.",
-  SettledToStaker: "Settled. The stake was returned to the staker.",
-  SettledToBeneficiary: "Settled. The stake was sent to the beneficiary.",
+  Active: "Open. Waiting for the referee's verdict.",
+  Expired: "No answer by the deadline. The promise counts as broken, and the stake can be sent to the beneficiary.",
+  Kept: "Kept. The referee confirmed it, and the stake can be sent back to the staker.",
+  Broken: "Broken. The referee marked it broken, and the stake can be sent to the beneficiary.",
+  SettledToStaker: "Paid back. The stake went back to the staker.",
+  SettledToBeneficiary: "Paid out. The stake went to the beneficiary.",
 };
 
 /**

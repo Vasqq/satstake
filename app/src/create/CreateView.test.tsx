@@ -40,7 +40,7 @@ const errorElement = (label: string) => describedBy(field(label)).find((e) => e?
 const warningElement = (label: string) => describedBy(field(label)).find((e) => e?.classList.contains("field-warning")) as HTMLElement;
 const errorFor = (label: string) => errorElement(label)?.textContent ?? "";
 const notices = () => screen.getByRole("status", { name: "Create notices" });
-const progress = () => screen.getByRole("status", { name: "Pledge progress" });
+const progress = () => screen.getByRole("status", { name: "Promise progress" });
 const prompts = (wallet: { count: (m: string) => number }) => wallet.count("eth_sendTransaction");
 
 function touchAll() {
@@ -75,12 +75,12 @@ function afterSend(wallet: FakeWallet, nth: number, after: () => void): void {
   };
 }
 
-const UNCONFIRMED = "Your pledge was sent, but its confirmation could not be read. Check My pledges before trying again.";
+const UNCONFIRMED = "Your promise was sent, but its confirmation could not be read. Check My promises before trying again.";
 const keptApproval = (amount: string) => `Your approval of ${amount} is confirmed and stays in place, so trying again asks your wallet once.`;
 const UNREAD_BALANCE = "Could not read your balance. Trying again every 5 seconds.";
 const LEAVE_RESERVE = "Leave at least 0.05 USDC in this wallet for network fees, which Arc charges in USDC.";
 const NEED_RESERVE = "You need at least 0.05 USDC in this wallet to pay network fees, which Arc charges in USDC.";
-const PROMPT_HINT = "Your wallet may ask twice: first to let SatStake take exactly this amount, then to create the pledge.";
+const PROMPT_HINT = "Your wallet may ask twice: first to let SatStake take exactly this amount, then to create the promise.";
 
 const revertError = (errorName: string, args: unknown[] = []) =>
   Object.assign(new Error("execution reverted"), {
@@ -100,8 +100,8 @@ const tokenRevert = (reason: string) =>
 describe("LLR-FE-030 the create form lays out its fields and shows each failure beside its own field", () => {
   it("has a labelled control for every field, in a form with a name", async () => {
     await openCreate();
-    expect(screen.getByRole("heading", { level: 1, name: "Create a pledge" })).toBeTruthy();
-    expect(screen.getByRole("form", { name: "New pledge" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "New promise" })).toBeTruthy();
+    expect(screen.getByRole("form", { name: "New promise" })).toBeTruthy();
     for (const label of ["Promise", "Token", "Amount", "Referee address", "Beneficiary address"]) {
       expect(field(label), label).toBeTruthy();
     }
@@ -793,10 +793,42 @@ describe("LLR-FE-034 the statement the staker ticks says who decides and where t
   });
 });
 
+describe("LLR-FE-034 the form warns beside the beneficiary field that an address nobody controls loses the stake", () => {
+  const LOST = /nobody controls it, the stake is lost for good/;
+
+  it("shows the warning before anything is typed, next to the beneficiary field and not only on error", async () => {
+    await openCreate();
+    const input = field("Beneficiary address");
+    expect(input.closest(".field")?.textContent).toMatch(LOST);
+    expect(errorFor("Beneficiary address")).toBe("");
+  });
+
+  it("links the warning to the field, so its accessible description includes it", async () => {
+    await openCreate();
+    expect(describedText(field("Beneficiary address"))).toMatch(LOST);
+  });
+
+  it("does not put the warning on the referee field", async () => {
+    await openCreate();
+    expect(describedText(field("Referee address"))).not.toMatch(LOST);
+  });
+
+  it("stays while the field shows a failure and while the contract-code warning shows", async () => {
+    await openCreate({ prepare: ({ chain }) => void chain.code.add(BENEFICIARY.toLowerCase()) });
+    fill();
+    await waitFor(() => expect(warningElement("Beneficiary address").textContent).not.toBe(""));
+    expect(describedText(field("Beneficiary address"))).toMatch(LOST);
+    type("Beneficiary address", "0x12");
+    fireEvent.blur(field("Beneficiary address"));
+    expect(errorFor("Beneficiary address")).not.toBe("");
+    expect(describedText(field("Beneficiary address"))).toMatch(LOST);
+  });
+});
+
 describe("LLR-FE-030 the form says what it is for, and what each field is asked for", () => {
   it("opens with one sentence under the heading", async () => {
     await openCreate();
-    const heading = screen.getByRole("heading", { level: 1, name: "Create a pledge" });
+    const heading = screen.getByRole("heading", { level: 1, name: "New promise" });
     expect(heading.nextElementSibling?.textContent).toBe("Lock a stake against a promise. Your referee decides whether you kept it.");
   });
 
@@ -907,17 +939,18 @@ describe("LLR-FE-035 the beneficiary's warning also gives way to a failure of it
 });
 
 describe("LLR-FE-037 the copy-link control says what it is for, and its confirmation does not move it", () => {
-  it("says what to do with the link above a button named for it, right after the pledge's status line, then the confirmation", async () => {
+  it("says what to do with the link above a button named for it, then the confirmation", async () => {
     await openCreate();
     fill();
     await ready();
     click(submit());
-    const heading = await screen.findByRole("heading", { level: 1, name: "Pledge #42" });
-    const status = heading.nextElementSibling as HTMLElement;
-    expect(status.getAttribute("role")).toBe("status");
-    const block = status.nextElementSibling as HTMLElement;
-    const text = within(block).getByText("Your pledge is created. Send this link to your referee and your beneficiary.");
-    const button = within(block).getByRole("button", { name: "Copy the link to this pledge" });
+    await screen.findByRole("heading", { level: 1, name: "Promise #42" });
+    // The page now opens with its banner and keeps the status line in the card, so the block is found by its
+    // own frame; what this test holds is the order inside it.
+    const button = screen.getByRole("button", { name: "Copy the link to this promise" });
+    const block = button.closest(".copy-link") as HTMLElement;
+    expect(block).not.toBeNull();
+    const text = within(block).getByText("Your promise is created. Send this link to your referee and your beneficiary.");
     const confirmation = within(block).getByRole("status", { name: "Link copy status" });
     const follows = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
     expect(follows(text, button)).toBe(true);
@@ -1021,10 +1054,10 @@ describe("LLR-FE-033 creation is preceded by an approval of exactly the amount, 
     expect(progress().textContent).toBe("");
     click(submit());
     await waitFor(() => expect(progress().textContent).toContain("Step 1 of 2: let SatStake take 1.5 USDC. Confirm in your wallet."));
-    expect(progress().textContent).toContain("Step 2 of 2: create the pledge. Starts after step 1.");
+    expect(progress().textContent).toContain("Step 2 of 2: create the promise. Starts after step 1.");
     releaseApproval();
     await waitFor(() => expect(progress().textContent).toContain("Step 1 of 2: let SatStake take 1.5 USDC. Done."));
-    expect(progress().textContent).toContain("Step 2 of 2: create the pledge. Confirm in your wallet.");
+    expect(progress().textContent).toContain("Step 2 of 2: create the promise. Confirm in your wallet.");
     releaseCreation();
     await waitFor(() => expect(world.count("createPledge")).toBe(1));
   });
@@ -1035,7 +1068,7 @@ describe("LLR-FE-033 creation is preceded by an approval of exactly the amount, 
     fill({ amount: "1.5" });
     await ready();
     click(submit());
-    await waitFor(() => expect(progress().textContent).toContain("Create the pledge. Confirm in your wallet."));
+    await waitFor(() => expect(progress().textContent).toContain("Create the promise. Confirm in your wallet."));
     expect(progress().textContent).not.toContain("Step");
     expect(progress().textContent).not.toContain("let SatStake take");
     release();
@@ -1048,7 +1081,7 @@ describe("LLR-FE-033 creation is preceded by an approval of exactly the amount, 
     fill({ amount: "1.5" });
     await ready();
     click(submit());
-    await waitFor(() => expect(progress().textContent).toContain("Create the pledge. Waiting for the network to confirm."));
+    await waitFor(() => expect(progress().textContent).toContain("Create the promise. Waiting for the network to confirm."));
     open();
     await waitFor(() => expect(world.count("createPledge")).toBe(1));
   });
@@ -1175,7 +1208,7 @@ describe("LLR-FE-033 a creation that fails after a confirmed approval keeps the 
     restore();
     const release = wallet.hold("eth_sendTransaction");
     click(submit());
-    await waitFor(() => expect(progress().textContent).toContain("Create the pledge. Confirm in your wallet."));
+    await waitFor(() => expect(progress().textContent).toContain("Create the promise. Confirm in your wallet."));
     expect(progress().textContent).not.toContain("stays in place");
     release();
     await waitFor(() => expect(world.count("createPledge")).toBe(1));
@@ -1225,7 +1258,7 @@ describe("LLR-FE-062 once the wallet has returned the creation's hash, an unread
     const { world } = await sentButUnreadable();
     const hash = world.sent[0]?.hash as string;
     expect(within(notices()).getByText(hash)).toBeTruthy();
-    const link = within(notices()).getByRole("link", { name: "My pledges" });
+    const link = within(notices()).getByRole("link", { name: "My promises" });
     expect(link.getAttribute("href")).toBe("#/mine");
   });
 
@@ -1428,7 +1461,7 @@ describe("LLR-FE-036 while a transaction from the form is pending, submit is dis
     await ready();
     click(submit());
     releaseApproval();
-    await waitFor(() => expect(progress().textContent).toContain("Step 2 of 2: create the pledge. Confirm in your wallet."));
+    await waitFor(() => expect(progress().textContent).toContain("Step 2 of 2: create the promise. Confirm in your wallet."));
     expect(prompts(wallet)).toBe(2);
     expect(isDisabled(submit())).toBe(true);
     click(submit());
@@ -1437,7 +1470,7 @@ describe("LLR-FE-036 while a transaction from the form is pending, submit is dis
     let open = () => {};
     chain.receiptGate = new Promise<void>((resolve) => (open = resolve));
     releaseCreation();
-    await waitFor(() => expect(progress().textContent).toContain("Step 2 of 2: create the pledge. Waiting for the network to confirm."));
+    await waitFor(() => expect(progress().textContent).toContain("Step 2 of 2: create the promise. Waiting for the network to confirm."));
     expect(isDisabled(submit())).toBe(true);
     click(submit());
     click(submit());
@@ -1521,7 +1554,7 @@ describe("LLR-FE-037 after creation the page goes to the pledge, decoded from th
     await ready();
     click(submit());
     await waitFor(() => expect(window.location.hash).toBe("#/p/77"));
-    expect(await screen.findByRole("heading", { level: 1, name: "Pledge #77" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { level: 1, name: "Promise #77" })).toBeTruthy();
   });
 
   it("offers a control that copies the address of the pledge page, and says whether it worked", async () => {
@@ -1530,8 +1563,8 @@ describe("LLR-FE-037 after creation the page goes to the pledge, decoded from th
     fill();
     await ready();
     click(submit());
-    await screen.findByRole("heading", { level: 1, name: "Pledge #42" });
-    click(await screen.findByRole("button", { name: "Copy the link to this pledge" }));
+    await screen.findByRole("heading", { level: 1, name: "Promise #42" });
+    click(await screen.findByRole("button", { name: "Copy the link to this promise" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     expect(writeText).toHaveBeenCalledWith(`${window.location.origin}${window.location.pathname}#/p/42`);
     await screen.findByText("Link copied.");
@@ -1543,7 +1576,7 @@ describe("LLR-FE-037 after creation the page goes to the pledge, decoded from th
     fill();
     await ready();
     click(submit());
-    click(await screen.findByRole("button", { name: "Copy the link to this pledge" }));
+    click(await screen.findByRole("button", { name: "Copy the link to this promise" }));
     await screen.findByText("Could not copy the link.");
   });
 
@@ -1552,7 +1585,7 @@ describe("LLR-FE-037 after creation the page goes to the pledge, decoded from th
     fill();
     await ready();
     click(submit());
-    const heading = await screen.findByRole("heading", { level: 1, name: "Pledge #42" });
+    const heading = await screen.findByRole("heading", { level: 1, name: "Promise #42" });
     await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
@@ -1561,12 +1594,12 @@ describe("LLR-FE-037 after creation the page goes to the pledge, decoded from th
     fill();
     await ready();
     click(submit());
-    await screen.findByRole("button", { name: "Copy the link to this pledge" });
+    await screen.findByRole("button", { name: "Copy the link to this promise" });
     act(() => {
       window.location.hash = "#/p/1";
     });
-    await screen.findByRole("heading", { level: 1, name: "Pledge #1" });
-    expect(screen.queryByRole("button", { name: "Copy the link to this pledge" })).toBeNull();
+    await screen.findByRole("heading", { level: 1, name: "Promise #1" });
+    expect(screen.queryByRole("button", { name: "Copy the link to this promise" })).toBeNull();
   });
 });
 
@@ -1835,7 +1868,7 @@ describe("LLR-FE-072 the form is operable by keyboard and its changes are announ
 
   it("uses native controls throughout, which a keyboard reaches in order and operates", async () => {
     await openCreate();
-    const form = screen.getByRole("form", { name: "New pledge" });
+    const form = screen.getByRole("form", { name: "New promise" });
     const controls = Array.from(form.querySelectorAll("input, textarea, select, button")) as HTMLElement[];
     expect(controls.length).toBeGreaterThanOrEqual(10);
     for (const control of controls) expect(control.getAttribute("tabindex"), control.outerHTML).not.toBe("-1");

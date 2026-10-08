@@ -25,3 +25,18 @@ describe("LLR-FE-072 a page heading sets the title and takes focus", () => {
     expect(screen.getByRole("heading", { name: "One" }).getAttribute("tabindex")).toBe("-1");
   });
 });
+
+describe("LLR-FE-072 a page heading can carry a class for the display voice", () => {
+  it("puts the class on the h1 and keeps the title and focus behaviour", () => {
+    document.title = "stale";
+    render(
+      <PageHeading title="Three | SatStake" className="display">
+        Three
+      </PageHeading>,
+    );
+    const heading = screen.getByRole("heading", { level: 1, name: "Three" });
+    expect(heading.className).toBe("display");
+    expect(document.title).toBe("Three | SatStake");
+    expect(document.activeElement).toBe(heading);
+  });
+});

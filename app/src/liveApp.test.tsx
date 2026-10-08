@@ -34,6 +34,6 @@ live("LLR-FE-013 LLR-FE-005 the application rendered over Arc testnet", () => {
 
   it("shows the not-found view for a pledge the contract does not have", async () => {
     open("#/p/999999");
-    expect((await screen.findByRole("heading", { name: "Pledge not found" }, { timeout: 15_000 })).tagName).toBe("H1");
+    expect((await screen.findByRole("heading", { name: "Promise not found" }, { timeout: 15_000 })).tagName).toBe("H1");
   });
 });

@@ -44,7 +44,7 @@ export async function openCreate(options: OpenOptions = {}) {
 
 export const field = (label: string) => screen.getByLabelText(label);
 export const type = (label: string, value: string) => fireEvent.change(field(label), { target: { value } });
-export const submit = () => screen.getByRole("button", { name: "Create pledge" });
+export const submit = () => screen.getByRole("button", { name: "Create promise" });
 export const isDisabled = (button: HTMLElement) =>
   (button as HTMLButtonElement).disabled || button.getAttribute("aria-disabled") === "true";
 

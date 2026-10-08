@@ -1,0 +1,491 @@
+/* The landing page. Shared classes (.display, .label, .cta, .rule, .rows, .card, .clock) come from styles.css;
+   everything here is specific to this page and prefixed so it cannot touch another view. */
+
+.home {
+  display: block;
+}
+
+/* Hero */
+.home-hero {
+  display: grid;
+  gap: 34px;
+  justify-items: start;
+  padding-block: clamp(32px, 6vw, 80px) 48px;
+}
+
+.home-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 2.75rem;
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+  text-decoration: none;
+}
+
+.home-eyebrow::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 14%, transparent);
+}
+
+/* The page heading is the PageHeading h1, so the display voice is applied by selector. */
+.home-title {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 900;
+  font-size: clamp(64px, 10.5vw, 148px);
+  letter-spacing: -0.055em;
+  line-height: 0.86;
+  text-transform: lowercase;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.home-title .hot {
+  color: var(--accent);
+}
+
+.home-hero .lead {
+  max-width: 50ch;
+  margin: 0;
+}
+
+.home-hero .lead strong {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.home .textlink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  color: var(--fg);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--control-border);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 6px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .home .textlink:hover {
+    text-decoration-color: var(--fg);
+  }
+}
+
+.home-need {
+  margin: 0;
+  font-size: 14px;
+  color: var(--label);
+}
+
+/* Sections */
+.home-sec {
+  padding-block: clamp(80px, 10vw, 128px) 0;
+}
+
+.home .display {
+  margin-bottom: 48px;
+}
+
+.home h2.display {
+  font-size: clamp(44px, 6vw, 76px);
+  overflow-wrap: anywhere;
+}
+
+.home-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 40px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.home-steps li {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.home-steps h3 {
+  margin: 18px 0 0;
+}
+
+.home-steps p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.home-endings {
+  margin: 64px 0 0;
+}
+
+.home-endings dd {
+  margin: 12px 0 0;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: clamp(28px, 3.4vw, 42px);
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+.home-endings .is-kept dd {
+  color: var(--accent);
+}
+
+.home-silence {
+  margin: 30px 0 0;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.home-uses {
+  margin: 8px 0 0;
+  color: var(--dim);
+  font-style: italic;
+}
+
+.home-before {
+  margin: 26px 0 0;
+  color: var(--dim);
+}
+
+.home-before strong {
+  color: var(--fg);
+}
+
+/* Trust */
+.home-claims {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 40px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.home-claims li {
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+  color: var(--dim);
+}
+
+.home-claims strong {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--fg);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.home-limits {
+  max-width: 860px;
+  margin: 40px 0 0;
+  padding: 24px 28px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  color: var(--dim);
+}
+
+.home-limits strong {
+  color: var(--fg);
+}
+
+.home-proof {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 24px;
+  margin-top: 56px;
+  padding-block: 26px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 15px;
+  color: var(--dim);
+}
+
+.home-proof b {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 400;
+  font-size: clamp(22px, 2.6vw, 32px);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+/* Reviewers */
+.home-rev {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 56px;
+}
+
+.home-why {
+  margin: 12px 0 0;
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--fg);
+}
+
+.home-contract {
+  margin-top: 12px;
+  font-family: var(--mono);
+  font-size: 15px;
+}
+
+.home-links {
+  margin: 16px 0 0;
+}
+
+.home-network {
+  margin: 16px 0 0;
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--dim);
+}
+
+.home-more {
+  margin: 24px 0 0;
+  color: var(--dim);
+  font-size: 15px;
+}
+
+.home-more .textlink {
+  min-height: 0;
+}
+
+/* Questions */
+.home-faq {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 56px;
+  margin: 0;
+}
+
+.home-faq > div {
+  padding-block: 24px 26px;
+  border-top: 1px solid var(--line);
+}
+
+.home-faq dt {
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.home-faq dd {
+  margin: 8px 0 0;
+  color: var(--dim);
+}
+
+/* Closing */
+.home-close {
+  display: grid;
+  gap: 36px;
+  justify-items: start;
+  padding-block: clamp(96px, 12vw, 152px) 0;
+}
+
+.home-close h2.display {
+  margin: 0;
+  font-size: clamp(52px, 8vw, 112px);
+}
+
+/* The rotating card. Every height is fixed so a short or long promise never moves the page. */
+.home-rot {
+  position: relative;
+  overflow: hidden;
+  margin-top: 16px;
+}
+
+.home-rot-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-height: 44px;
+}
+
+.home-rot-id {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+}
+
+.home-rot-id a {
+  color: var(--label);
+  text-decoration: none;
+}
+
+.home-rot-state {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.home-rot-state.is-ended {
+  color: var(--dim);
+}
+
+.home-rot-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.home-rot-count {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+}
+
+.home-rot-pause {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-height: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.home-rot-pause svg {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+
+.home-rot-quote {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.5em;
+  margin: 14px 0 0;
+  font-weight: 600;
+  font-size: clamp(22px, 2.6vw, 30px);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.home-rot-slot {
+  margin-top: 26px;
+}
+
+.home-rot-clock {
+  min-height: 1em;
+  margin: 0;
+}
+
+.home-rot-clock.is-ended {
+  color: var(--fg);
+}
+
+.home-rot-sub {
+  min-height: 3em;
+  margin: 14px 0 0;
+  font-size: 14px;
+  color: var(--label);
+  overflow-wrap: anywhere;
+}
+
+.home-rot-sub code {
+  font: inherit;
+  color: var(--dim);
+}
+
+.home-rot-facts {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr 1fr 1fr;
+  gap: 24px 32px;
+  margin: 24px 0 0;
+  padding-top: 30px;
+  border-top: 1px solid var(--line);
+}
+
+.home-rot-facts dd {
+  min-height: 2.6em;
+  margin: 10px 0 0;
+  font-family: var(--mono);
+  font-size: 16px;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+/* The bar is decoration: the timer in the script decides when to move on, and this only shows the wait. */
+.home-rot-bar {
+  position: absolute;
+  inset: auto 0 0;
+  height: 2px;
+}
+
+.home-rot-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left center;
+  transform: scaleX(0);
+  animation: home-rot-fill 8s linear forwards;
+}
+
+.home-rot-fill.is-paused {
+  animation-play-state: paused;
+}
+
+@keyframes home-rot-fill {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .home-rot-pause:hover {
+    border-color: var(--fg);
+  }
+}
+
+@media (max-width: 860px) {
+  .home-steps,
+  .home-claims,
+  .home-rev,
+  .home-faq {
+    grid-template-columns: 1fr;
+  }
+
+  .home-steps,
+  .home-claims {
+    gap: 32px;
+  }
+
+  .home-rev {
+    gap: 40px;
+  }
+
+  .home-rot-facts {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-rot-fill {
+    animation: none;
+    transform: scaleX(1);
+    opacity: 0.35;
+  }
+}

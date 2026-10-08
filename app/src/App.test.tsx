@@ -53,11 +53,11 @@ afterEach(() => {
 describe("LLR-FE-013 the shell shows the view for each route", () => {
   it("shows one view per documented route", async () => {
     const cases: [string, string][] = [
-      ["#/", "Lock Bitcoin against a promise."],
-      ["#/create", "Create a pledge"],
-      ["#/mine", "My pledges"],
+      ["#/", "Put money behind your promise."],
+      ["#/create", "New promise"],
+      ["#/mine", "My promises"],
       ["#/about", "About SatStake"],
-      ["#/p/1", "Pledge #1"],
+      ["#/p/1", "Promise #1"],
     ];
     for (const [hash, heading] of cases) {
       setup(hash);
@@ -73,7 +73,7 @@ describe("LLR-FE-013 the shell shows the view for each route", () => {
 
   it("shows the not-found view for a pledge id the contract does not recognize, in the words of section 2.2", async () => {
     setup("#/p/99");
-    expect((await screen.findByRole("heading", { name: "Pledge not found" })).tagName).toBe("H1");
+    expect((await screen.findByRole("heading", { name: "Promise not found" })).tagName).toBe("H1");
     expect(screen.getByText("This promise does not exist. Check the link.")).toBeTruthy();
     expect(screen.queryByText("Page not found")).toBeNull();
   });
@@ -90,7 +90,7 @@ describe("LLR-FE-013 the shell shows the view for each route", () => {
     chain.callError = new HttpRequestError({ url: "https://rpc.example" });
     setup("#/p/1", chain);
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Could not read this pledge");
+    expect(alert.textContent).toContain("Could not read this promise");
     expect(screen.queryByRole("heading", { name: "Page not found" })).toBeNull();
   });
 
@@ -98,11 +98,11 @@ describe("LLR-FE-013 the shell shows the view for each route", () => {
     const chain = freshChain();
     chain.addPledge(2n, samplePledge, 2);
     setup("#/p/1", chain);
-    await screen.findByText("Active. Waiting for the referee's verdict.");
+    await screen.findByText("Open. Waiting for the referee's verdict.");
     act(() => {
       window.location.hash = "#/p/2";
     });
-    await screen.findByText("Kept. The referee confirmed the promise. The stake can now be returned to the staker.");
+    await screen.findByText("Kept. The referee confirmed it, and the stake can be sent back to the staker.");
     let release = () => {};
     chain.gate = new Promise<void>((resolve) => (release = resolve));
     act(() => {
@@ -111,14 +111,14 @@ describe("LLR-FE-013 the shell shows the view for each route", () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
-    expect(screen.queryByText("Kept. The referee confirmed the promise. The stake can now be returned to the staker.")).toBeNull();
+    expect(screen.queryByText("Kept. The referee confirmed it, and the stake can be sent back to the staker.")).toBeNull();
     release();
-    await screen.findByText("Active. Waiting for the referee's verdict.");
+    await screen.findByText("Open. Waiting for the referee's verdict.");
   });
 
   it("changes view when the hash changes", async () => {
     setup("#/");
-    expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe("Lock Bitcoin against a promise.");
+    expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe("Put money behind your promise.");
     act(() => {
       window.location.hash = "#/about";
     });
@@ -126,7 +126,7 @@ describe("LLR-FE-013 the shell shows the view for each route", () => {
     act(() => {
       window.location.hash = "#/p/99";
     });
-    expect((await screen.findByRole("heading", { name: "Pledge not found" })).tagName).toBe("H1");
+    expect((await screen.findByRole("heading", { name: "Promise not found" })).tagName).toBe("H1");
   });
 });
 
@@ -181,10 +181,10 @@ describe("LLR-FE-011 the pledge page re-reads state and the latest block every 4
 
   it("shows the state a later poll finds", async () => {
     const chain = await settle();
-    expect(screen.getByText("Active. Waiting for the referee's verdict.")).toBeTruthy();
+    expect(screen.getByText("Open. Waiting for the referee's verdict.")).toBeTruthy();
     chain.states.set(1n, 2);
     await advance(4_000);
-    expect(screen.getByText("Kept. The referee confirmed the promise. The stake can now be returned to the staker.")).toBeTruthy();
+    expect(screen.getByText("Kept. The referee confirmed it, and the stake can be sent back to the staker.")).toBeTruthy();
   });
 
   it("stops while the page is hidden and reads again when it is shown", async () => {
@@ -347,16 +347,16 @@ describe("LLR-FE-006 a notice names a token whose creation is disabled", () => {
 });
 
 const pledgeStatus = () => within(screen.getByRole("main")).getByRole("status", { name: "Pledge status" });
-const RETRYING = "Could not read this pledge. The site keeps trying while this page is open.";
+const RETRYING = "Could not read this promise. The site keeps trying while this page is open.";
 
 describe("LLR-FE-011 the pledge page in plain words, and a failed first read is tried again", () => {
   const states: [number, string][] = [
-    [0, "Active. Waiting for the referee's verdict."],
-    [1, "Expired. The deadline passed with no verdict. The stake can now be sent to the beneficiary."],
-    [2, "Kept. The referee confirmed the promise. The stake can now be returned to the staker."],
-    [3, "Broken. The referee marked the promise broken. The stake can now be sent to the beneficiary."],
-    [4, "Settled. The stake was returned to the staker."],
-    [5, "Settled. The stake was sent to the beneficiary."],
+    [0, "Open. Waiting for the referee's verdict."],
+    [1, "No answer by the deadline. The promise counts as broken, and the stake can be sent to the beneficiary."],
+    [2, "Kept. The referee confirmed it, and the stake can be sent back to the staker."],
+    [3, "Broken. The referee marked it broken, and the stake can be sent to the beneficiary."],
+    [4, "Paid back. The stake went back to the staker."],
+    [5, "Paid out. The stake went to the beneficiary."],
   ];
 
   it.each(states)("shows state %i as %s", async (value, label) => {
@@ -373,11 +373,11 @@ describe("LLR-FE-011 the pledge page in plain words, and a failed first read is 
     chain.latency = (r) => (r.functionName === "stateOf" ? new Promise<void>((resolve) => setTimeout(resolve, 3_000)) : undefined);
     setup("#/p/1", chain);
     await advance(100);
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Pledge #1");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Promise #1");
     expect(pledgeStatus().textContent).toContain("Reading the pledge");
     await advance(3_000);
     expect(screen.queryByText(/Reading the pledge/)).toBeNull();
-    expect(screen.getByText("Active. Waiting for the referee's verdict.")).toBeTruthy();
+    expect(screen.getByText("Open. Waiting for the referee's verdict.")).toBeTruthy();
   });
 
   it("says it is reading while the pledge itself has not been answered, with the heading and title already there", async () => {
@@ -387,12 +387,12 @@ describe("LLR-FE-011 the pledge page in plain words, and a failed first read is 
     document.title = "stale";
     setup("#/p/1", chain);
     await advance(100);
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Pledge #1");
-    expect(document.title).toBe("Pledge #1 | SatStake");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Promise #1");
+    expect(document.title).toBe("Promise #1 | SatStake");
     expect(pledgeStatus().textContent).toContain("Reading the pledge");
     await advance(3_000);
     await advance(50);
-    expect(screen.getByText("Active. Waiting for the referee's verdict.")).toBeTruthy();
+    expect(screen.getByText("Open. Waiting for the referee's verdict.")).toBeTruthy();
   });
 
   it("keeps trying when the first read of the pledge fails, and shows it when a later try succeeds", async () => {
@@ -401,7 +401,7 @@ describe("LLR-FE-011 the pledge page in plain words, and a failed first read is 
     chain.callError = new HttpRequestError({ url: "https://rpc.example" });
     setup("#/p/1", chain);
     await advance(50);
-    expect(screen.getByRole("alert").textContent).toContain("Could not read this pledge");
+    expect(screen.getByRole("alert").textContent).toContain("Could not read this promise");
     expect(screen.getByRole("alert").textContent).not.toMatch(/reload/i);
     const tries = chain.count("eth_call");
     await advance(4_000);
@@ -410,7 +410,7 @@ describe("LLR-FE-011 the pledge page in plain words, and a failed first read is 
     await advance(4_000);
     await advance(50);
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByText("Active. Waiting for the referee's verdict.")).toBeTruthy();
+    expect(screen.getByText("Open. Waiting for the referee's verdict.")).toBeTruthy();
   });
 
   it("reads no state for a pledge the contract says does not exist", async () => {
@@ -520,10 +520,10 @@ describe("LLR-FE-072 each page sets the title and moves focus to its heading", (
   it("sets the document title for each route", async () => {
     const cases: [string, string][] = [
       ["#/", "SatStake"],
-      ["#/create", "Create a pledge | SatStake"],
-      ["#/mine", "My pledges | SatStake"],
+      ["#/create", "New promise | SatStake"],
+      ["#/mine", "My promises | SatStake"],
       ["#/about", "About SatStake"],
-      ["#/p/1", "Pledge #1 | SatStake"],
+      ["#/p/1", "Promise #1 | SatStake"],
       ["#/nowhere", "Page not found | SatStake"],
     ];
     for (const [hash, title] of cases) {
@@ -537,13 +537,13 @@ describe("LLR-FE-072 each page sets the title and moves focus to its heading", (
 
   it("titles a pledge that does not exist as not found", async () => {
     setup("#/p/99");
-    await screen.findByRole("heading", { name: "Pledge not found" });
-    expect(document.title).toBe("Pledge not found | SatStake");
+    await screen.findByRole("heading", { name: "Promise not found" });
+    expect(document.title).toBe("Promise not found | SatStake");
   });
 
   it("moves the title and the focus when the route changes", async () => {
     setup("#/");
-    await screen.findByRole("heading", { name: "Lock Bitcoin against a promise.", level: 1 });
+    await screen.findByRole("heading", { name: "Put money behind your promise.", level: 1 });
     act(() => {
       window.location.hash = "#/about";
     });
@@ -553,8 +553,8 @@ describe("LLR-FE-072 each page sets the title and moves focus to its heading", (
     act(() => {
       window.location.hash = "#/create";
     });
-    const create = await screen.findByRole("heading", { name: "Create a pledge" });
-    expect(document.title).toBe("Create a pledge | SatStake");
+    const create = await screen.findByRole("heading", { name: "New promise" });
+    expect(document.title).toBe("New promise | SatStake");
     expect(document.activeElement).toBe(create);
   });
 
@@ -562,12 +562,12 @@ describe("LLR-FE-072 each page sets the title and moves focus to its heading", (
     const chain = freshChain();
     chain.addPledge(2n);
     setup("#/p/1", chain);
-    await screen.findByRole("heading", { name: "Pledge #1" });
+    await screen.findByRole("heading", { name: "Promise #1" });
     act(() => {
       window.location.hash = "#/p/2";
     });
-    const second = await screen.findByRole("heading", { name: "Pledge #2" });
-    expect(document.title).toBe("Pledge #2 | SatStake");
+    const second = await screen.findByRole("heading", { name: "Promise #2" });
+    expect(document.title).toBe("Promise #2 | SatStake");
     expect(document.activeElement).toBe(second);
   });
 });
@@ -582,17 +582,17 @@ describe("LLR-FE-011 a failed poll shows an error beside the last state, and the
   it("keeps the last state on screen and shows the error while the most recent poll failed, then clears it", async () => {
     const chain = freshChain();
     await open(chain);
-    expect(screen.getByText("Active. Waiting for the referee's verdict.")).toBeTruthy();
+    expect(screen.getByText("Open. Waiting for the referee's verdict.")).toBeTruthy();
     chain.callError = new HttpRequestError({ url: "https://rpc.example" });
     await advance(4_000);
     await advance(50);
-    expect(screen.getByText("Active. Waiting for the referee's verdict.")).toBeTruthy();
+    expect(screen.getByText("Open. Waiting for the referee's verdict.")).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toBe(RETRYING);
     chain.callError = undefined;
     await advance(4_000);
     await advance(50);
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByText("Active. Waiting for the referee's verdict.")).toBeTruthy();
+    expect(screen.getByText("Open. Waiting for the referee's verdict.")).toBeTruthy();
   });
 
   it("shows the error beside the reading message while no state has been read", async () => {
@@ -630,12 +630,12 @@ describe("LLR-FE-011 a failed poll shows an error beside the last state, and the
     expect(status.textContent).toContain("Reading the pledge");
     await advance(3_000);
     expect(pledgeStatus()).toBe(status);
-    expect(status.textContent).toBe("Active. Waiting for the referee's verdict.");
+    expect(status.textContent).toBe("Open. Waiting for the referee's verdict.");
     chain.latency = undefined;
     chain.states.set(1n, 2);
     await advance(4_000);
     expect(pledgeStatus()).toBe(status);
-    expect(status.textContent).toBe("Kept. The referee confirmed the promise. The stake can now be returned to the staker.");
+    expect(status.textContent).toBe("Kept. The referee confirmed it, and the stake can be sent back to the staker.");
   });
 });
 
@@ -692,8 +692,8 @@ describe("LLR-FE-072 focus and title on the first page load and on the swap to n
 
   it("leaves the focus alone on the first page load of a pledge too, once its heading appears", async () => {
     setup("#/p/1");
-    await screen.findByRole("heading", { name: "Pledge #1" });
-    expect(document.title).toBe("Pledge #1 | SatStake");
+    await screen.findByRole("heading", { name: "Promise #1" });
+    expect(document.title).toBe("Promise #1 | SatStake");
     expect(focused).toEqual([]);
   });
 
@@ -708,8 +708,8 @@ describe("LLR-FE-072 focus and title on the first page load and on the swap to n
     });
     await advance(10);
     const heading = screen.getByRole("heading", { level: 1 });
-    expect(heading.textContent).toBe("Pledge #1");
-    expect(document.title).toBe("Pledge #1 | SatStake");
+    expect(heading.textContent).toBe("Promise #1");
+    expect(document.title).toBe("Promise #1 | SatStake");
     expect(document.activeElement).toBe(heading);
   });
 
@@ -720,9 +720,9 @@ describe("LLR-FE-072 focus and title on the first page load and on the swap to n
     act(() => {
       window.location.hash = "#/p/99";
     });
-    await screen.findByRole("heading", { name: "Pledge not found" });
-    expect(titles).toEqual(["Pledge #99 | SatStake", "Pledge not found | SatStake"]);
-    expect(focused).toEqual(["Pledge #99", "Pledge not found"]);
-    expect(document.title).toBe("Pledge not found | SatStake");
+    await screen.findByRole("heading", { name: "Promise not found" });
+    expect(titles).toEqual(["Promise #99 | SatStake", "Promise not found | SatStake"]);
+    expect(focused).toEqual(["Promise #99", "Promise not found"]);
+    expect(document.title).toBe("Promise not found | SatStake");
   });
 });

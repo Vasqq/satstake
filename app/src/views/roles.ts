@@ -10,6 +10,17 @@ export const ROLE_NAMES: Readonly<Record<Role, string>> = {
 };
 
 /**
+ * What each party did or will get, for the pledge page's columns. The nouns above stay for sentences.
+ *
+ * @trace LLR-FE-041
+ */
+export const ROLE_LABELS: Readonly<Record<Role, string>> = {
+  staker: "Made it",
+  referee: "Judges it",
+  beneficiary: "Gets it if missed",
+};
+
+/**
  * The contract refuses a pledge where one address holds two roles, so at most one matches. Wallets report
  * addresses in lower case and the chain in checksum case, so the comparison ignores case.
  *
