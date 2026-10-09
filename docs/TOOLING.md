@@ -38,7 +38,7 @@ Every skill, MCP server, and non-trivial package or tool used to build SatStake,
 
 ## Agent skills
 
-Installed at project scope in `.claude/skills/` with `npx -y skills@1.7.0 add ... -a claude-code --copy`, hashes in `skills-lock.json`. Read before use: instructions and data only, plus offline Python search scripts in `ui-ux-pro-max`; no network calls, no credential or environment reads. Used for the frontend restyle (2026-10-08).
+Installed at project scope in `.claude/skills/` with `npx -y skills@1.7.0 add ... -a claude-code --copy`; the directory is gitignored, since it is third-party content, and `skills-lock.json` (committed) records each source and hash so the install can be repeated. Read before use: instructions and data only, plus offline Python search scripts in `ui-ux-pro-max`; no network calls, no credential or environment reads. Used for the frontend restyle (2026-10-08).
 
 | Skill | Source | Reason |
 |---|---|---|

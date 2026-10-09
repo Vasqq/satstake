@@ -2,33 +2,27 @@ import { describe, expect, it } from "vitest";
 import { PLEDGE_STATES } from "../chain/reads";
 import { ACTIVE_PAST_DEADLINE_MEANING, STATE_MEANINGS, STATE_NAMES } from "./stateLabels";
 
+// The words are Liam's to change (05 v1.27). These tests hold what a reader relies on: every state has a name
+// and a sentence, neither is the contract's identifier, and the sentence repeats the name so the state does
+// not depend on a colour.
 describe("LLR-FE-040 the derived state in words", () => {
-  it("has a plain name for every state, and nothing else", () => {
-    expect(STATE_NAMES).toEqual({
-      Active: "Open",
-      Expired: "No answer by the deadline",
-      Kept: "Kept",
-      Broken: "Broken",
-      SettledToStaker: "Paid back",
-      SettledToBeneficiary: "Paid out",
-    });
+  it("has a name and a meaning for every state, and nothing else", () => {
     expect(Object.keys(STATE_NAMES).sort()).toEqual([...PLEDGE_STATES].sort());
+    expect(Object.keys(STATE_MEANINGS).sort()).toEqual([...PLEDGE_STATES].sort());
+    for (const state of PLEDGE_STATES) {
+      expect(STATE_NAMES[state].trim()).not.toBe("");
+      expect(STATE_MEANINGS[state].trim()).not.toBe("");
+    }
   });
 
-  it("has a meaning for every state, and nothing else", () => {
-    expect(STATE_MEANINGS).toEqual({
-      Active: "Open. Waiting for the referee's verdict.",
-      Expired: "No answer by the deadline. The promise counts as broken, and the stake can be sent to the beneficiary.",
-      Kept: "Kept. The referee confirmed it, and the stake can be sent back to the staker.",
-      Broken: "Broken. The referee marked it broken, and the stake can be sent to the beneficiary.",
-      SettledToStaker: "Paid back. The stake went back to the staker.",
-      SettledToBeneficiary: "Paid out. The stake went to the beneficiary.",
-    });
-    expect(Object.keys(STATE_MEANINGS).sort()).toEqual([...PLEDGE_STATES].sort());
+  it("gives each state a name of its own, so two states are never confused", () => {
+    expect(new Set(PLEDGE_STATES.map((s) => STATE_NAMES[s])).size).toBe(PLEDGE_STATES.length);
   });
 
   it("has its own sentence for an Active pledge whose deadline chain time has reached", () => {
-    expect(ACTIVE_PAST_DEADLINE_MEANING).toBe("The deadline has passed. Updating the status from the network.");
+    expect(ACTIVE_PAST_DEADLINE_MEANING.trim()).not.toBe("");
+    expect(ACTIVE_PAST_DEADLINE_MEANING).not.toBe(STATE_MEANINGS.Active);
+    expect(ACTIVE_PAST_DEADLINE_MEANING.toLowerCase()).toContain("deadline");
   });
 
   it("starts each meaning with its state name's first word", () => {

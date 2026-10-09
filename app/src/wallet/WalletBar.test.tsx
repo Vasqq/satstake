@@ -5,6 +5,7 @@ import { FakeWallet, installWindowEthereum, rejection, walletError } from "../te
 import { ACCOUNT, FOREIGN_CHAIN, OTHER_ACCOUNT, mountApp, network, reloadPage, shortOf, teardownWallets, walletStatus } from "../test/walletHarness";
 import { shortAddress } from "./address";
 import { FAILED_MESSAGE, REJECTED_MESSAGE } from "./failure";
+import { STATE_MEANINGS } from "../views/stateLabels";
 
 afterEach(teardownWallets);
 
@@ -19,8 +20,8 @@ const connectButton = (name: string) => screen.findByRole("button", { name: `Con
 const connectedAddress = (short = shortOf(ACCOUNT)) => screen.findByText(new RegExp(`^Connected: ${short}`));
 const isPending = (button: HTMLElement) => button.getAttribute("aria-disabled") === "true";
 const PROMPTS = ["eth_requestAccounts", "wallet_requestPermissions"];
-const NO_WALLET =
-  "Creating or settling a promise needs a browser wallet. On a phone, open this page in your wallet app's browser. You can read every page without one.";
+// Wording is free (05 v1.27). What the requirement keeps is that a browser wallet is named as the thing needed to act.
+const NO_WALLET = /browser wallet/;
 const CONNECT_PROMPT = "Connect a wallet to create or settle a promise. You can read every page without one.";
 // Lets a reconnect that finds nothing finish, so a test that expects no prompt has given one time to appear.
 const settleReconnect = async (wallet: FakeWallet) => {
@@ -91,17 +92,35 @@ describe("LLR-FE-020 the window.ethereum fallback applies only when no wallet an
 });
 
 describe("LLR-FE-020 with no wallet at all, the application says a browser wallet is needed", () => {
-  it("says so, offers no connect control, and still shows the page", async () => {
-    mountApp();
-    expect(within(bar()).getByText(NO_WALLET)).toBeTruthy();
+  it("says so in one short line, offers no connect control, and still shows the page", async () => {
+    mountApp({ hash: "#/about" });
+    const line = within(bar()).getByText(NO_WALLET);
+    expect(line.textContent).toMatch(/phone/);
+    expect(line.textContent!.length).toBeLessThan(140);
     expect(within(bar()).queryByRole("button")).toBeNull();
-    expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe("Put money behind your promise.");
+    expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe("About SatStake");
+  });
+
+  it("leaves the line out on the landing page, whose first screen already says a wallet is needed, and keeps the wallet region", async () => {
+    mountApp({ hash: "#/" });
+    await screen.findByRole("heading", { level: 1 });
+    expect(within(bar()).queryByText(NO_WALLET)).toBeNull();
+    expect(walletStatus()).toBeTruthy();
+    expect(within(bar()).queryByRole("button")).toBeNull();
+  });
+
+  it("says it again on any other page", async () => {
+    for (const hash of ["#/create", "#/mine", "#/p/1"]) {
+      mountApp({ hash });
+      expect(within(bar()).getByText(NO_WALLET), hash).toBeTruthy();
+      teardownWallets();
+    }
   });
 
   it("does not say it when a wallet is found", async () => {
     mountApp({ wallets: [alpha(fresh())] });
     await connectButton("Alpha Wallet");
-    expect(screen.queryByText(NO_WALLET)).toBeNull();
+    expect(within(bar()).queryByText(NO_WALLET)).toBeNull();
   });
 });
 
@@ -253,7 +272,7 @@ describe("LLR-FE-021 every read-only view renders fully without a connected wall
   ])("shows every view with %s", async (_label, present) => {
     for (const [hash, heading] of views) {
       mountApp({ hash, ...(present ? { wallets: [alpha(fresh())] } : {}) });
-      expect((await screen.findByRole("heading", { level: 1 })).textContent, hash).toBe(heading);
+      expect((await screen.findByRole("heading", { level: 1 })).textContent?.startsWith(heading), hash).toBe(true);
       expect(screen.getByRole("main")).toBeTruthy();
       teardownWallets();
     }
@@ -261,7 +280,7 @@ describe("LLR-FE-021 every read-only view renders fully without a connected wall
 
   it("reads and shows a pledge's state with no wallet", async () => {
     const chain = mountApp({ hash: "#/p/1" }).chain;
-    expect(await screen.findByText("Open. Waiting for the referee's verdict.")).toBeTruthy();
+    expect(await screen.findByText(STATE_MEANINGS.Active)).toBeTruthy();
     expect(chain.count("eth_call", "stateOf")).toBeGreaterThan(0);
   });
 
@@ -269,7 +288,7 @@ describe("LLR-FE-021 every read-only view renders fully without a connected wall
     const w = fresh({ chainId: FOREIGN_CHAIN, authorized: true });
     const { chain } = mountApp({ hash: "#/p/1", wallets: [alpha(w)] });
     await connectedAddress();
-    expect(await screen.findByText("Open. Waiting for the referee's verdict.")).toBeTruthy();
+    expect(await screen.findByText(STATE_MEANINGS.Active)).toBeTruthy();
     expect(chain.count("eth_call", "stateOf")).toBeGreaterThan(0);
     expect(w.methods().filter((m) => !["eth_accounts", "eth_chainId"].includes(m))).toEqual([]);
   });
@@ -279,7 +298,7 @@ describe("LLR-FE-021 every read-only view renders fully without a connected wall
     // wagmi retries a failed eth_accounts a few times before it decides the wallet is not authorized.
     for (let i = 0; i < 10; i++) w.failNext("eth_accounts", walletError(-32603, "wallet is locked"));
     mountApp({ hash: "#/p/1", wallets: [alpha(w)] });
-    expect(await screen.findByText("Open. Waiting for the referee's verdict.")).toBeTruthy();
+    expect(await screen.findByText(STATE_MEANINGS.Active)).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
     // wagmi allows one reconnect at a time for the whole process, so let this one finish before the next test.
     await waitFor(() => expect(w.count("eth_accounts")).toBeGreaterThanOrEqual(3), { timeout: 4_000 });
@@ -289,7 +308,7 @@ describe("LLR-FE-021 every read-only view renders fully without a connected wall
   it("asks the wallet for nothing while a read-only view is shown", async () => {
     const w = fresh();
     mountApp({ hash: "#/p/1", wallets: [alpha(w)] });
-    await screen.findByText("Open. Waiting for the referee's verdict.");
+    await screen.findByText(STATE_MEANINGS.Active);
     await settleReconnect(w);
     expect(w.methods().filter((m) => m !== "eth_accounts")).toEqual([]);
   });
@@ -748,7 +767,7 @@ describe("LLR-FE-020 the prompt above the connect controls", () => {
 
 describe("LLR-FE-020 a wallet that injects window.ethereum after the first render is offered once the page is told", () => {
   it("replaces the no-wallet sentence with the connect control when ethereum#initialized fires", async () => {
-    mountApp();
+    mountApp({ hash: "#/about" });
     expect(within(bar()).getByText(NO_WALLET)).toBeTruthy();
     // Lets the check for a remembered connection end, so the click below is not ignored as pending.
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -766,7 +785,7 @@ describe("LLR-FE-020 a wallet that injects window.ethereum after the first rende
   });
 
   it("keeps the no-wallet sentence when the event fires and nothing was injected", async () => {
-    mountApp();
+    mountApp({ hash: "#/about" });
     act(() => void window.dispatchEvent(new Event("ethereum#initialized")));
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(within(bar()).getByText(NO_WALLET)).toBeTruthy();

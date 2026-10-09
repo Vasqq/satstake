@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChainClock } from "../../chain/clock";
 import type { Pledge, PledgeState, Reads } from "../../chain/reads";
@@ -6,12 +6,16 @@ import { useTick } from "../../chain/useTick";
 import type { SelectedNetwork } from "../../config/networks";
 import { formatAmount, formatLocalTime, shorten } from "../../format";
 import { NOT_SYNCED, formatClock, formatRemaining } from "../pledge/countdown";
-import { usePledgeCount } from "./live";
+import { ROLE_LABELS } from "../roles";
+import { STATE_NAMES } from "../stateLabels";
+import { COUNT_RETRY_MS, usePledgeCount } from "./live";
 
 /** How many of the newest promises the card shows. */
 export const MAX_SLIDES = 8;
 /** How long a slide stays before the next one. */
 export const ROTATE_MS = 8_000;
+/** How often the card reads the contract again while the page is visible. */
+export const REFRESH_MS = COUNT_RETRY_MS;
 
 const CHECK_MS = 100;
 const OUT_MS = 180;
@@ -26,22 +30,18 @@ interface Slide {
   state: PledgeState;
 }
 
-interface Recent {
-  slides: Slide[];
-  clock: ChainClock;
-}
-
 /**
  * The newest promises with their state, newest first, read from the contract. A promise whose read fails is
- * left out rather than guessed at, and a block that cannot be read leaves the clock unsynchronized, which the
- * slide says instead of counting from the device's clock.
+ * left out rather than guessed at. The clock is the caller's and lives across reads: a block that cannot be
+ * read leaves it as it was (unsynchronized the first time, which the slide says instead of counting from the
+ * device's clock), and the next read tries again. When promises exist but none could be read, the read fails,
+ * so a refresh keeps the cards already on screen instead of clearing them.
  */
-async function readRecent(reads: Reads, count: bigint): Promise<Recent> {
+async function readRecent(reads: Reads, count: bigint, clock: ChainClock): Promise<Slide[]> {
   const oldest = count > BigInt(MAX_SLIDES) ? count - BigInt(MAX_SLIDES) + 1n : 1n;
   const ids: bigint[] = [];
   for (let id = count; id >= oldest; id--) ids.push(id);
-  const clock = new ChainClock();
-  const [, ...slides] = await Promise.all([
+  const [, ...read] = await Promise.all([
     reads.latestBlockTimestamp().then(
       (timestamp) => clock.sync(timestamp, clock.mark()),
       () => undefined,
@@ -53,7 +53,9 @@ async function readRecent(reads: Reads, count: bigint): Promise<Recent> {
       ),
     ),
   ]);
-  return { slides: slides.filter((s): s is Slide => s !== null), clock };
+  const slides = read.filter((slide): slide is Slide => slide !== null);
+  if (ids.length > 0 && slides.length === 0) throw new Error("no promise could be read");
+  return slides;
 }
 
 /**
@@ -65,22 +67,54 @@ async function readRecent(reads: Reads, count: bigint): Promise<Recent> {
 export function PromiseRotator({ reads, network }: { reads: Reads; network: SelectedNetwork }) {
   const count = usePledgeCount(reads, network);
   const total = count.data ?? 0n;
+  const [clock] = useState(() => new ChainClock());
   const recent = useQuery({
     queryKey: ["home", "recent", network.chainId, network.contract, total.toString()],
-    queryFn: () => readRecent(reads, total),
+    queryFn: () => readRecent(reads, total, clock),
     enabled: total > 0n,
     staleTime: Infinity,
     retry: false,
+    // A new newest promise changes the key; the cards already shown stay until its read finishes.
+    placeholderData: keepPreviousData,
   });
-  if (total === 0n || recent.data === undefined || recent.data.slides.length === 0) return null;
-  return <Carousel slides={recent.data.slides} clock={recent.data.clock} network={network} />;
+
+  // The timer reads the latest queries without being restarted by them.
+  const latest = useRef({ total, refetchCount: count.refetch, refetchRecent: recent.refetch });
+  useEffect(() => {
+    latest.current = { total, refetchCount: count.refetch, refetchRecent: recent.refetch };
+  });
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (document.hidden) return;
+      void (async () => {
+        const { total: before, refetchCount, refetchRecent } = latest.current;
+        const next = await refetchCount();
+        // A changed count changes the key, and the new key is read by itself; the same count only needs the
+        // states, and the block time if the last attempt to read it failed.
+        if (before > 0n && (next.data === undefined || next.data === before)) await refetchRecent();
+      })();
+    }, REFRESH_MS); // LLR-FE-070
+    return () => clearInterval(timer);
+  }, []);
+
+  const slides = recent.data;
+  if (total === 0n || slides === undefined || slides.length === 0) return null;
+  return <Carousel slides={slides} clock={clock} network={network} />;
 }
+
+/** The parts of the slide on screen; the other slides are in the page only to give the card its height. */
+const shownParts = (card: HTMLElement | null): HTMLElement[] =>
+  card === null ? [] : [...card.querySelectorAll<HTMLElement>("[data-current] [data-part]")];
 
 const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function Carousel({ slides, clock, network }: { slides: Slide[]; clock: ChainClock; network: SelectedNetwork }) {
-  const [index, setIndex] = useState(0);
-  const [userPaused, setUserPaused] = useState(false);
+  // The slide is remembered by id, so a newer promise joining the front does not change what is on screen.
+  const [shownId, setShownId] = useState<bigint>(() => (slides[0] as Slide).id);
+  const found = slides.findIndex((s) => s.id === shownId);
+  const index = found < 0 ? 0 : found;
+  // Under reduced motion the card does not move on its own; the visitor can still start it.
+  const [userPaused, setUserPaused] = useState(reducedMotion);
   const [hovering, setHovering] = useState(false);
   const [focusInside, setFocusInside] = useState(false);
   const [hidden, setHidden] = useState(() => document.hidden);
@@ -147,10 +181,11 @@ function Carousel({ slides, clock, network }: { slides: Slide[]; clock: ChainClo
       if (waited < ROTATE_MS) return;
       clearInterval(timer);
       const next = (index + 1) % slides.length;
-      const parts = card.current === null ? [] : [...card.current.querySelectorAll<HTMLElement>("[data-part]")];
+      const nextId = (slides[next] as Slide).id;
+      const parts = shownParts(card.current);
       if (reducedMotion() || parts.length === 0 || typeof parts[0]?.animate !== "function") {
         comingIn.current = true;
-        setIndex(next);
+        setShownId(nextId);
         return;
       }
       const leaving = parts.map((el) =>
@@ -165,20 +200,20 @@ function Carousel({ slides, clock, network }: { slides: Slide[]; clock: ChainClo
       void leaving[0]?.finished.then(() => {
         if (!active) return;
         comingIn.current = true;
-        setIndex(next);
+        setShownId(nextId);
       });
     }, CHECK_MS);
     return () => {
       active = false;
       clearInterval(timer);
     };
-  }, [index, many, slides.length]);
+  }, [index, many, slides]);
 
   // Runs after the new slide is in the DOM and before it is painted, so it never shows a frame at rest first.
   useLayoutEffect(() => {
     if (!comingIn.current) return;
     comingIn.current = false;
-    const parts = card.current === null ? [] : [...card.current.querySelectorAll<HTMLElement>("[data-part]")];
+    const parts = shownParts(card.current);
     parts.forEach((el, k) => {
       if (typeof el.animate !== "function") return;
       if (typeof el.getAnimations === "function") el.getAnimations().forEach((a) => a.cancel());
@@ -196,7 +231,6 @@ function Carousel({ slides, clock, network }: { slides: Slide[]; clock: ChainClo
     });
   }, [index]);
 
-  const slide = slides[index] as Slide;
   const pad = (n: number) => String(n).padStart(2, "0");
   return (
     <section
@@ -205,41 +239,53 @@ function Carousel({ slides, clock, network }: { slides: Slide[]; clock: ChainClo
       aria-roledescription="carousel"
       aria-label={`Recent promises on ${network.name}`}
     >
-      <div className="home-rot-top">
-        <span className="home-rot-id" data-part>
-          <a className="label" href={`#/p/${slide.id.toString()}`}>
-            Promise #{slide.id.toString()}
-            <span className="visually-hidden">, open it</span>
-          </a>
-          <SlideState slide={slide} clock={clock} />
-        </span>
-        {many && (
-          <span className="home-rot-controls">
-            <span className="home-rot-count mono" aria-hidden="true">
-              {pad(index + 1)} / {pad(slides.length)}
-            </span>
-            <button
-              type="button"
-              className="home-rot-pause"
-              aria-pressed={userPaused}
-              aria-label={userPaused ? "Resume the rotation" : "Pause the rotation"}
-              onClick={() => setUserPaused((p) => !p)}
+      {/* Every slide is in one grid cell, so the card is as tall as the tallest and never changes height between
+          slides. The others are hidden from view, from assistive technology, and from the tab order. */}
+      <div className="home-rot-stack">
+        {slides.map((slide, k) => {
+          const current = k === index;
+          return (
+            <div
+              key={slide.id.toString()}
+              className="home-rot-slide"
+              data-current={current ? "true" : undefined}
+              aria-hidden={current ? undefined : true}
+              inert={!current}
             >
-              <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
-                {userPaused ? (
-                  <path d="M3 1.8v8.4c0 .5.5.8.9.5l6.6-4.2c.4-.2.4-.8 0-1L3.9 1.3C3.5 1 3 1.3 3 1.8z" />
-                ) : (
-                  <>
-                    <rect x="2" y="1.5" width="2.6" height="9" rx="1" />
-                    <rect x="7.4" y="1.5" width="2.6" height="9" rx="1" />
-                  </>
-                )}
-              </svg>
-            </button>
-          </span>
-        )}
+              <span className="home-rot-id" data-part>
+                <span className="label">Promise #{slide.id.toString()}</span>
+                <SlideState slide={slide} clock={clock} />
+              </span>
+              <SlideBody slide={slide} clock={clock} network={network} />
+            </div>
+          );
+        })}
       </div>
-      <SlideBody slide={slide} clock={clock} network={network} />
+      {many && (
+        <span className="home-rot-controls">
+          <span className="home-rot-count mono" aria-hidden="true">
+            {pad(index + 1)} / {pad(slides.length)}
+          </span>
+          <button
+            type="button"
+            className="home-rot-pause"
+            aria-pressed={userPaused}
+            aria-label={userPaused ? "Resume the rotation" : "Pause the rotation"}
+            onClick={() => setUserPaused((p) => !p)}
+          >
+            <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+              {userPaused ? (
+                <path d="M3 1.8v8.4c0 .5.5.8.9.5l6.6-4.2c.4-.2.4-.8 0-1L3.9 1.3C3.5 1 3 1.3 3 1.8z" />
+              ) : (
+                <>
+                  <rect x="2" y="1.5" width="2.6" height="9" rx="1" />
+                  <rect x="7.4" y="1.5" width="2.6" height="9" rx="1" />
+                </>
+              )}
+            </svg>
+          </button>
+        </span>
+      )}
       {many && (
         <span className="home-rot-bar" aria-hidden="true">
           <span key={index} className={paused ? "home-rot-fill is-paused" : "home-rot-fill"} />
@@ -255,12 +301,13 @@ function remainingFor(slide: Slide, clock: ChainClock): bigint | null {
   return now === null ? null : slide.pledge.deadline - now;
 }
 
+// The small state word is the page's own name for the state, so the card and the promise page agree.
 const ENDED_WORDS: Readonly<Record<Exclude<PledgeState, "Active">, { state: string; big: string }>> = {
-  Expired: { state: "No answer by the deadline", big: "No answer" },
-  Kept: { state: "Kept", big: "Kept" },
-  Broken: { state: "Broken", big: "Broken" },
-  SettledToStaker: { state: "Settled", big: "Paid back" },
-  SettledToBeneficiary: { state: "Settled", big: "Paid out" },
+  Expired: { state: STATE_NAMES.Expired, big: "No answer" },
+  Kept: { state: STATE_NAMES.Kept, big: "Kept" },
+  Broken: { state: STATE_NAMES.Broken, big: "Broken" },
+  SettledToStaker: { state: STATE_NAMES.SettledToStaker, big: "Paid back" },
+  SettledToBeneficiary: { state: STATE_NAMES.SettledToBeneficiary, big: "Paid out" },
 };
 
 function SlideState({ slide, clock }: { slide: Slide; clock: ChainClock }) {
@@ -275,9 +322,13 @@ function SlideBody({ slide, clock, network }: { slide: Slide; clock: ChainClock;
   const { pledge } = slide;
   return (
     <>
-      <blockquote className="home-rot-quote" data-part>
-        {`“${pledge.promiseText}”`}
-      </blockquote>
+      {/* The whole quote is the link, so the target is as large as the sentence and not a small caption. */}
+      <a className="home-rot-link" href={`#/p/${slide.id.toString()}`}>
+        <span className="visually-hidden">Open promise #{slide.id.toString()}: </span>
+        <blockquote className="home-rot-quote" data-part>
+          {`“${pledge.promiseText}”`}
+        </blockquote>
+      </a>
       <div className="home-rot-slot" data-part>
         {slide.state === "Active" ? <OpenClock slide={slide} clock={clock} /> : <EndedClock slide={slide} />}
       </div>
@@ -286,9 +337,9 @@ function SlideBody({ slide, clock, network }: { slide: Slide; clock: ChainClock;
           <dt className="label">Stake</dt>
           <dd>{formatAmount(network, pledge.token, pledge.amount)}</dd>
         </div>
-        <Party label="Made it" address={pledge.staker} />
-        <Party label="Judges it" address={pledge.referee} />
-        <Party label="Gets it if missed" address={pledge.beneficiary} />
+        <Party label={ROLE_LABELS.staker} address={pledge.staker} />
+        <Party label={ROLE_LABELS.referee} address={pledge.referee} />
+        <Party label={ROLE_LABELS.beneficiary} address={pledge.beneficiary} />
       </dl>
     </>
   );

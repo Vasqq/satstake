@@ -6,13 +6,15 @@ import { REFEREE_WARNING, STAKER_WARNING, deadlineWarning } from "./warning";
 const warn = (state: PledgeState, remaining: bigint | null, role: Role | null) => deadlineWarning({ state, remaining, role });
 
 describe("LLR-FE-043 the warning when an Active pledge has under 10 minutes of chain time left", () => {
-  it("uses the brief's words for the referee and for the staker", () => {
-    expect(REFEREE_WARNING).toBe(
-      "Less than 10 minutes left. If you do not record a verdict before the deadline, the stake goes to the beneficiary.",
-    );
-    expect(STAKER_WARNING).toBe(
-      "Less than 10 minutes left. If your referee does not mark this promise kept before the deadline, your stake goes to the beneficiary.",
-    );
+  it("names the people in plain words, not by their contract role", () => {
+    expect(REFEREE_WARNING).toMatch(/^Less than 10 minutes left\./);
+    expect(STAKER_WARNING).toMatch(/^Less than 10 minutes left\./);
+    expect(REFEREE_WARNING).toMatch(/verdict/);
+    expect(STAKER_WARNING).toMatch(/kept/);
+    for (const text of [REFEREE_WARNING, STAKER_WARNING]) {
+      expect(text).toMatch(/the person named to get it/);
+      expect(text).not.toMatch(/beneficiary|referee|staker/i);
+    }
   });
 
   it("warns the referee and the staker", () => {

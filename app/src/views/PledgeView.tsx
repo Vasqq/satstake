@@ -16,11 +16,11 @@ import { PledgeActions } from "./pledge/PledgeActions";
 import { PledgeBanner } from "./pledge/PledgeBanner";
 import { PledgeFacts, PledgeStake } from "./pledge/PledgeFacts";
 import { deadlineWarning } from "./pledge/warning";
-import { ROLE_NAMES, roleOf } from "./roles";
-import { ACTIVE_PAST_DEADLINE_MEANING, STATE_MEANINGS, STATE_NAMES } from "./stateLabels";
+import { ROLE_STATEMENTS, roleOf } from "./roles";
+import { ACTIVE_PAST_DEADLINE_MEANING, STATE_MEANINGS } from "./stateLabels";
 import { PledgeNotFoundView } from "./Views";
 
-const READING = "Reading the pledge from the network.";
+const READING = "Reading the promise from the network.";
 const RETRYING = "Could not read this promise. The site keeps trying while this page is open.";
 
 /** The deadline is reached at the second it names: the contract refuses a verdict from that block on. */
@@ -71,8 +71,9 @@ export function PledgeView({ reads, client, network, health, id, afterStatus }: 
   const pastDeadlineWhileActive = live.state === "Active" && deadlineReached === true;
   const status =
     live.state === null ? READING : pastDeadlineWhileActive ? ACTIVE_PAST_DEADLINE_MEANING : STATE_MEANINGS[live.state];
-  // The badge would say Active beside a sentence saying the deadline has passed, so it waits for the new state.
-  const showStateBadge = live.state !== null && !pastDeadlineWhileActive;
+  // The banner and the timeline already say the outcome. The status sentence stays in the page, because it is the
+  // announced text and the focus target after a request (LLR-FE-046), but is not shown a third time beside them.
+  const bannerShown = data !== null && live.state !== null;
   // Read again at the moment of a click: the tick can be a second behind chain time, and a verdict sent just past
   // the deadline would only be refused by the contract.
   const deadlineReachedNow = () => {
@@ -83,6 +84,18 @@ export function PledgeView({ reads, client, network, health, id, afterStatus }: 
 
   return (
     <article className="pledge-page">
+      {/* The heading comes first: a route change and the skip link move focus to it, and a screen reader reads
+          forward from there, so the banner that explains the page must follow it (LLR-FE-072). */}
+      {/* The promise is part of the heading, so heading navigation reads what this page is about. */}
+      <PageHeading className="pledge-heading" title={`Promise #${id.toString()} | SatStake`}>
+        <span className="label pledge-label">Promise #{id.toString()}</span>
+        {data !== null && (
+          <>
+            {" "}
+            <span className="ptitle">{`“${data.promiseText}”`}</span>
+          </>
+        )}
+      </PageHeading>
       {data !== null && live.state !== null && (
         <PledgeBanner
           pledge={data}
@@ -95,22 +108,13 @@ export function PledgeView({ reads, client, network, health, id, afterStatus }: 
           copyLink={afterStatus === undefined ? <CopyLink id={id} bare /> : null}
         />
       )}
-      <PageHeading className="label pledge-label" title={`Promise #${id.toString()} | SatStake`}>
-        Promise #{id.toString()}
-      </PageHeading>
-      {data !== null && <p className="ptitle pledge-promise">{`“${data.promiseText}”`}</p>}
       {data !== null && <PledgeStake pledge={data} network={network} />}
       {afterStatus}
       <section className="card pledge-card" aria-label="Progress">
         <div className="pledge-state-row">
-          {live.state !== null && showStateBadge && (
-            <span className="state-badge" data-state={live.state}>
-              {STATE_NAMES[live.state]}
-            </span>
-          )}
-          {role !== null && <span className="role-badge">You are the {ROLE_NAMES[role].toLowerCase()}</span>}
+          {role !== null && <span className="role-badge">{ROLE_STATEMENTS[role]}</span>}
           {/* The live region and the focus target are different elements, so a screen reader is not told the same text twice. */}
-          <div role="status" aria-label="Pledge status" className="pledge-status">
+          <div role="status" aria-label="Promise status" className={bannerShown ? "pledge-status visually-hidden" : "pledge-status"}>
             <p tabIndex={-1} ref={statusLine}>
               {status}
             </p>

@@ -14,9 +14,11 @@ describe("LLR-FE-040 which banner the page shows", () => {
     expect(bannerVariant({ state: "Active", role: "referee", deadlineReached: null })).toBe("open-referee");
   });
 
-  it("switches to the no-answer text as soon as chain time reaches the deadline, before the poll flips the state", () => {
-    expect(bannerVariant({ state: "Active", role: "referee", deadlineReached: true })).toBe("expired");
-    expect(bannerVariant({ state: "Active", role: null, deadlineReached: true })).toBe("expired");
+  // A verdict mined in the last block before the deadline is invisible until the next poll, so the gap between
+  // chain time reaching the deadline and the poll flipping the state must not claim there was no answer.
+  it("shows a neutral checking text, not the no-answer text, once chain time reaches the deadline while the poll still says Active", () => {
+    expect(bannerVariant({ state: "Active", role: "referee", deadlineReached: true })).toBe("deadline-checking");
+    expect(bannerVariant({ state: "Active", role: null, deadlineReached: true })).toBe("deadline-checking");
   });
 
   it("maps each later state to its own text", () => {

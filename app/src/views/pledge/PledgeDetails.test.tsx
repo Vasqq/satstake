@@ -1,6 +1,8 @@
 import { screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatLocalTime } from "../../format";
+import { ROLE_LABELS, ROLE_STATEMENTS } from "../roles";
+import { STATE_NAMES } from "../stateLabels";
 import {
   BENEFICIARY,
   REFEREE,
@@ -24,8 +26,8 @@ afterEach(() => {
 });
 
 const main = () => within(screen.getByRole("main"));
-/** The promise's title element. It is the page's loaded marker, so a test waits on it before reading the rest. */
-const promiseTitle = () => main().findByText(/^“/, { selector: "p" });
+/** The promise inside the heading. It is the page's loaded marker, so a test waits on it before reading the rest. */
+const promiseTitle = () => main().findByText(/^“/, { selector: ".ptitle" });
 const stakeAmount = () => document.querySelector(".stake-amount") as HTMLElement;
 const deadlineText = () => (document.querySelector(".pledge-deadline time") as HTMLElement).textContent;
 /** The accessible words of the countdown, without their "Time left: " lead, and the visible note while the clock is unsynced. */
@@ -40,9 +42,9 @@ describe("LLR-FE-040 the pledge page shows the pledge", () => {
       },
     });
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Promise #1");
-    expect(statusLine().textContent).toContain("Reading the pledge");
+    expect(statusLine().textContent).toContain("Reading the promise");
     expect(stakeAmount()).toBeNull();
-    expect(document.querySelector(".pledge-promise")).toBeNull();
+    expect(document.querySelector(".ptitle")).toBeNull();
     expect(screen.queryByRole("note")).toBeNull();
   });
 
@@ -52,14 +54,15 @@ describe("LLR-FE-040 the pledge page shows the pledge", () => {
     expect(document.title).toBe("Promise #1 | SatStake");
   });
 
-  it("shows the promise large, in quotes, after the heading", async () => {
+  it("puts the promise in quotes inside the one heading, so heading navigation reads the promise", async () => {
     await openPledge({ promise: "Run 5 km every week until December." });
     const promise = await promiseTitle();
     expect(promise.textContent).toBe("“Run 5 km every week until December.”");
-    expect(promise.className).toContain("pledge-promise");
-    expect(promise.className).toContain("ptitle");
     const heading = screen.getByRole("heading", { level: 1 });
-    expect(heading.compareDocumentPosition(promise) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(heading.contains(promise)).toBe(true);
+    expect(heading.textContent).toMatch(/^Promise #1/);
+    expect(screen.getByRole("heading", { level: 1, name: /^Promise #1/ })).toBe(heading);
+    expect(heading.textContent).toContain("Run 5 km every week until December.");
   });
 
   it("shows the promise as plain text, never as markup", async () => {
@@ -78,31 +81,35 @@ describe("LLR-FE-040 the pledge page shows the pledge", () => {
     expect((await promiseTitle()).textContent).toBe("“Run”");
   });
 
-  it("labels the three parties by what they did, in the order made, judges, gets", async () => {
+  it("labels the three parties differently, one column each", async () => {
     await openPledge();
     await promiseTitle();
     const labels = [...document.querySelectorAll("dt")].map((dt) => dt.textContent);
-    expect(labels).toEqual(["Made it", "Judges it", "Gets it if missed"]);
+    expect(labels).toHaveLength(3);
+    expect(new Set(labels).size).toBe(3);
   });
 
   it("shows the stake with its token's symbol", async () => {
     await openPledge({ token: usdc.address, amount: 5_000_000n });
     await promiseTitle();
-    expect(stakeAmount().textContent).toBe("$5 in USDC");
+    expect(stakeAmount().textContent).toContain("USDC");
+    expect(stakeAmount().textContent).toContain("5");
     expect(document.querySelector(".stake small")).toBeNull();
   });
 
   it("shows a cirBTC stake with its value in sats as well, and says what a sat is", async () => {
     await openPledge({ token: cirbtc.address, amount: 10_000n });
     await promiseTitle();
-    expect(stakeAmount().textContent).toBe("10,000 sats, 0.0001 cirBTC");
-    expect(document.querySelector(".stake small")?.textContent).toBe("a sat is the smallest unit of Bitcoin");
+    expect(stakeAmount().textContent).toMatch(/^10,000 sats\b/);
+    expect(stakeAmount().textContent).toContain("cirBTC");
+    expect(stakeAmount().textContent).not.toContain("$");
+    expect(document.querySelector(".stake small")?.textContent).toMatch(/sat/);
   });
 
   it("says in words what the number is, for a reader who hears it without the layout", async () => {
     await openPledge({ token: usdc.address, amount: 5_000_000n });
     await promiseTitle();
-    expect(document.querySelector(".stake")?.textContent).toContain("Stake: $5 in USDC");
+    expect(document.querySelector(".stake")?.textContent).toMatch(/^Stake: /);
   });
 
   it("copes with the largest and the smallest amounts in both tokens", async () => {
@@ -113,7 +120,7 @@ describe("LLR-FE-040 the pledge page shows the pledge", () => {
     teardownWallets();
     await openPledge({ token: cirbtc.address, amount: 1n });
     await promiseTitle();
-    expect(stakeAmount().textContent).toBe("1 sat, 0.00000001 cirBTC");
+    expect(stakeAmount().textContent).toMatch(/^1 sat, 0\.00000001/);
   });
 
   it("shows the deadline in the visitor's local time", async () => {
@@ -129,9 +136,9 @@ describe("LLR-FE-040 the pledge page shows the pledge", () => {
     await openPledge();
     await promiseTitle();
     for (const [label, noun, address] of [
-      ["Made it", "staker", STAKER],
-      ["Judges it", "referee", REFEREE],
-      ["Gets it if missed", "beneficiary", BENEFICIARY],
+      [ROLE_LABELS.staker, "staker", STAKER],
+      [ROLE_LABELS.referee, "referee", REFEREE],
+      [ROLE_LABELS.beneficiary, "beneficiary", BENEFICIARY],
     ] as const) {
       const row = within(fact(label));
       expect(row.getByText(shortOf(address)).getAttribute("title")).toBe(address);
@@ -141,36 +148,47 @@ describe("LLR-FE-040 the pledge page shows the pledge", () => {
     }
   });
 
-  it("shows the state as a badge carrying its plain name, and the meaning in the status line", async () => {
-    await openPledge({ state: 4 });
-    await promiseTitle();
-    const badge = document.querySelector(".state-badge") as HTMLElement;
-    expect(badge.textContent).toBe("Paid back");
-    expect(badge.getAttribute("data-state")).toBe("SettledToStaker");
-    expect(statusLine().textContent).toBe("Paid back. The stake went back to the staker.");
+  it("states the outcome in the banner and the timeline, with no separate state badge", async () => {
+    for (const state of [0, 1, 2, 3, 4, 5]) {
+      await openPledge({ state, secondsLeft: state === 1 ? -10n : 500_000n });
+      await promiseTitle();
+      expect(document.querySelector(".state-badge")).toBeNull();
+      teardownWallets();
+    }
   });
 
-  it("shows no state badge before the state is read", async () => {
+  it("keeps the status sentence in the page for assistive technology, starting with the state name, and hides it from view while the banner is shown", async () => {
+    await openPledge({ state: 4 });
+    await promiseTitle();
+    expect(statusLine().textContent!.startsWith(STATE_NAMES.SettledToStaker.split(" ")[0]!)).toBe(true);
+    expect(statusRegion().className).toContain("visually-hidden");
+    expect(statusRegion().getAttribute("role")).toBe("status");
+  });
+
+  it("shows the status sentence while the promise is still being read, since no banner explains the page yet", async () => {
     await openPledge({
       prepare: ({ chain }) => {
         chain.latency = (r) => (r.functionName === "stateOf" ? new Promise<void>(() => {}) : undefined);
       },
     });
     await promiseTitle();
-    expect(document.querySelector(".state-badge")).toBeNull();
+    expect(statusRegion().className).not.toContain("visually-hidden");
+    expect(statusLine().textContent).toContain("Reading the promise");
+  });
+
+  it("does not name the parties by their contract role in the status sentence", async () => {
+    for (const state of [0, 1, 2, 3, 4, 5]) {
+      await openPledge({ state, secondsLeft: state === 1 ? -10n : 500_000n });
+      await promiseTitle();
+      expect(statusLine().textContent).not.toMatch(/staker|referee|beneficiary/i);
+      teardownWallets();
+    }
   });
 
   it("says the deadline has passed, not that a verdict is awaited, when chain time is past it and the poll still says Active", async () => {
     await openPledge({ secondsLeft: -5n });
-    await screen.findByText("The deadline has passed. Updating the status from the network.");
-    expect(statusLine().textContent).not.toContain("Waiting for the referee");
-    expect(document.querySelector(".state-badge")).toBeNull();
-  });
-
-  it("shows the Open badge while the deadline has not passed", async () => {
-    await openPledge({ secondsLeft: 500_000n });
-    await promiseTitle();
-    expect(document.querySelector(".state-badge")?.textContent).toBe("Open");
+    await screen.findByText(/The deadline has passed/, { selector: "[role=status] p" });
+    expect(statusLine().textContent).not.toContain("Waiting for the");
   });
 
   it("keeps the live status region apart from the text that takes focus", async () => {
@@ -216,16 +234,18 @@ describe("LLR-FE-040 the three-step timeline", () => {
       await openPledge({ state, secondsLeft: state === 1 ? -10n : 500_000n });
       await promiseTitle();
       expect(steps().map((li) => li.getAttribute("aria-current"))).toEqual([null, null, "step"]);
-      expect(steps().map((li) => li.classList.contains("done"))).toEqual([true, true, false]);
+      // Expired had no verdict, so its second step is passed, not done.
+      expect(steps().map((li) => li.classList.contains("done"))).toEqual([true, state !== 1, false]);
       teardownWallets();
     }
   });
 
-  it("marks all three done once the stake has been paid out", async () => {
+  it("marks the payout as where it ended, and does not claim a verdict after a payout to the beneficiary", async () => {
     await openPledge({ state: 5 });
     await promiseTitle();
-    expect(steps().map((li) => li.classList.contains("done"))).toEqual([true, true, true]);
     expect(steps().map((li) => li.getAttribute("aria-current"))).toEqual([null, null, "step"]);
+    expect(steps()[1]!.classList.contains("done")).toBe(false);
+    expect(steps()[1]!.textContent).toMatch(/no answer/i);
   });
 });
 
@@ -234,44 +254,46 @@ describe("LLR-FE-040 the banner says what this page means for whoever is looking
   const shortReferee = shortOf(REFEREE);
   const shortBeneficiary = shortOf(BENEFICIARY);
 
-  it("explains the promise to a visitor, with a link to what SatStake is", async () => {
+  it("explains the promise to a visitor: who locked what, who judges it, where the money goes, and a link to what SatStake is", async () => {
     await openPledge({ who: "none", token: usdc.address, amount: 20_000_000n });
     await promiseTitle();
     const text = banner().textContent!;
-    expect(text).toContain("This is a promise made with SatStake.");
-    expect(text).toContain(`${shortStaker} locked $20 in USDC`);
+    expect(text).toContain("SatStake");
+    expect(text).toContain(shortStaker);
+    expect(text).toContain("USDC");
     expect(text).toContain(shortReferee);
-    expect(text).toContain(`otherwise it goes to ${shortBeneficiary}`);
+    expect(text).toContain(shortBeneficiary);
+    expect(banner().querySelector("em")?.textContent).toBe(deadlineText());
+    expect(text).toMatch(new RegExp(`Kept, the money goes back to ${shortStaker}`));
     const link = within(banner()).getByRole("link", { name: "What is SatStake?" });
     expect(link.getAttribute("href")).toBe("#/");
   });
 
-  it("gives an account with no part in the pledge the visitor text too", async () => {
+  it("gives an account with no part in the promise the visitor text too", async () => {
     await openPledge({ who: "other" });
     await promiseTitle();
-    expect(banner().textContent).toContain("This is a promise made with SatStake.");
+    expect(banner().getAttribute("data-variant")).toBe("open-visitor");
   });
 
-  it("tells the referee to decide by the deadline, and what that costs and means", async () => {
+  it("tells the referee who asked, to decide by the deadline, that the answer is final and that silence counts as broken", async () => {
     await openPledge({ who: "referee" });
     await promiseTitle();
     const text = banner().textContent!;
-    expect(text).toContain(`${shortStaker} named you the referee.`);
-    expect(text).toContain("decide: was this promise kept?");
-    expect(text).toContain("Your answer is final.");
-    expect(text).toContain("The stake never passes through you.");
-    expect(text).toContain("Silence counts as broken.");
-    expect(text).toContain("a few cents of USDC");
+    expect(text).toContain(shortStaker);
+    expect(text).toMatch(/final/i);
+    expect(text).toMatch(/silence counts as broken/i);
+    expect(text).toMatch(/fee/i);
+    expect(text).not.toMatch(/the staker|the referee/i);
     expect(banner().querySelector("em")?.textContent).toBe(deadlineText());
   });
 
-  it("tells the staker to send the link to the referee, that nobody is notified, and offers the copy control", async () => {
+  it("tells the staker to send the link to the judge, that nobody is notified, and offers the copy control", async () => {
     await openPledge({ who: "staker" });
     await promiseTitle();
     const text = banner().textContent!;
-    expect(text).toContain("Your promise.");
-    expect(text).toContain(`Send this link to your referee, ${shortReferee}`);
-    expect(text).toContain("SatStake does not notify them.");
+    expect(text).toContain(shortReferee);
+    expect(text).toMatch(/notify/i);
+    expect(banner().querySelector("em")?.textContent).toBe(deadlineText());
     expect(within(banner()).getByRole("button", { name: "Copy the link to this promise" })).toBeTruthy();
   });
 
@@ -284,66 +306,83 @@ describe("LLR-FE-040 the banner says what this page means for whoever is looking
     }
   });
 
-  it("tells the beneficiary what they are named for and that nothing is asked of them yet", async () => {
+  it("tells the beneficiary what they are named for, with the deadline, and that nothing is asked of them yet", async () => {
     await openPledge({ who: "beneficiary" });
     await promiseTitle();
     const text = banner().textContent!;
-    expect(text).toContain("You were named to receive this stake if the promise is broken or not confirmed by");
-    expect(text).toContain(`If it is kept, it goes back to ${shortStaker}.`);
-    expect(text).toContain("You do not need to do anything now.");
+    expect(text).toMatch(/broken or there is no answer by/);
+    expect(banner().querySelector("em")?.textContent).toBe(deadlineText());
+    expect(text).toContain(shortStaker);
+    expect(text).toMatch(/do not need to do anything/i);
   });
 
-  it("says where the stake goes once the promise is kept, with the staker's own addition", async () => {
+  it("says where the stake goes once the promise is kept, with an addition for the person who made it", async () => {
     await openPledge({ state: 2, who: "none" });
     await promiseTitle();
-    expect(banner().textContent).toBe(`Kept. The stake goes back to ${shortStaker}; anyone can send it now.`);
+    expect(banner().textContent).toContain(shortStaker);
+    expect(banner().textContent).not.toMatch(/withdraw/i);
     teardownWallets();
     await openPledge({ state: 2, who: "staker" });
     await promiseTitle();
-    expect(banner().textContent).toBe(
-      `Kept. The stake goes back to ${shortOf(ACCOUNT)}; anyone can send it now. Withdraw it when you like.`,
-    );
+    expect(banner().textContent).toContain(shortOf(ACCOUNT));
+    expect(banner().textContent).toMatch(/withdraw/i);
   });
 
-  it("says where the stake goes once the promise is marked broken, with the beneficiary's own addition", async () => {
+  it("says where the stake goes once the promise is marked broken, with an addition for the person who gets it", async () => {
     await openPledge({ state: 3, who: "referee" });
     await promiseTitle();
-    expect(banner().textContent).toBe(`Marked broken. The stake goes to ${shortBeneficiary}; anyone can send it now.`);
+    expect(banner().textContent).toContain(shortBeneficiary);
+    expect(banner().textContent).not.toMatch(/yourself/i);
     teardownWallets();
     await openPledge({ state: 3, who: "beneficiary" });
     await promiseTitle();
-    expect(banner().textContent).toBe(
-      `Marked broken. The stake goes to ${shortOf(ACCOUNT)}; anyone can send it now. You can send it to yourself now.`,
-    );
+    expect(banner().textContent).toContain(shortOf(ACCOUNT));
+    expect(banner().textContent).toMatch(/yourself/i);
   });
 
-  it("says there was no answer by the deadline, with the referee's own addition", async () => {
+  it("says there was no answer by the deadline and who gets the stake, and tells the referee they can no longer give a verdict", async () => {
     await openPledge({ state: 1, secondsLeft: -10n, who: "none" });
     await promiseTitle();
-    expect(banner().textContent).toBe(
-      `The deadline passed with no answer, so this promise counts as broken. The stake goes to ${shortBeneficiary}; anyone can send it now.`,
-    );
+    expect(banner().textContent).toMatch(/no answer/i);
+    expect(banner().textContent).toContain(shortBeneficiary);
+    expect(banner().textContent).not.toMatch(/no longer give a verdict/);
     teardownWallets();
     await openPledge({ state: 1, secondsLeft: -10n, who: "referee" });
     await promiseTitle();
-    expect(banner().textContent).toContain("The deadline has passed, so a verdict can no longer be given.");
+    expect(banner().textContent).toContain("You can no longer give a verdict.");
   });
 
-  it("uses the no-answer text when chain time is past the deadline and the poll still says Active", async () => {
-    await openPledge({ secondsLeft: -5n, who: "referee" });
-    await screen.findByText(/The deadline passed with no answer/);
-    expect(banner().textContent).not.toContain("decide: was this promise kept?");
+  it("claims neither an answer nor a recipient when chain time is past the deadline and the poll still says Active", async () => {
+    await openPledge({ secondsLeft: -5n, who: "beneficiary" });
+    await screen.findByText(/The deadline has passed/, { selector: ".pledge-banner p" });
+    const text = banner().textContent ?? "";
+    expect(text).not.toMatch(/no answer/i);
+    expect(text).not.toContain(shortBeneficiary);
+    expect(text).not.toContain(shortStaker);
+    expect(text).not.toMatch(/send it/i);
+    expect(text).not.toMatch(/decide/i);
   });
 
   it("says where the stake went once it is paid, naming the recipient and linking no transaction", async () => {
     await openPledge({ state: 4 });
     await promiseTitle();
-    expect(banner().textContent).toBe(`Done. The stake went to ${shortStaker}.`);
+    expect(banner().textContent).toContain(shortStaker);
+    expect(banner().textContent).not.toContain(shortBeneficiary);
     expect(within(banner()).queryByRole("link")).toBeNull();
     teardownWallets();
     await openPledge({ state: 5 });
     await promiseTitle();
-    expect(banner().textContent).toBe(`Done. The stake went to ${shortBeneficiary}.`);
+    expect(banner().textContent).toContain(shortBeneficiary);
+    expect(banner().textContent).not.toContain(shortStaker);
+  });
+
+  // LLR-FE-072: focus lands on the heading after a route change or the skip link, and a screen reader reads on
+  // from there, so the banner and the staker's copy control must come after it.
+  it("comes after the page heading, where focus lands", async () => {
+    await openPledge({ who: "staker" });
+    const heading = await screen.findByRole("heading", { level: 1 });
+    await promiseTitle();
+    expect(heading.compareDocumentPosition(banner()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("is not a live region, so the status line keeps that job", async () => {
@@ -365,34 +404,31 @@ describe("LLR-FE-040 the banner says what this page means for whoever is looking
 });
 
 describe("LLR-FE-041 the connected account's role is marked", () => {
-  it.each([
-    ["staker", "You are the staker", "Made it"],
-    ["referee", "You are the referee", "Judges it"],
-    ["beneficiary", "You are the beneficiary", "Gets it if missed"],
-  ] as const)("marks the %s with a badge and (you) on their column", async (who, badge, label) => {
+  it.each(["staker", "referee", "beneficiary"] as const)("marks the %s with a badge in plain words and (you) on their column", async (who) => {
+    const label = ROLE_LABELS[who];
     await openPledge({ who });
     await promiseTitle();
-    expect(main().getByText(badge).className).toContain("role-badge");
+    expect(main().getByText(ROLE_STATEMENTS[who]).className).toContain("role-badge");
     const term = (name: string) => main().getByText(name, { selector: "dt" });
     expect(term(label).textContent).toBe(`${label} (you)`);
     expect(fact(label).textContent).not.toContain("(you)");
-    for (const other of ["Made it", "Judges it", "Gets it if missed"]) {
-      if (other !== label) expect(term(other).textContent).toBe(other);
-    }
+    expect(document.body.textContent!.match(/\(you\)/g)).toHaveLength(1);
     expect(within(fact(label)).getByText(shortOf(ACCOUNT))).toBeTruthy();
   });
 
-  it("marks nothing for an account with no part in the pledge", async () => {
+  it("marks nothing for an account with no part in the promise", async () => {
     await openPledge({ who: "other" });
     await promiseTitle();
-    expect(main().queryByText(/You are the/)).toBeNull();
+    for (const statement of Object.values(ROLE_STATEMENTS)) expect(main().queryByText(statement)).toBeNull();
+    expect(document.querySelector(".role-badge")).toBeNull();
     expect(document.body.textContent).not.toContain("(you)");
   });
 
   it("marks nothing when no wallet is connected", async () => {
     await openPledge({ who: "none" });
     await promiseTitle();
-    expect(main().queryByText(/You are the/)).toBeNull();
+    for (const statement of Object.values(ROLE_STATEMENTS)) expect(main().queryByText(statement)).toBeNull();
+    expect(document.querySelector(".role-badge")).toBeNull();
     expect(document.body.textContent).not.toContain("(you)");
   });
 });

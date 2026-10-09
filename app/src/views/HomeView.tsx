@@ -105,13 +105,10 @@ const QUESTIONS = [
  * @trace LLR-FE-070
  */
 export function HomeView({ reads, network }: { reads: Reads; network: SelectedNetwork }) {
-  const explorerAddress = `${network.explorerUrl}/address/${network.contract}`;
   return (
     <div className="home">
       <section className="home-hero">
-        <a className="home-eyebrow" href={explorerAddress} rel="noreferrer">
-          {`Live on ${network.name}`}
-        </a>
+        <p className="home-eyebrow">{`Live on ${network.name}`}</p>
         <PageHeading title="SatStake" className="home-title">
           Put money behind your <span className="hot">promise.</span>
         </PageHeading>

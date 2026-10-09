@@ -83,7 +83,7 @@ export const advance = (ms: number) =>
   });
 
 /** The live region of the pledge's status, which is not itself a focus target. */
-export const statusRegion = () => screen.getByRole("status", { name: "Pledge status" });
+export const statusRegion = () => screen.getByRole("status", { name: "Promise status" });
 /** The text inside it, which takes focus when the page moves focus to the status. */
 export const statusLine = () => statusRegion().querySelector("p") as HTMLElement;
 export const warningArea = () => screen.getByRole("status", { name: "Deadline warning" });

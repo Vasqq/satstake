@@ -22,12 +22,12 @@ export const STATE_NAMES: Readonly<Record<PledgeState, string>> = {
  * @trace LLR-FE-040
  */
 export const STATE_MEANINGS: Readonly<Record<PledgeState, string>> = {
-  Active: "Open. Waiting for the referee's verdict.",
-  Expired: "No answer by the deadline. The promise counts as broken, and the stake can be sent to the beneficiary.",
-  Kept: "Kept. The referee confirmed it, and the stake can be sent back to the staker.",
-  Broken: "Broken. The referee marked it broken, and the stake can be sent to the beneficiary.",
-  SettledToStaker: "Paid back. The stake went back to the staker.",
-  SettledToBeneficiary: "Paid out. The stake went to the beneficiary.",
+  Active: "Open. Waiting for the verdict.",
+  Expired: "No answer by the deadline. The promise counts as broken, and the stake can be sent to the person named to get it.",
+  Kept: "Kept. The stake can be sent back to the person who made the promise.",
+  Broken: "Broken. The stake can be sent to the person named to get it.",
+  SettledToStaker: "Paid back. The stake went back to the person who made the promise.",
+  SettledToBeneficiary: "Paid out. The stake went to the person named to get it.",
 };
 
 /**

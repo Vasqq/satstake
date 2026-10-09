@@ -1,24 +1,39 @@
 import { describe, expect, it } from "vitest";
 import { PLEDGE_STATES, type PledgeState } from "../../chain/reads";
-import { STEPS, timelineOf } from "./timeline";
+import { timelineOf } from "./timeline";
+
+const statuses = (state: PledgeState) => timelineOf(state).map((s) => s.status);
+const second = (state: PledgeState) => timelineOf(state)[1]!;
 
 describe("LLR-FE-040 the three-step timeline", () => {
-  it("names the three steps in order", () => {
-    expect(STEPS).toEqual(["Made", "Judged", "Paid out"]);
+  it("has three steps for every state, exactly one of them the present", () => {
+    for (const state of PLEDGE_STATES) {
+      expect(timelineOf(state)).toHaveLength(3);
+      expect(statuses(state).filter((s) => s === "now")).toHaveLength(1);
+    }
   });
 
-  it.each<[PledgeState, number, number]>([
-    ["Active", 1, 1],
-    ["Expired", 2, 2],
-    ["Kept", 2, 2],
-    ["Broken", 2, 2],
-    ["SettledToStaker", 3, 2],
-    ["SettledToBeneficiary", 3, 2],
-  ])("for %s marks %i steps done and step index %i as the current one", (state, done, current) => {
-    expect(timelineOf(state)).toEqual({ done, current });
+  it.each<[PledgeState, string[]]>([
+    ["Active", ["done", "now", "ahead"]],
+    ["Kept", ["done", "done", "now"]],
+    ["Broken", ["done", "done", "now"]],
+    ["SettledToStaker", ["done", "done", "now"]],
+    ["Expired", ["done", "passed", "now"]],
+    ["SettledToBeneficiary", ["done", "passed", "now"]],
+  ])("for %s the steps read %j", (state, expected) => {
+    expect(statuses(state)).toEqual(expected);
   });
 
-  it("covers every state", () => {
-    for (const state of PLEDGE_STATES) expect(timelineOf(state).current).toBeGreaterThanOrEqual(0);
+  // The page reads no logs, so after a payout to the beneficiary it cannot tell a broken verdict from silence,
+  // and an expired promise had no verdict at all. Neither may claim one.
+  it("does not call the second step judged when no verdict is known", () => {
+    expect(second("Expired").label).not.toBe(second("Kept").label);
+    expect(second("Expired").label).toMatch(/no answer/i);
+    expect(second("SettledToBeneficiary").label).not.toBe(second("Kept").label);
+    expect(second("SettledToBeneficiary").label).toMatch(/no answer/i);
+  });
+
+  it("calls the second step judged once a verdict is known", () => {
+    for (const state of ["Kept", "Broken", "SettledToStaker"] as const) expect(second(state).label).toBe(second("Active").label);
   });
 });

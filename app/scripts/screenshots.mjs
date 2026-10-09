@@ -1,4 +1,4 @@
-// Captures every view at phone and desktop width, light and dark, so the design review reads the
+// Captures every view at phone, tablet and desktop width in the one dark theme, so the design review reads the
 // rendered app and not only its CSS. Usage, from app/:
 //   PLAYWRIGHT_BROWSERS_PATH=0 node scripts/screenshots.mjs [extra hash routes...]
 // The browser lives in node_modules (PLAYWRIGHT_BROWSERS_PATH=0) so nothing is written outside the
@@ -14,8 +14,9 @@ const port = 4317;
 const base = `http://127.0.0.1:${port}/`;
 
 const routes = ["#/", "#/create", "#/mine", "#/about", "#/p/1", "#/p/999999", "#/nowhere", ...process.argv.slice(2)];
-const widths = [360, 1440];
-const schemes = ["light", "dark"];
+// One dark theme (05 v1.27 leaves the look to the design), so one colour scheme; 768 is the tablet width.
+const widths = [360, 768, 1440];
+const schemes = ["dark"];
 
 const build = spawnSync("npm", ["run", "build:testnet"], { cwd: appDir, stdio: "inherit" });
 if (build.status !== 0) process.exit(build.status ?? 1);

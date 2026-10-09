@@ -3,7 +3,7 @@ import type { SelectedNetwork } from "../../config/networks";
 import { formatAmount, formatLocalTime } from "../../format";
 import { HashValue } from "../HashValue";
 import { ROLE_LABELS, type Role } from "../roles";
-import { STEPS, timelineOf } from "./timeline";
+import { timelineOf } from "./timeline";
 import { DEADLINE_PASSED, NOT_SYNCED, formatClock, formatRemaining } from "./countdown";
 
 const PARTIES = ["staker", "referee", "beneficiary"] as const;
@@ -45,14 +45,14 @@ export function PledgeFacts(props: {
     <>
       {timeline !== null && (
         <ol className="timeline">
-          {STEPS.map((step, index) => (
+          {timeline.map((step) => (
             <li
-              key={step}
-              className={index < timeline.done ? "done" : index === timeline.current ? "now" : undefined}
-              aria-current={index === timeline.current ? "step" : undefined}
+              key={step.label}
+              className={step.status === "ahead" ? undefined : step.status}
+              aria-current={step.status === "now" ? "step" : undefined}
             >
               <span className="rule" aria-hidden="true" />
-              <span className="label">{step}</span>
+              <span className="label">{step.label}</span>
             </li>
           ))}
         </ol>

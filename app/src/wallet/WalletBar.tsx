@@ -22,9 +22,12 @@ function subscribeToInjection(onChange: () => void) {
  * configured network. The only things it ever asks a wallet for are account access and a network switch or
  * add; wagmi sends nothing else on its behalf here, and the page has no signing call anywhere.
  *
+ * The landing page's own first screen says a wallet is needed, so `onLanding` leaves the no-wallet line out
+ * there; the connect controls and the status stay.
+ *
  * @trace LLR-FE-020 LLR-FE-022 LLR-FE-072 LLR-FE-074
  */
-export function WalletBar({ network }: { network: SelectedNetwork }) {
+export function WalletBar({ network, onLanding = false }: { network: SelectedNetwork; onLanding?: boolean }) {
   const connection = useConnection();
   const { connect, connectors, isPending: connecting } = useConnect();
   const { switchChain, isPending: switching } = useSwitchChain();
@@ -127,10 +130,9 @@ export function WalletBar({ network }: { network: SelectedNetwork }) {
           </ul>
         </>
       ) : (
-        <p>
-          Creating or settling a promise needs a browser wallet. On a phone, open this page in your wallet app&apos;s
-          browser. You can read every page without one.
-        </p>
+        !onLanding && (
+          <p>Reading needs no wallet. To act, connect a browser wallet; on a phone, use your wallet app&apos;s browser.</p> // LLR-FE-020
+        )
       )}
       <RequestNotice error={failure.error} label="Wallet notices" />
     </section>

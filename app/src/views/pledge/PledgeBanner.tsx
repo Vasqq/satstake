@@ -36,7 +36,7 @@ export function PledgeBanner({ pledge, state, role, deadlineReached, network, co
         {variant === "open-visitor" && (
           <p>
             This is a promise made with SatStake. {staker} locked {formatAmount(network, pledge.token, pledge.amount)}. {referee} judges
-            it by {deadline}. Kept, the money goes back; otherwise it goes to {beneficiary}.{" "}
+            it by {deadline}. Kept, the money goes back to {staker}; otherwise it goes to {beneficiary}.{" "}
             <a className="textlink" href="#/">
               What is SatStake?
             </a>
@@ -44,23 +44,23 @@ export function PledgeBanner({ pledge, state, role, deadlineReached, network, co
         )}
         {variant === "open-referee" && (
           <p>
-            {staker} named you the referee. By {deadline}, decide: was this promise kept? Your answer is final. The stake never passes
+            {staker} named you to judge this promise. Before {deadline}, decide: was it kept? Your answer is final. The stake never passes
             through you. Silence counts as broken. Answering needs a wallet on Arc with a few cents of USDC for the network fee.
           </p>
         )}
         {variant === "open-staker" && (
           <>
             <p>
-              Your promise. Send this link to your referee, {referee}: they answer here, and SatStake does not notify them. Silence counts
-              as broken, so make sure they answer before {deadline}.
+              You made this promise. Send this link to {referee}, who judges it: they answer here, and SatStake does not notify them.
+              Silence counts as broken, so make sure they answer before {deadline}.
             </p>
             {copyLink}
           </>
         )}
         {variant === "open-beneficiary" && (
           <p>
-            You were named to receive this stake if the promise is broken or not confirmed by {deadline}. If it is kept, it goes back to{" "}
-            {staker}. You do not need to do anything now.
+            You were named to receive this stake if the promise is broken or there is no answer by {deadline}. If it is kept, it goes back
+            to {staker}. You do not need to do anything now.
           </p>
         )}
         {variant === "kept" && (
@@ -75,11 +75,12 @@ export function PledgeBanner({ pledge, state, role, deadlineReached, network, co
             {role === "beneficiary" && " You can send it to yourself now."}
           </p>
         )}
+        {variant === "deadline-checking" && <p>The deadline has passed. Checking the network for the outcome.</p>}
         {variant === "expired" && (
           <p>
             The deadline passed with no answer, so this promise counts as broken. The stake goes to {beneficiary}; anyone can send it
             now.
-            {role === "referee" && " The deadline has passed, so a verdict can no longer be given."}
+            {role === "referee" && " You can no longer give a verdict."}
             {role === "beneficiary" && " You can send it to yourself now."}
           </p>
         )}

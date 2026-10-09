@@ -2,22 +2,28 @@ import type { Pledge } from "../chain/reads";
 
 export type Role = "staker" | "referee" | "beneficiary";
 
-/** @trace LLR-FE-041 */
-export const ROLE_NAMES: Readonly<Record<Role, string>> = {
-  staker: "Staker",
-  referee: "Referee",
-  beneficiary: "Beneficiary",
+/**
+ * What the connected account did or gets, in a sentence for the badge. Plain words: the contract's role names
+ * are for code.
+ *
+ * @trace LLR-FE-041
+ */
+export const ROLE_STATEMENTS: Readonly<Record<Role, string>> = {
+  staker: "You made this promise",
+  referee: "You judge this promise",
+  beneficiary: "You get the stake if it is broken or missed",
 };
 
 /**
- * What each party did or will get, for the pledge page's columns. The nouns above stay for sentences.
+ * What each party did or will get, for the pledge page's columns. Broken is named with missed: the beneficiary
+ * gets the stake on a broken verdict as well as on silence.
  *
  * @trace LLR-FE-041
  */
 export const ROLE_LABELS: Readonly<Record<Role, string>> = {
   staker: "Made it",
   referee: "Judges it",
-  beneficiary: "Gets it if missed",
+  beneficiary: "Gets it if broken or missed",
 };
 
 /**

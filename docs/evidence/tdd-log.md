@@ -6306,7 +6306,7 @@ All 24 mutants (1600 to 1623) are killed; 1607 and 1623 survived the first pass 
 | 1613 | src/views/pledge/PledgeBanner.tsx: `role === "referee" && " The deadline has passed` to `role === "staker" && " The deadline has passed` | killed, 1 failing |
 | 1614 | src/views/pledge/PledgeBanner.tsx: `state === "SettledToStaker" ? staker : beneficiary` to `state === "SettledToStaker" ? beneficiary : staker` | killed, 1 failing |
 | 1615 | src/views/PledgeView.tsx: `afterStatus === undefined ?` to `afterStatus !== undefined ?` | killed, 1 failing |
-| 1616 | src/views/pledge/PledgeBanner.tsx: `role === "beneficiary" && " You can send it to yourself now."}
+| 1616 | src/views/pledge/PledgeBanner.tsx: `role === "beneficiary" && " You can send it to yourself now."` to `role === "referee" && ...` | killed, 1 failing (row text was truncated in the original log; the mutant is reconstructed and rerun in the fix round, 2026-10-08) |
 | 1617 | src/views/pledge/PledgeFacts.tsx: `Number(pledge.deadline) * 1000).toISOString()` to `Number(pledge.deadline) * 100).toISOString()` | killed, 1 failing |
 | 1618 | src/views/PledgeView.tsx: `{`“${data.promiseText}”`}` to `{data.promiseText}` | killed, 41 failing |
 | 1619 | src/views/pledge/PledgeFacts.tsx: `index < timeline.done ?` to `index <= timeline.done ?` | killed, 2 failing |
@@ -6353,3 +6353,75 @@ Heading "New promise" (title "New promise | SatStake"), form name "New promise",
 ### Merge (lead)
 
 The three groups worked in parallel in one worktree with disjoint files. At merge, one test failed: the LLR-FE-037 copy-link order test found its block as the heading's second sibling, and the pledge page now opens with its banner and keeps the status line in its card. The test now finds the block by its own frame (`.copy-link`) and keeps its assertions on the order inside it. The copy-link sentence, its button, and the pledge page's read-retry alert said "pledge"; they say "promise", with their tests in the same change. Merged tree: app 1118 passed, 9 skipped; lint and typecheck clean; trace check OK, 106 of 113.
+
+## FE restyle: requirements review fixes, applied by the lead (2026-10-08)
+
+The independent requirements review (Opus) of `1b55f8a..9fc2f08` found 1 High, 4 Medium, 5 Low. The lead fixed these directly, test first:
+
+- **H1, the banner claimed "no answer" in the gap after the deadline** (LLR-FE-040, honesty). With the last poll Active and chain time at the deadline, the banner said the promise counted as broken and the stake could be sent, while a verdict mined in the last block is invisible until the next poll, and no send control exists in that gap. New variant `deadline-checking`: "The deadline has passed. Checking the network for the outcome." Tests: `banner.test.ts` "shows a neutral checking text..." and `PledgeDetails.test.tsx` "claims neither an answer nor a recipient..." (as the beneficiary). Red: `expected 'expired' to be 'deadline-checking'`, and the page test found no neutral text. Mutant 1803 (back to `expired`) killed, 2.
+- **M1, the timeline marked "Judged" done with no verdict** (LLR-FE-040). Steps now carry a status: an Expired promise reads "No answer" and a payout to the beneficiary "Broken or no answer", each `passed`, not `done`, since the page reads no logs and cannot tell a broken verdict from silence. Red: all 9 `timeline.test.ts` tests (new shape). Mutants 1804, 1805 killed, 3 each. Two page tests that pinned the old claim were changed with it.
+- **M2, the CSS tests read only `styles.css`** (LLR-FE-073). `styles.test.ts` now reads every `.css` under `src` and pins that the four sheets are read. Red: the reviewer's three mutants passed the whole suite before; now 1800 (`@import` of a font host in `home.css`) killed 2, 1801 (`data:` url in `pledge.css`) killed 1, 1802 (`transition: all` in `forms.css`) killed 1.
+- **M3, the banner and the staker's copy control came before the h1** (LLR-FE-072). The heading now comes first in the DOM, not reordered by CSS, so reading and visual order agree. Test "comes after the page heading, where focus lands"; red against the committed `PledgeView` (`expected +0 to be truthy`), green after.
+- **L1, in part:** the referee banner says "Before {deadline}", since the contract refuses a verdict at the deadline second.
+- **L5, control border:** `--control-border` `#6a6763` measured 2.96:1 on the input fill. Now `#76736e`: 3.80:1 on `--bg`, 3.53:1 on the input fill (`#1e1e1e`), 3.61:1 on `--card`.
+
+Left for the fix round: M4 (tests that pin released wording again), L1 rest (beneficiary label and create caution name only "missed"), L2 (landing card read once), L3 (explorer links without a copy control in the eyebrow and footer), L4 (log gaps: `styles.test.ts` and header/footer test red not recorded; row 1616 truncated).
+
+App 1121 passed, 9 skipped.
+
+Addendum to the review-fixes section above (log gaps, finding L4): the foundation's `styles.test.ts` and the LLR-FE-013 header and footer tests were never observed red when written, because the implementer was stopped before it kept a log. They were observed red afterwards by mutants in the fix round below (1850 to 1854), each killed by exactly the test that names the property; the font-face, url and focus-ring checks were already shown red by mutants 1800 to 1802.
+
+## FE restyle: review fix round (2026-10-08)
+
+One implementer, test first. Items are the numbers of the fix-round brief.
+
+### Red
+Tests were written or narrowed first (format, stateLabels, roles, warning, PledgeDetails, PledgeActions, App, WalletBar, HomeView, PromiseRotator, CreateView). First run: 69 failed, 1077 passed. Every failure was the predicted one, none a compile error:
+- Missing accessible name `Promise status` (25, the renamed live region, item 16) and `Unable to find ... "USDC cannot be used for new promises right now."` (5).
+- format: `expected '$1.5 in USDC' to be '$1.50 in USDC'`, also `$1,234.5`, `$0.1`, `$2.5` (item 4).
+- Rotator: `expected [] to have a length of 3 but got +0` (no `.home-rot-slide`, item 1), `expected 'true' to be 'false'` and `'false' to be 'true'` (reduced motion started running, item 6), `expected '01 / 03' to be '02 / 04'` and `Unable to find ... "Kept"` and the block-time retry (no 30 s re-read, item 10).
+- Pledge page: `expected <span class="state-badge"> to be null`, `expected <p></p> to be null` (promise paragraph outside the heading, item 18), `expected 'Gets it if missed' to match /broken/i` (item 9), `expected 'Your verdict is final ... beneficiary.' to match /the person named to get it/` (item 3), `You can no longer give a verdict.` missing (item 17), `/Kept, the money goes back to 0x1111.../` missing (item 17).
+- Wallet: `expected 148 to be less than 140` (item 2); the landing-page test found the old sentence.
+- Home: `expected <a class="home-eyebrow"> to be null` (item 11); App: the footer still linked `/address/` (item 11).
+Two test defects fixed on the way: a role-name assertion matched the hero's own "browser wallet" sentence (now scoped to the wallet region), and an enum-name check wrongly required "Kept" and "Broken" to differ from their contract names.
+
+### Green
+App 1146 passed, 9 skipped; lint and typecheck clean; `build:testnet` and `build:mainnet` clean; trace check OK, 106 of 113; tool tests 474 passed, 1 failed: the LLR-SB-005 marker scan finds markers in `.claude/skills/ui-ux-pro-max/data/phosphor-icons-upstream.json`, a file this round did not touch and that the repository scan covers (reported to the lead).
+
+### Items and what changed
+1 grid stack of all slides (`aria-hidden`, `inert`, `visibility: hidden` on the others); measured at 360: every slide 532 px, card 582 px on all three slides. 2 no-wallet line left out on `#/`, one short line elsewhere; hero padding cut, "Make a promise" ends at y=667 (1440x900) and y=718 (360x800). 3 state badge removed, status sentence visually hidden while a banner shows, role words in plain language (`ROLE_STATEMENTS`, state meanings, hint, warnings). 4 USDC fraction padded to cents. 5 whole quote is the link (44 px), logo 44 px, GitHub link override dropped; measured, no target under 44 px at 360 except the 32 px Copy and explorer pills, which are 44 px under `(max-width: 860px)`. 6 card starts paused under reduced motion. 7 timeline keeps three columns. 8 tests narrowed (stateLabels, roles, banners, footer, logo, amounts). 9 beneficiary label "Gets it if broken or missed" and the create caution. 10 card re-reads count and states every 30 s while visible, the clock persists across reads so a failed block read is retried, a refresh that reads nothing keeps the cards. 11 eyebrow plain text, footer drops the contract link and "Built on Arc". 12 dead and duplicate CSS removed (`.pledge-facts`, `.pledge-promise`, `.state-badge`, `.pledge-badges`, `.pledge-warning`, `.pledge-hint`, the second `.broken-dialog`), pledge.css comment corrected. 13 card state word is `STATE_NAMES`. 14 controls absolutely placed on the first row, counter hidden under 400 px. 15 display line height 0.9. 16 "promise" in the reading text, the region name, and the token-disabled message. 17 banner nits. 18 promise inside the h1. 19 footer left-aligned. 20 bar inset by the card padding. 21 left as it is: the Broken dialog closes instantly by design (its focus return runs in the same call), so a 140 ms exit would delay focus; not done. 22 screenshots: dark only, widths 360, 768, 1440.
+
+### Mutations (`cache/mutate-fixround.mjs`, 2, 3, 4; numbers 1810 to 1827, 1850 to 1854, 1616 rerun)
+All killed. 1821 (role badge always rendered) first survived, because the "marks nothing" tests only looked for the statement text; they now also assert no `.role-badge` (2 failing). 1826 showed as survived in the script only because the run crashed without a summary line (43 failures by hand); the regexp was widened in script 3.
+
+| # | Mutant | Result |
+|---|---|---|
+| 1810 | USDC minimum fraction 2 to 0 | killed, 4 |
+| 1811 | cirBTC fraction padded too | killed, 2 |
+| 1812 | reduced-motion start ignored | killed, 3 |
+| 1813 | refresh ignores hidden page | killed, 1 |
+| 1814 | refresh interval doubled | killed, 3 |
+| 1815 | unchanged count never refreshes states | killed, 2 |
+| 1816 | all-failed refresh clears the card | killed, 1 |
+| 1817 | `inert` dropped | killed, 2 |
+| 1818 | `aria-hidden` dropped | killed, 4 |
+| 1819 | shown slide not remembered by id | killed, 15 |
+| 1820 | status sentence never hidden | killed, 1 |
+| 1821 | role badge always rendered | killed, 2 (after test) |
+| 1822 | no-wallet line ignores landing | killed, 1 |
+| 1823 | header never says landing | killed, 1 |
+| 1824 | referee gets staker's warning | killed, 5 |
+| 1825 | referee addition on the staker | killed, 1 |
+| 1826 | promise left out of the heading | killed, 43 |
+| 1827 | new clock every render | killed, 4 |
+| 1850 | `color-scheme: light dark` | killed, 1 |
+| 1851 | `transition: all` | killed, 1 |
+| 1852 | nav hidden | killed, 1 |
+| 1853 | footer network name fixed | killed, 1 |
+| 1854 | footer About link broken | killed, 1 |
+
+Sources verified restored by the green runs after each script.
+
+### Lead, before commit
+
+The LLR-SB-005 marker scan failed on two things. (1) The five agent skills, committed with the foundation, carry third-party data with marker words; they are not project source, so `.claude/skills/` is now gitignored and untracked, and the committed `skills-lock.json` records each source and hash. (2) The timeline's step status `todo` is a marker word to a case-insensitive scan; it is now `ahead`. Final: app 1146 passed, 9 skipped; tool tests 475 passed; lint, typecheck, both builds clean; trace check OK, 106 of 113.

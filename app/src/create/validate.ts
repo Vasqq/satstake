@@ -178,7 +178,7 @@ export function checkForm(values: FormValues, context: FormContext): FormCheck {
   const token = context.network.tokens.find((t) => t.address.toLowerCase() === values.token.toLowerCase());
   const atOnce: Field[] = [];
   if (token === undefined) set("token", MESSAGES.tokenNotAccepted);
-  else if (!context.tokenEnabled) set("token", `${token.symbol} cannot be used for new pledges right now.`); // LLR-FE-030
+  else if (!context.tokenEnabled) set("token", `${token.symbol} cannot be used for new promises right now.`); // LLR-FE-030
   if (errors.token !== undefined) atOnce.push("token");
 
   // The reserve is in USDC's own decimals, which LLR-FE-006 has confirmed against the chain, and never in the

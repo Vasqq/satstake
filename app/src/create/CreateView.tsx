@@ -74,7 +74,8 @@ function stepLabel(step: Step, progress: Progress): string {
 }
 
 /** Always shown beside the beneficiary field, since the mistake is made there and cannot be undone (LLR-FE-034). */
-const BENEFICIARY_CAUTION = "This address receives your stake if you miss. If nobody controls it, the stake is lost for good.";
+const BENEFICIARY_CAUTION =
+  "This address receives your stake if the promise is broken or missed. If nobody controls it, the stake is lost for good.";
 
 const WARNINGS = {
   referee:

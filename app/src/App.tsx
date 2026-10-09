@@ -76,7 +76,7 @@ function Header({ route, network }: { route: Route; network: SelectedNetwork }) 
             </a>
           ))}
         </nav>
-        <WalletBar network={network} />
+        <WalletBar network={network} onLanding={route.name === "home"} />
       </div>
     </header>
   );
@@ -89,8 +89,6 @@ function Footer({ network }: { network: SelectedNetwork }) {
         <p>Runs on {network.name}</p>
         <a href="#/about">About and limits</a>
         <a href="https://github.com/Vasqq/satstake">GitHub</a>
-        <a href={`${network.explorerUrl}/address/${network.contract}`}>Contract on the explorer</a>
-        <p>Built on Arc</p>
       </div>
     </footer>
   );

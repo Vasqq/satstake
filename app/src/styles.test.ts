@@ -1,10 +1,22 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 // Colours, fonts, theme, and layout are Liam's (05 v1.27); contrast is checked by inspection of the final
-// styles. What stays here is what keeps the site safe and usable whatever it looks like.
-const css = readFileSync(resolve(import.meta.dirname, "styles.css"), "utf8");
+// styles. What stays here is what keeps the site safe and usable whatever it looks like. Every style sheet
+// under src is bundled into the one the site serves, so every one is read, not only the global sheet.
+const sheets = (readdirSync(import.meta.dirname, { recursive: true }) as string[]).filter(
+  (f) => f.endsWith(".css") && !f.includes("node_modules"),
+);
+const css = sheets.map((f) => readFileSync(resolve(import.meta.dirname, f), "utf8")).join("\n");
+
+describe("LLR-FE-073 every style sheet is checked", () => {
+  it("reads the global sheet and the view sheets", () => {
+    expect(sheets.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(
+      expect.arrayContaining(["styles.css", "styles/forms.css", "styles/home.css", "styles/pledge.css"]),
+    );
+  });
+});
 
 describe("LLR-FE-073 the style sheet loads nothing from another origin", () => {
   it("imports no style sheet and points no url() at another site", () => {

@@ -40,3 +40,6 @@ desktop.ini
 .vscode/
 *.swp
 *~
+
+# Third-party agent skills, installed from skills-lock.json; not part of the project source.
+.claude/skills/

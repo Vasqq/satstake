@@ -123,8 +123,8 @@ describe("LLR-FE-030 the token must be one the contract accepts (LLR-SC-021) and
   });
 
   it("refuses a configured token whose reading does not match, and names it", () => {
-    expect(check({}, { tokenEnabled: false }).errors.token).toBe("USDC cannot be used for new pledges right now.");
-    expect(check({ token: cirbtc.address }, { tokenEnabled: false }).errors.token).toBe("cirBTC cannot be used for new pledges right now.");
+    expect(check({}, { tokenEnabled: false }).errors.token).toBe("USDC cannot be used for new promises right now.");
+    expect(check({ token: cirbtc.address }, { tokenEnabled: false }).errors.token).toBe("cirBTC cannot be used for new promises right now.");
   });
 
   it("accepts either configured token, with its own decimals", () => {

@@ -1,7 +1,8 @@
-/* The pledge page. Layout follows the approved referee mockup: banner, label, the promise as a headline, the
-   stake, one card with the timeline, the clock and the three parties, then the card that holds the action.
-   Tokens and shared classes come from styles.css; nothing here fetches anything. The rules are scoped to
-   .pledge-page so that they win over the older pledge rules in styles.css without depending on load order. */
+/* The promise page. Layout follows the approved referee mockup: the heading with the promise as its headline,
+   the banner, the stake, one card with the timeline, the clock and the three parties, then the card that
+   holds the action. Tokens and shared classes come from styles.css; nothing here fetches anything. The rules
+   are scoped to .pledge-page so that they win over the shared rules in styles.css without depending on load
+   order. */
 
 .pledge-page {
   padding-bottom: 80px;
@@ -53,19 +54,27 @@
   margin-block: 0;
 }
 
-.pledge-page h1.pledge-label {
+/* The one h1 holds the small label and the promise, so heading navigation reads the promise. The h1 itself is
+   plain; each part sets its own voice. */
+.pledge-page h1.pledge-heading {
   margin: 56px 0 0;
   font-family: var(--sans);
   font-size: 13px;
   font-weight: 600;
   line-height: 1.55;
-  letter-spacing: 0.14em;
+  letter-spacing: 0;
   text-wrap: wrap;
+}
+
+.pledge-heading .pledge-label {
+  display: block;
+  letter-spacing: 0.14em;
 }
 
 /* The promise is the headline. It wraps anywhere, so a 280-byte promise with no spaces stays inside the
    column, and keeps the writer's line breaks. */
 .pledge-page .ptitle {
+  display: block;
   max-width: 18ch;
   margin: 24px 0 0;
   font-family: var(--display);
@@ -104,9 +113,10 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
-  margin-bottom: 8px;
 }
 
+/* While a banner explains the page, the status sentence is kept for assistive technology only; the
+   .visually-hidden class on the same element does that. */
 .pledge-status {
   flex: 1 1 16rem;
   min-width: 0;
@@ -118,8 +128,8 @@
   font-size: 15px;
 }
 
-.pledge-state-row .state-badge,
 .pledge-state-row .role-badge {
+  margin-bottom: 8px;
   white-space: nowrap;
 }
 
@@ -209,7 +219,10 @@
 
 .people .you-mark {
   margin-left: 6px;
+  color: var(--accent);
   font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
 }
@@ -294,7 +307,10 @@
 .broken-dialog {
   width: min(32rem, calc(100vw - 2rem));
   padding: clamp(24px, 4vw, 36px);
-  border-color: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: var(--card-solid);
+  color: var(--fg);
   animation: dialog-in 200ms var(--ease-out);
 }
 
@@ -321,13 +337,9 @@
   }
 }
 
+/* The timeline keeps its three columns at any width; a label wraps to a second line before the steps stack. */
 @media (max-width: 860px) {
-  .timeline {
-    grid-template-columns: 1fr;
-    gap: 20px;
-  }
-
-  .pledge-page h1.pledge-label {
+  .pledge-page h1.pledge-heading {
     margin-top: 40px;
   }
 

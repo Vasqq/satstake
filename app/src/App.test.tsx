@@ -6,6 +6,8 @@ import { createAppConfig } from "./chain/wagmi";
 import { selectNetwork } from "./config/networks";
 import { parseRoute } from "./routes";
 import { FakeChain, samplePledge } from "./test/fakeChain";
+import { PLEDGE_STATES } from "./chain/reads";
+import { STATE_MEANINGS, STATE_NAMES } from "./views/stateLabels";
 
 const network = selectNetwork("testnet");
 
@@ -61,7 +63,7 @@ describe("LLR-FE-013 the shell shows the view for each route", () => {
     ];
     for (const [hash, heading] of cases) {
       setup(hash);
-      expect((await screen.findByRole("heading", { level: 1 })).textContent, hash).toBe(heading);
+      expect((await screen.findByRole("heading", { level: 1 })).textContent?.startsWith(heading), hash).toBe(true);
       cleanup();
     }
   });
@@ -98,11 +100,11 @@ describe("LLR-FE-013 the shell shows the view for each route", () => {
     const chain = freshChain();
     chain.addPledge(2n, samplePledge, 2);
     setup("#/p/1", chain);
-    await screen.findByText("Open. Waiting for the referee's verdict.");
+    await screen.findByText(STATE_MEANINGS.Active);
     act(() => {
       window.location.hash = "#/p/2";
     });
-    await screen.findByText("Kept. The referee confirmed it, and the stake can be sent back to the staker.");
+    await screen.findByText(STATE_MEANINGS.Kept);
     let release = () => {};
     chain.gate = new Promise<void>((resolve) => (release = resolve));
     act(() => {
@@ -111,9 +113,9 @@ describe("LLR-FE-013 the shell shows the view for each route", () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
-    expect(screen.queryByText("Kept. The referee confirmed it, and the stake can be sent back to the staker.")).toBeNull();
+    expect(screen.queryByText(STATE_MEANINGS.Kept)).toBeNull();
     release();
-    await screen.findByText("Open. Waiting for the referee's verdict.");
+    await screen.findByText(STATE_MEANINGS.Active);
   });
 
   it("changes view when the hash changes", async () => {
@@ -181,10 +183,10 @@ describe("LLR-FE-011 the pledge page re-reads state and the latest block every 4
 
   it("shows the state a later poll finds", async () => {
     const chain = await settle();
-    expect(screen.getByText("Open. Waiting for the referee's verdict.")).toBeTruthy();
+    expect(screen.getByText(STATE_MEANINGS.Active)).toBeTruthy();
     chain.states.set(1n, 2);
     await advance(4_000);
-    expect(screen.getByText("Kept. The referee confirmed it, and the stake can be sent back to the staker.")).toBeTruthy();
+    expect(screen.getByText(STATE_MEANINGS.Kept)).toBeTruthy();
   });
 
   it("stops while the page is hidden and reads again when it is shown", async () => {
@@ -346,24 +348,17 @@ describe("LLR-FE-006 a notice names a token whose creation is disabled", () => {
   });
 });
 
-const pledgeStatus = () => within(screen.getByRole("main")).getByRole("status", { name: "Pledge status" });
+const pledgeStatus = () => within(screen.getByRole("main")).getByRole("status", { name: "Promise status" });
 const RETRYING = "Could not read this promise. The site keeps trying while this page is open.";
 
 describe("LLR-FE-011 the pledge page in plain words, and a failed first read is tried again", () => {
-  const states: [number, string][] = [
-    [0, "Open. Waiting for the referee's verdict."],
-    [1, "No answer by the deadline. The promise counts as broken, and the stake can be sent to the beneficiary."],
-    [2, "Kept. The referee confirmed it, and the stake can be sent back to the staker."],
-    [3, "Broken. The referee marked it broken, and the stake can be sent to the beneficiary."],
-    [4, "Paid back. The stake went back to the staker."],
-    [5, "Paid out. The stake went to the beneficiary."],
-  ];
-
-  it.each(states)("shows state %i as %s", async (value, label) => {
+  it.each([0, 1, 2, 3, 4, 5])("shows state %i in the status sentence, starting with its plain name", async (value) => {
     const chain = freshChain();
     chain.addPledge(1n, samplePledge, value);
     setup("#/p/1", chain);
-    expect(await screen.findByText(label)).toBeTruthy();
+    const state = PLEDGE_STATES[value]!;
+    expect(await screen.findByText(STATE_MEANINGS[state])).toBeTruthy();
+    expect(pledgeStatus().textContent!.startsWith(STATE_NAMES[state].split(" ")[0]!)).toBe(true);
     expect(document.body.textContent).not.toMatch(/SettledTo/);
   });
 
@@ -373,11 +368,11 @@ describe("LLR-FE-011 the pledge page in plain words, and a failed first read is 
     chain.latency = (r) => (r.functionName === "stateOf" ? new Promise<void>((resolve) => setTimeout(resolve, 3_000)) : undefined);
     setup("#/p/1", chain);
     await advance(100);
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Promise #1");
-    expect(pledgeStatus().textContent).toContain("Reading the pledge");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toMatch(/^Promise #1/);
+    expect(pledgeStatus().textContent).toContain("Reading the promise");
     await advance(3_000);
-    expect(screen.queryByText(/Reading the pledge/)).toBeNull();
-    expect(screen.getByText("Open. Waiting for the referee's verdict.")).toBeTruthy();
+    expect(screen.queryByText(/Reading the promise/)).toBeNull();
+    expect(screen.getByText(STATE_MEANINGS.Active)).toBeTruthy();
   });
 
   it("says it is reading while the pledge itself has not been answered, with the heading and title already there", async () => {
@@ -389,10 +384,10 @@ describe("LLR-FE-011 the pledge page in plain words, and a failed first read is 
     await advance(100);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Promise #1");
     expect(document.title).toBe("Promise #1 | SatStake");
-    expect(pledgeStatus().textContent).toContain("Reading the pledge");
+    expect(pledgeStatus().textContent).toContain("Reading the promise");
     await advance(3_000);
     await advance(50);
-    expect(screen.getByText("Open. Waiting for the referee's verdict.")).toBeTruthy();
+    expect(screen.getByText(STATE_MEANINGS.Active)).toBeTruthy();
   });
 
   it("keeps trying when the first read of the pledge fails, and shows it when a later try succeeds", async () => {
@@ -410,7 +405,7 @@ describe("LLR-FE-011 the pledge page in plain words, and a failed first read is 
     await advance(4_000);
     await advance(50);
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByText("Open. Waiting for the referee's verdict.")).toBeTruthy();
+    expect(screen.getByText(STATE_MEANINGS.Active)).toBeTruthy();
   });
 
   it("reads no state for a pledge the contract says does not exist", async () => {
@@ -439,20 +434,16 @@ describe("LLR-FE-013 the header and footer", () => {
     setup("#/about");
     const header = (await screen.findByRole("banner")) as HTMLElement;
     const links = Array.from(header.querySelectorAll("a")).map((a) => [nameOf(a), a.getAttribute("href")]);
-    expect(links).toEqual([
-      ["SatStake", "#/"],
-      ["New promise", "#/create"],
-      ["My promises", "#/mine"],
-      ["About", "#/about"],
-    ]);
+    expect(links.map(([, href]) => href)).toEqual(["#/", "#/create", "#/mine", "#/about"]);
+    expect(links[0]![0]).toBe("SatStake");
+    for (const [name] of links) expect(String(name).trim()).not.toBe("");
     for (const [, href] of links) expect(parseRoute(href as string).name, String(href)).not.toBe("notFound");
   });
 
-  it("writes the logo as Sat, an accented Stake, and a full stop, and names it SatStake to assistive technology", async () => {
+  it("names the logo SatStake to assistive technology and links it to the home page", async () => {
     setup("#/about");
     const logo = await screen.findByRole("link", { name: "SatStake" });
-    expect(logo.textContent).toBe("SatStake.");
-    expect(logo.querySelector("span.accent")?.textContent).toBe("Stake");
+    expect(logo.getAttribute("href")).toBe("#/");
   });
 
   it("keeps the nav in the header with the wallet control, and never hides the nav", async () => {
@@ -466,15 +457,15 @@ describe("LLR-FE-013 the header and footer", () => {
   });
 
   it.each([
-    ["#/", "SatStake"],
-    ["#/create", "New promise"],
-    ["#/mine", "My promises"],
-    ["#/about", "About"],
-  ])("on %s marks exactly the %s link as the current page", async (hash, label) => {
+    ["#/", "#/"],
+    ["#/create", "#/create"],
+    ["#/mine", "#/mine"],
+    ["#/about", "#/about"],
+  ])("on %s marks exactly the link to %s as the current page", async (hash, target) => {
     setup(hash);
     const header = (await screen.findByRole("banner")) as HTMLElement;
     const current = Array.from(header.querySelectorAll("a")).filter((a) => a.getAttribute("aria-current") === "page");
-    expect(current.map(nameOf)).toEqual([label]);
+    expect(current.map((a) => a.getAttribute("href"))).toEqual([target]);
   });
 
   it("marks no link on a pledge page or an unknown route", async () => {
@@ -495,24 +486,18 @@ describe("LLR-FE-013 the header and footer", () => {
     }
   });
 
-  it("links the about page, the source repository, and the contract on the explorer from the footer", async () => {
+  it("links the about page and the source repository from the footer", async () => {
     setup("#/");
     const footer = await screen.findByRole("contentinfo");
-    const hrefOf = (name: string) => within(footer).getByRole("link", { name }).getAttribute("href");
-    expect(hrefOf("About and limits")).toBe("#/about");
-    expect(hrefOf("GitHub")).toBe("https://github.com/Vasqq/satstake");
-    expect(hrefOf("Contract on the explorer")).toBe(`${network.explorerUrl}/address/${network.contract}`);
-    expect(footer.textContent).toContain("Built on Arc");
+    const hrefs = Array.from(footer.querySelectorAll("a")).map((a) => a.getAttribute("href"));
+    expect(hrefs).toContain("#/about");
+    expect(hrefs).toContain("https://github.com/Vasqq/satstake");
   });
 
-  it("puts the footer links in the order About and limits, GitHub, Contract on the explorer", async () => {
+  it("leaves the contract link to the landing page, which shows the whole address with its copy control", async () => {
     setup("#/");
     const footer = await screen.findByRole("contentinfo");
-    expect(Array.from(footer.querySelectorAll("a")).map((a) => a.textContent)).toEqual([
-      "About and limits",
-      "GitHub",
-      "Contract on the explorer",
-    ]);
+    expect(Array.from(footer.querySelectorAll("a")).some((a) => a.getAttribute("href")?.includes("/address/"))).toBe(false);
   });
 });
 
@@ -562,11 +547,11 @@ describe("LLR-FE-072 each page sets the title and moves focus to its heading", (
     const chain = freshChain();
     chain.addPledge(2n);
     setup("#/p/1", chain);
-    await screen.findByRole("heading", { name: "Promise #1" });
+    await screen.findByRole("heading", { name: /^Promise #1/ });
     act(() => {
       window.location.hash = "#/p/2";
     });
-    const second = await screen.findByRole("heading", { name: "Promise #2" });
+    const second = await screen.findByRole("heading", { name: /^Promise #2/ });
     expect(document.title).toBe("Promise #2 | SatStake");
     expect(document.activeElement).toBe(second);
   });
@@ -582,17 +567,17 @@ describe("LLR-FE-011 a failed poll shows an error beside the last state, and the
   it("keeps the last state on screen and shows the error while the most recent poll failed, then clears it", async () => {
     const chain = freshChain();
     await open(chain);
-    expect(screen.getByText("Open. Waiting for the referee's verdict.")).toBeTruthy();
+    expect(screen.getByText(STATE_MEANINGS.Active)).toBeTruthy();
     chain.callError = new HttpRequestError({ url: "https://rpc.example" });
     await advance(4_000);
     await advance(50);
-    expect(screen.getByText("Open. Waiting for the referee's verdict.")).toBeTruthy();
+    expect(screen.getByText(STATE_MEANINGS.Active)).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toBe(RETRYING);
     chain.callError = undefined;
     await advance(4_000);
     await advance(50);
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByText("Open. Waiting for the referee's verdict.")).toBeTruthy();
+    expect(screen.getByText(STATE_MEANINGS.Active)).toBeTruthy();
   });
 
   it("shows the error beside the reading message while no state has been read", async () => {
@@ -601,7 +586,7 @@ describe("LLR-FE-011 a failed poll shows an error beside the last state, and the
       r.functionName === "stateOf" ? Promise.reject(new HttpRequestError({ url: "https://rpc.example" })) : undefined;
     await open(chain);
     expect(screen.getByRole("alert").textContent).toBe(RETRYING);
-    expect(pledgeStatus().textContent).toContain("Reading the pledge");
+    expect(pledgeStatus().textContent).toContain("Reading the promise");
   });
 
   it("shows the same message once, in one alert, beside the reading message, when the first read of the pledge itself failed", async () => {
@@ -609,14 +594,14 @@ describe("LLR-FE-011 a failed poll shows an error beside the last state, and the
     chain.callError = new HttpRequestError({ url: "https://rpc.example" });
     await open(chain);
     expect(screen.getAllByRole("alert").map((a) => a.textContent)).toEqual([RETRYING]);
-    expect(pledgeStatus().textContent).toContain("Reading the pledge");
+    expect(pledgeStatus().textContent).toContain("Reading the promise");
   });
 
   it("shows both the reading message and the alert when the first read of the pledge fails with a 503", async () => {
     const chain = freshChain();
     chain.callError = new HttpRequestError({ url: "https://rpc.example", status: 503 });
     await open(chain);
-    expect(pledgeStatus().textContent).toContain("Reading the pledge");
+    expect(pledgeStatus().textContent).toContain("Reading the promise");
     expect(screen.getByRole("alert").textContent).toBe(RETRYING);
   });
 
@@ -627,15 +612,15 @@ describe("LLR-FE-011 a failed poll shows an error beside the last state, and the
     setup("#/p/1", chain);
     await advance(100);
     const status = pledgeStatus();
-    expect(status.textContent).toContain("Reading the pledge");
+    expect(status.textContent).toContain("Reading the promise");
     await advance(3_000);
     expect(pledgeStatus()).toBe(status);
-    expect(status.textContent).toBe("Open. Waiting for the referee's verdict.");
+    expect(status.textContent).toBe(STATE_MEANINGS.Active);
     chain.latency = undefined;
     chain.states.set(1n, 2);
     await advance(4_000);
     expect(pledgeStatus()).toBe(status);
-    expect(status.textContent).toBe("Kept. The referee confirmed it, and the stake can be sent back to the staker.");
+    expect(status.textContent).toBe(STATE_MEANINGS.Kept);
   });
 });
 
@@ -692,7 +677,7 @@ describe("LLR-FE-072 focus and title on the first page load and on the swap to n
 
   it("leaves the focus alone on the first page load of a pledge too, once its heading appears", async () => {
     setup("#/p/1");
-    await screen.findByRole("heading", { name: "Promise #1" });
+    await screen.findByRole("heading", { name: /^Promise #1/ });
     expect(document.title).toBe("Promise #1 | SatStake");
     expect(focused).toEqual([]);
   });

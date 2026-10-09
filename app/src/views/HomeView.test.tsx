@@ -102,15 +102,20 @@ describe("LLR-FE-070 the evidence that it is live", () => {
     expect(screen.queryByText("Not available right now")).toBeNull();
   });
 
-  it("stops asking once the count is known", async () => {
+  it("asks for the count again only every 30 seconds, not on every second", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const chain = freshChain();
     home(chain);
     await screen.findByText("1");
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(120_000);
+      await vi.advanceTimersByTimeAsync(25_000);
     });
     expect(chain.count("eth_call", "pledgeCount")).toBe(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(95_000);
+    });
+    expect(chain.count("eth_call", "pledgeCount")).toBeGreaterThan(1);
+    expect(chain.count("eth_call", "pledgeCount")).toBeLessThanOrEqual(5);
   });
 
   it("reads no logs", async () => {
@@ -190,17 +195,22 @@ describe("LLR-FE-070 the evidence for reviewers", () => {
     home();
     const section = heading("For reviewers").closest("section")!;
     expect(section.textContent).toContain(`${network.name}, chain ${network.chainId}`);
-    expect(section.textContent).toContain(
-      "SatStake uses cirBTC as the stake, USDC as gas so a $5 promise costs cents to make, and Arc's deterministic finality so a forfeit is final the moment it lands.",
-    );
+    expect(section.textContent).toMatch(/cirBTC/);
+    expect(section.textContent).toMatch(/USDC/);
+    expect(section.textContent).toMatch(/deterministic finality/);
   });
 
-  it("links to the repository, to the verified source, and to the contract on the explorer from the hero", () => {
+  it("links to the repository and to the verified source", () => {
     home();
     expect(linkTo("https://github.com/Vasqq/satstake")).toBeTruthy();
-    const eyebrow = screen.getByRole("link", { name: `Live on ${network.name}` });
-    expect(eyebrow.getAttribute("href")).toBe(`${network.explorerUrl}/address/${network.contract}`);
     expect(screen.getByRole("link", { name: "Verified on Sourcify" })).toBeTruthy();
+  });
+
+  it("names the network in the hero as plain text, since the full address with its explorer link is shown further down", () => {
+    home();
+    const eyebrow = screen.getByText(`Live on ${network.name}`);
+    expect(eyebrow.closest("a")).toBeNull();
+    expect(eyebrow.querySelector("a")).toBeNull();
   });
 
   it("shows the whole address once, in the reviewer section", () => {

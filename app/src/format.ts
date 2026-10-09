@@ -13,11 +13,15 @@ export function formatSats(units: bigint): string {
   return `${units.toLocaleString("en-US")} ${units === 1n ? "sat" : "sats"}`; // LLR-FE-045
 }
 
-/** formatUnits with the whole part grouped, for the same reason as formatSats: one reading for every visitor. */
-function groupedUnits(amount: bigint, decimals: number): string {
+/**
+ * formatUnits with the whole part grouped, for the same reason as formatSats: one reading for every visitor.
+ * A fraction is padded to `minFraction` digits, so money reads as cents ($1.50, not $1.5); a whole amount has
+ * no fraction to pad and stays whole.
+ */
+function groupedUnits(amount: bigint, decimals: number, minFraction = 0): string {
   const [whole = "0", fraction] = formatUnits(amount, decimals).split(".");
   const grouped = BigInt(whole).toLocaleString("en-US");
-  return fraction === undefined ? grouped : `${grouped}.${fraction}`;
+  return fraction === undefined ? grouped : `${grouped}.${fraction.padEnd(minFraction, "0")}`;
 }
 
 /**
@@ -31,7 +35,7 @@ function groupedUnits(amount: bigint, decimals: number): string {
 export function formatAmount(network: Pick<NetworkConfig, "tokens">, token: string, amount: bigint): string {
   const match = network.tokens.find((t) => t.address.toLowerCase() === token.toLowerCase());
   if (match === undefined) return `${amount.toString()} units of ${shorten(token)}`; // LLR-FE-040
-  if (match.symbol === "USDC") return `$${groupedUnits(amount, match.decimals)} in USDC`; // LLR-FE-045
+  if (match.symbol === "USDC") return `$${groupedUnits(amount, match.decimals, 2)} in USDC`; // LLR-FE-045
   if (match.symbol === "cirBTC") return `${formatSats(amount)}, ${groupedUnits(amount, match.decimals)} cirBTC`; // LLR-FE-045
   return `${formatUnits(amount, match.decimals)} ${match.symbol}`; // LLR-FE-040
 }

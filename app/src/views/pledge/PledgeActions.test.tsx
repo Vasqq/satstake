@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { numberToHex } from "viem";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { FAILED_MESSAGE, REJECTED_MESSAGE } from "../../wallet/failure";
+import { STATE_MEANINGS } from "../stateLabels";
 import { installDialogPolyfill } from "../../test/dialogPolyfill";
 import { rejection, walletError } from "../../test/fakeWallet";
 import {
@@ -32,7 +33,7 @@ const UNCONFIRMED =
 const ACTION_NAMES = /^(Kept|Broken|Claim stake|Withdraw my stake|Send stake to (staker|beneficiary))$/;
 
 const main = () => within(screen.getByRole("main"));
-const loaded = () => main().findByText(/^“/, { selector: "p" });
+const loaded = () => main().findByText(/^“/, { selector: ".ptitle" });
 const dialog = () => document.querySelector("dialog") as HTMLDialogElement;
 const dialogOpen = () => document.querySelector("dialog[open]") !== null;
 /** Lets the effects of a change of connection run in real time. */
@@ -87,9 +88,9 @@ describe("LLR-FE-042 the pledge page offers exactly the actions of the matrix", 
     await loaded();
     const group = await screen.findByRole("group", { name: "Was this promise kept?" });
     expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(["Kept", "Broken"]);
-    expect(
-      main().getByText("Your verdict is final. Record it before the deadline, or the stake goes to the beneficiary."),
-    ).toBeTruthy();
+    const note = main().getByText(/^Your verdict is final\. Record it before the deadline/);
+    expect(note.textContent).toMatch(/the person named to get it/);
+    expect(note.textContent).not.toMatch(/beneficiary|referee|staker/i);
   });
 
   it("gives the staker of an Active pledge a hint and no button", async () => {
@@ -239,7 +240,8 @@ describe("LLR-FE-044 Broken asks for confirmation first", () => {
     expect(dialogOpen()).toBe(true);
     expect(dialog().dataset.modal).toBe("true");
     expect(within(dialog()).getByRole("heading", { name: "Mark this promise broken?" })).toBeTruthy();
-    expect(dialog().textContent).toContain("The stake of $2.5 in USDC will go to the beneficiary, 0x3333…3333. Your verdict cannot be changed.");
+    expect(dialog().textContent).toMatch(/The stake of \$2\.50 in USDC will go to the beneficiary, 0x3333…3333\./);
+    expect(dialog().textContent).toContain("cannot be changed");
     expect(sent(world)).toBe(0);
   });
 
@@ -248,7 +250,8 @@ describe("LLR-FE-044 Broken asks for confirmation first", () => {
     const heading = within(dialog()).getByRole("heading");
     expect(dialog().getAttribute("aria-labelledby")).toBe(heading.id);
     const body = document.getElementById(dialog().getAttribute("aria-describedby") ?? "");
-    expect(body?.textContent).toBe("The stake of $2.5 in USDC will go to the beneficiary, 0x3333…3333. Your verdict cannot be changed.");
+    expect(body?.textContent).toMatch(/0x3333…3333/);
+    expect(body?.textContent).toContain("cannot be changed");
   });
 
   it("has Cancel then Mark it broken, with focus on Cancel", async () => {
@@ -415,7 +418,7 @@ describe("LLR-FE-046 progress and result of a verdict or settle request", () => 
     fireEvent.click(button("Kept"));
     await advance(2500);
     // The next scheduled poll is 4 seconds after the first, so only a re-read on confirmation can have shown this.
-    expect(statusLine().textContent).toBe("Kept. The referee confirmed it, and the stake can be sent back to the staker.");
+    expect(statusLine().textContent).toBe(STATE_MEANINGS.Kept);
   });
 
   it("says where a confirmed settlement went, to the staker or to the beneficiary", async () => {

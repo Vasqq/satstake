@@ -30,10 +30,14 @@ describe("LLR-FE-040 amounts as the pledge page writes them", () => {
   it.each([
     [20_000_000n, "$20 in USDC"],
     [5_000_000n, "$5 in USDC"],
-    [1_500_000n, "$1.5 in USDC"],
-    [1_234_500_000n, "$1,234.5 in USDC"],
+    [1_500_000n, "$1.50 in USDC"],
+    [100_000n, "$0.10 in USDC"],
+    [10_000n, "$0.01 in USDC"],
+    [123_000n, "$0.123 in USDC"],
+    [1_234_500_000n, "$1,234.50 in USDC"],
     [1n, "$0.000001 in USDC"],
     [0n, "$0 in USDC"],
+    [2_500_000n, "$2.50 in USDC"],
     [123_456_789_000_000n, "$123,456,789 in USDC"],
     [1_000_000_000_000n, "$1,000,000 in USDC"],
     [999_000_000n, "$999 in USDC"],
@@ -60,6 +64,15 @@ describe("LLR-FE-040 amounts as the pledge page writes them", () => {
     expect(formatAmount(network, cirbtc.address.toLowerCase() as `0x${string}`, 10_000n)).toBe(
       "10,000 sats, 0.0001 cirBTC",
     );
+  });
+
+  it("pads a USDC fraction to cents but never pads a whole amount or a longer fraction", () => {
+    expect(formatAmount(network, usdc.address, 20_000_000n)).not.toContain(".");
+    expect(formatAmount(network, usdc.address, 1_000_001n)).toBe("$1.000001 in USDC");
+  });
+
+  it("does not pad the fraction of a cirBTC amount", () => {
+    expect(formatAmount(network, cirbtc.address, 150_000_000n)).toBe("150,000,000 sats, 1.5 cirBTC");
   });
 
   it("shows no sats for a token that is not cirBTC", () => {

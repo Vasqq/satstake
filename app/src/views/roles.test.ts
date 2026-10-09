@@ -1,7 +1,7 @@
 import { getAddress } from "viem";
 import { describe, expect, it } from "vitest";
 import type { Pledge } from "../chain/reads";
-import { ROLE_LABELS, ROLE_NAMES, roleOf } from "./roles";
+import { ROLE_LABELS, ROLE_STATEMENTS, roleOf } from "./roles";
 
 const addr = (byte: string) => getAddress(`0x${byte.repeat(20)}`);
 // Letters in the hex digits, so a checksum differs from the lower-case form and a case-sensitive comparison fails.
@@ -40,13 +40,25 @@ describe("LLR-FE-041 the connected account's role on a pledge", () => {
     expect(roleOf(pledge, `0x0${STAKER.slice(3)}`)).toBeNull();
   });
 
-  it("writes each role as a capitalised word", () => {
-    expect(ROLE_NAMES).toEqual({ staker: "Staker", referee: "Referee", beneficiary: "Beneficiary" });
+  it("tells the connected account what it did in plain words, one sentence per role, none saying staker or referee", () => {
+    const sentences = Object.values(ROLE_STATEMENTS);
+    expect(new Set(sentences).size).toBe(3);
+    for (const sentence of sentences) {
+      expect(sentence).toMatch(/^You /);
+      expect(sentence).not.toMatch(/staker|referee|beneficiary/i);
+    }
   });
 });
 
 describe("LLR-FE-041 the plain labels of the three parties", () => {
-  it("names each party by what they do, in the words the pledge page columns use", () => {
-    expect(ROLE_LABELS).toEqual({ staker: "Made it", referee: "Judges it", beneficiary: "Gets it if missed" });
+  it("labels each party differently, so the columns of the page are told apart", () => {
+    const labels = Object.values(ROLE_LABELS);
+    for (const label of labels) expect(label.trim()).not.toBe("");
+    expect(new Set(labels).size).toBe(3);
+  });
+
+  it("says in the beneficiary label that the stake comes if the promise is broken or missed, not only missed", () => {
+    expect(ROLE_LABELS.beneficiary).toMatch(/broken/i);
+    expect(ROLE_LABELS.beneficiary).toMatch(/missed/i);
   });
 });

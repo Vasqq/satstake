@@ -803,6 +803,12 @@ describe("LLR-FE-034 the form warns beside the beneficiary field that an address
     expect(errorFor("Beneficiary address")).toBe("");
   });
 
+  it("says the stake goes there if the promise is broken or missed, not only missed", async () => {
+    await openCreate();
+    const text = field("Beneficiary address").closest(".field")?.textContent ?? "";
+    expect(text).toMatch(/if the promise is broken or missed/);
+  });
+
   it("links the warning to the field, so its accessible description includes it", async () => {
     await openCreate();
     expect(describedText(field("Beneficiary address"))).toMatch(LOST);
@@ -1656,7 +1662,7 @@ describe("LLR-FE-006 creation in a token is off while its reading does not match
       prepare: ({ chain }) => void chain.addToken(usdc.address, { decimals: 18, symbol: "USDC" }),
     });
     fill();
-    await waitFor(() => expect(within(field("Token").parentElement as HTMLElement).getByText("USDC cannot be used for new pledges right now.")).toBeTruthy());
+    await waitFor(() => expect(within(field("Token").parentElement as HTMLElement).getByText("USDC cannot be used for new promises right now.")).toBeTruthy());
     expect(isDisabled(submit())).toBe(true);
     fireEvent.change(field("Token"), { target: { value: cirbtc.address } });
     await ready();
@@ -1665,7 +1671,7 @@ describe("LLR-FE-006 creation in a token is off while its reading does not match
 
   it("says so beside the token field before anything in the form has been touched", async () => {
     await openCreate({ prepare: ({ chain }) => void chain.addToken(usdc.address, { decimals: 18, symbol: "USDC" }) });
-    await waitFor(() => expect(errorFor("Token")).toBe("USDC cannot be used for new pledges right now."));
+    await waitFor(() => expect(errorFor("Token")).toBe("USDC cannot be used for new promises right now."));
   });
 
   it("says nothing about a token before its first reading has come back", async () => {
@@ -1683,7 +1689,7 @@ describe("LLR-FE-006 creation in a token is off while its reading does not match
   it("keeps it off for a token whose reading could not be completed", async () => {
     await openCreate({ prepare: ({ chain }) => void (chain.callError = new Error("down")) });
     fill();
-    await waitFor(() => expect(within(field("Token").parentElement as HTMLElement).getByText("USDC cannot be used for new pledges right now.")).toBeTruthy());
+    await waitFor(() => expect(within(field("Token").parentElement as HTMLElement).getByText("USDC cannot be used for new promises right now.")).toBeTruthy());
     expect(isDisabled(submit())).toBe(true);
   });
 });

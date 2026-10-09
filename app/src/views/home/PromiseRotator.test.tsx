@@ -5,14 +5,16 @@ import { createReads } from "../../chain/reads";
 import { selectNetwork } from "../../config/networks";
 import { FakeChain, samplePledge } from "../../test/fakeChain";
 import { createPublicClient } from "viem";
+import { ROLE_LABELS } from "../roles";
+import { STATE_NAMES } from "../stateLabels";
 import { PromiseRotator } from "./PromiseRotator";
 
 // Not the shared wallet harness: it mounts the whole application, and the card needs only a query client.
 const network = selectNetwork("testnet");
 const ROTATE_MS = 8_000;
 const region = () => screen.queryByRole("region", { name: `Recent promises on ${network.name}` });
-const idLink = () => within(region()!).getByRole("link", { name: /^Promise #\d+/ });
-const idNow = () => /^Promise #(\d+)/.exec(idLink().textContent ?? "")?.[1];
+const idLink = () => within(region()!).getByRole("link", { name: /^Open promise #\d+: / });
+const idNow = () => /^Promise #(\d+)/.exec(region()!.querySelector("[data-current] .label")?.textContent ?? "")?.[1];
 const pauseButton = () => within(region()!).getByRole("button", { name: /the rotation$/ });
 
 function chainWith(count: number, make: (id: number) => Partial<typeof samplePledge> = () => ({})): FakeChain {
@@ -126,11 +128,11 @@ describe("LLR-FE-070 what a slide says", () => {
     show(chain);
     const card = await screen.findByRole("region", { name: /Recent promises/ });
     expect(within(card).getByText(/Run 5 km before Friday/)).toBeTruthy();
-    expect(within(card).getByText("$2.5 in USDC")).toBeTruthy();
+    expect(within(card).getByText(/\$2\.50 in USDC/)).toBeTruthy();
     for (const [label, address] of [
-      ["Made it", samplePledge.staker],
-      ["Judges it", samplePledge.referee],
-      ["Gets it if missed", samplePledge.beneficiary],
+      [ROLE_LABELS.staker, samplePledge.staker],
+      [ROLE_LABELS.referee, samplePledge.referee],
+      [ROLE_LABELS.beneficiary, samplePledge.beneficiary],
     ] as const) {
       const term = within(card).getByText(label);
       expect(term.parentElement!.textContent).toContain(`${address.slice(0, 6)}…${address.slice(-4)}`);
@@ -178,12 +180,12 @@ describe("LLR-FE-070 what a slide says", () => {
   const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
   it.each([
-    [2, "Kept", "Kept", "goes back to", samplePledge.staker],
-    [3, "Broken", "Broken", "goes to", samplePledge.beneficiary],
-    [1, "No answer by the deadline", "No answer", "goes to", samplePledge.beneficiary],
-    [4, "Settled", "Paid back", "went back to", samplePledge.staker],
-    [5, "Settled", "Paid out", "went to", samplePledge.beneficiary],
-  ] as const)("shows state %i as %s with the outcome word %s and where the stake goes", async (state, word, big, phrase, who) => {
+    [2, STATE_NAMES.Kept, "Kept", "goes back to", samplePledge.staker],
+    [3, STATE_NAMES.Broken, "Broken", "goes to", samplePledge.beneficiary],
+    [1, STATE_NAMES.Expired, "No answer", "goes to", samplePledge.beneficiary],
+    [4, STATE_NAMES.SettledToStaker, "Paid back", "went back to", samplePledge.staker],
+    [5, STATE_NAMES.SettledToBeneficiary, "Paid out", "went to", samplePledge.beneficiary],
+  ] as const)("shows state %i under the page's name for it, %s, with the outcome word %s and where the stake goes", async (state, word, big, phrase, who) => {
     const chain = chainWith(1);
     chain.states.set(1n, state);
     show(chain);
@@ -400,10 +402,11 @@ describe("LLR-FE-072 the motion between slides", () => {
     expect(idNow()).toBe("2");
   });
 
-  it("uses only a 200 ms opacity fade under reduced motion", async () => {
+  it("uses only a 200 ms opacity fade under reduced motion, once the visitor starts the rotation", async () => {
     const calls = stubAnimate(true);
     show(chainWith(3));
     await screen.findByRole("region", { name: /Recent promises/ });
+    fireEvent.click(pauseButton());
     await settle(ROTATE_MS + 100);
     expect(calls.length).toBeGreaterThan(0);
     for (const c of calls) {
@@ -411,5 +414,161 @@ describe("LLR-FE-072 the motion between slides", () => {
       for (const frame of c.keyframes) expect(Object.keys(frame)).toEqual(["opacity"]);
     }
     expect(idNow()).toBe("2");
+  });
+});
+
+describe("LLR-FE-070 the card is as tall as its tallest slide and keeps the others out of reach", () => {
+  const slides = () => [...region()!.querySelectorAll<HTMLElement>(".home-rot-slide")];
+
+  it("renders every slide in the page, so the card takes the height of the tallest, and marks only the shown one as current", async () => {
+    show(chainWith(3, (id) => ({ promiseText: id === 2 ? "A much longer promise ".repeat(8) : `Promise text ${id}` })));
+    await screen.findByRole("region", { name: /Recent promises/ });
+    expect(slides()).toHaveLength(3);
+    expect(slides().filter((el) => el.getAttribute("aria-hidden") !== "true")).toHaveLength(1);
+    expect(idNow()).toBe("3");
+  });
+
+  it("hides the other slides from assistive technology and takes their links out of the tab order", async () => {
+    show(chainWith(3));
+    await screen.findByRole("region", { name: /Recent promises/ });
+    const hidden = slides().filter((el) => el.getAttribute("aria-hidden") === "true");
+    expect(hidden).toHaveLength(2);
+    for (const el of hidden) {
+      expect(el.hasAttribute("inert")).toBe(true);
+      expect(el.querySelector("a")).not.toBeNull();
+    }
+    const current = slides().find((el) => el.getAttribute("aria-hidden") !== "true")!;
+    expect(current.hasAttribute("inert")).toBe(false);
+    expect(within(region()!).getAllByRole("link")).toHaveLength(1);
+  });
+
+  it("moves the current mark to the next slide when the rotation advances", async () => {
+    show(chainWith(3));
+    await screen.findByRole("region", { name: /Recent promises/ });
+    await settle(ROTATE_MS + 100);
+    const current = slides().filter((el) => !el.hasAttribute("inert"));
+    expect(current).toHaveLength(1);
+    expect(current[0]!.textContent).toContain("Promise text 2");
+    expect(slides().filter((el) => el.hasAttribute("inert"))).toHaveLength(2);
+  });
+
+  it("puts nothing in the page for a single promise but that slide, current", async () => {
+    show(chainWith(1));
+    await screen.findByRole("region", { name: /Recent promises/ });
+    expect(slides()).toHaveLength(1);
+    expect(slides()[0]!.hasAttribute("inert")).toBe(false);
+    expect(slides()[0]!.getAttribute("aria-hidden")).not.toBe("true");
+  });
+});
+
+describe("LLR-FE-072 under reduced motion the card starts paused", () => {
+  const reduce = (reduced: boolean) =>
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: reduced && query === "(prefers-reduced-motion: reduce)", addEventListener() {}, removeEventListener() {} }));
+
+  it("shows the play state and does not rotate until the visitor starts it", async () => {
+    reduce(true);
+    show(chainWith(3));
+    await screen.findByRole("region", { name: /Recent promises/ });
+    expect(pauseButton().getAttribute("aria-pressed")).toBe("true");
+    expect(pauseButton().getAttribute("aria-label")).toBe("Resume the rotation");
+    await settle(ROTATE_MS * 3);
+    expect(idNow()).toBe("3");
+  });
+
+  it("lets the visitor start it, and then it rotates", async () => {
+    reduce(true);
+    show(chainWith(3));
+    await screen.findByRole("region", { name: /Recent promises/ });
+    fireEvent.click(pauseButton());
+    expect(pauseButton().getAttribute("aria-pressed")).toBe("false");
+    await settle(ROTATE_MS + 200);
+    expect(idNow()).toBe("2");
+  });
+
+  it("starts running when the visitor has no reduced-motion preference", async () => {
+    reduce(false);
+    show(chainWith(3));
+    await screen.findByRole("region", { name: /Recent promises/ });
+    expect(pauseButton().getAttribute("aria-pressed")).toBe("false");
+    await settle(ROTATE_MS + 200);
+    expect(idNow()).toBe("2");
+  });
+});
+
+describe("LLR-FE-070 the card is read again every 30 seconds while the page is visible", () => {
+  const REFRESH_MS = 30_000;
+  const counter = () => within(region()!).getByText(/^\d\d \/ \d\d$/).textContent;
+
+  it("shows a new newest promise once the count has grown, and reads only the contract's views", async () => {
+    const chain = chainWith(3);
+    show(chain);
+    await screen.findByRole("region", { name: /Recent promises/ });
+    fireEvent.click(pauseButton());
+    expect(counter()).toBe("01 / 03");
+    chain.addPledge(4n, { ...samplePledge, promiseText: "Promise text 4" }, 0);
+    await settle(REFRESH_MS + 500);
+    expect(counter()).toBe("02 / 04");
+    expect(idNow()).toBe("3");
+    const functions = new Set(chain.requests.filter((r) => r.method === "eth_call").map((r) => r.functionName));
+    expect([...functions].sort()).toEqual(["getPledge", "pledgeCount", "stateOf"]);
+    expect(chain.count("eth_getLogs")).toBe(0);
+  });
+
+  it("shows the state a later read finds for a promise already on the card", async () => {
+    const chain = chainWith(1);
+    show(chain);
+    const card = await screen.findByRole("region", { name: /Recent promises/ });
+    expect(within(card).getByText("Open")).toBeTruthy();
+    chain.states.set(1n, 2);
+    await settle(REFRESH_MS + 500);
+    expect(within(card).getByText(STATE_NAMES.Kept, { selector: "span" })).toBeTruthy();
+  });
+
+  it("reads nothing between two refreshes, and nothing while the page is hidden", async () => {
+    const chain = chainWith(2);
+    show(chain);
+    await screen.findByRole("region", { name: /Recent promises/ });
+    const before = chain.count("eth_call", "pledgeCount");
+    await settle(REFRESH_MS - 2_000);
+    expect(chain.count("eth_call", "pledgeCount")).toBe(before);
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    await settle(REFRESH_MS * 3);
+    expect(chain.count("eth_call", "pledgeCount")).toBe(before);
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    await settle(REFRESH_MS + 500);
+    expect(chain.count("eth_call", "pledgeCount")).toBeGreaterThan(before);
+  });
+
+  it("keeps the card when a refresh fails, rather than clearing it", async () => {
+    const chain = chainWith(2);
+    show(chain);
+    await screen.findByRole("region", { name: /Recent promises/ });
+    chain.states.clear();
+    await settle(REFRESH_MS + 500);
+    expect(region()).not.toBeNull();
+    expect(idNow()).toBeDefined();
+  });
+
+  it("tries the block time again after 30 seconds when the first read failed, instead of saying it is reading for good", async () => {
+    const chain = chainWith(1);
+    chain.blockError = new Error("block unavailable");
+    show(chain);
+    const card = await screen.findByRole("region", { name: /Recent promises/ });
+    expect(within(card).getByText("Reading the time from the network")).toBeTruthy();
+    expect(within(card).queryByRole("img")).toBeNull();
+    chain.blockError = undefined;
+    await settle(REFRESH_MS + 500);
+    expect(within(card).queryByText("Reading the time from the network")).toBeNull();
+    expect(within(card).getByRole("img", { name: /^Time left: / })).toBeTruthy();
+  });
+
+  it("stops reading when the card is left", async () => {
+    const chain = chainWith(2);
+    const view = show(chain);
+    await screen.findByRole("region", { name: /Recent promises/ });
+    view.unmount();
+    const before = chain.requests.length;
+    await settle(REFRESH_MS * 3);
+    expect(chain.requests.length).toBe(before);
   });
 });

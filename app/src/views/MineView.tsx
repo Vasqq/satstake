@@ -20,7 +20,7 @@ const READING = "Reading your promises from the network.";
 const ROLE_TEXT: Readonly<Record<Role, string>> = {
   staker: "You made it",
   referee: "You judge it",
-  beneficiary: "You get it if missed",
+  beneficiary: "You get it if broken or missed",
 };
 
 /**

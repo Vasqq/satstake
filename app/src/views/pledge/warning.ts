@@ -3,10 +3,10 @@ import type { Role } from "../roles";
 
 /** @trace LLR-FE-043 */
 export const REFEREE_WARNING =
-  "Less than 10 minutes left. If you do not record a verdict before the deadline, the stake goes to the beneficiary.";
+  "Less than 10 minutes left. If you do not record a verdict before the deadline, the stake goes to the person named to get it.";
 /** @trace LLR-FE-043 */
 export const STAKER_WARNING =
-  "Less than 10 minutes left. If your referee does not mark this promise kept before the deadline, your stake goes to the beneficiary.";
+  "Less than 10 minutes left. If the person judging it does not mark this promise kept before the deadline, your stake goes to the person named to get it.";
 
 const WARNING_SECONDS = 600n;
 

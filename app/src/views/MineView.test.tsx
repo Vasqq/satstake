@@ -189,7 +189,7 @@ describe("LLR-FE-050 the list", () => {
     expect(hrefs()).toEqual(["#/p/4", "#/p/3", "#/p/2"]);
     const [first, second, third] = cards();
     expect(first!.textContent).toContain("Promise #4");
-    expect(first!.textContent).toContain("You get it if missed");
+    expect(first!.textContent).toContain("You get it if broken or missed");
     expect(first!.textContent).toContain(STATE_NAMES.Broken);
     expect(first!.textContent).toContain("Read a book");
     expect(second!.textContent).toContain("You made it");
