@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useRef } from "react";
 import type { PublicClient } from "viem";
 import { useConnection } from "wagmi";
-import "../styles/pledge.css";
 import { POLL_INTERVAL_MS } from "../chain/poller";
 import { type Reads, isPledgeNotFound } from "../chain/reads";
 import type { Health } from "../chain/useHealth";

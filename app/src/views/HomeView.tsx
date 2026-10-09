@@ -1,12 +1,16 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import type { Reads } from "../chain/reads";
 import type { SelectedNetwork } from "../config/networks";
+import { AgreementDoc } from "../design/AgreementDoc";
+import { Clock } from "../design/Clock";
+import { Hero } from "../design/Hero";
+import { SignaturePad } from "../design/SignaturePad";
+import { SectionHead, Strikes, Trust } from "../design/Sections";
+import { ExampleBadge } from "../design/ExampleBadge";
 import { formatAmount } from "../format";
-import "../styles/home.css";
 import { HashValue } from "./HashValue";
 import { PromiseRotator } from "./home/PromiseRotator";
 import { COUNT_RETRY_MS, useLockedNow, usePledgeCount } from "./home/live";
-import { PageHeading } from "./PageHeading";
 
 export { COUNT_RETRY_MS };
 
@@ -31,219 +35,146 @@ function LockedNow({ reads, network, token }: { reads: Reads; network: SelectedN
   return (
     <div>
       <b>{reading(locked, (amount) => formatAmount(network, token.address, amount))}</b>
-      <span>{`Locked now in ${token.symbol}`}</span>
+      <span className="label">{`Locked now in ${token.symbol}`}</span>
     </div>
   );
 }
 
-function CreateLink({ children }: { children: string }) {
-  return (
-    <a className="cta" href="#/create">
-      {children} <span className="arr" aria-hidden="true">→</span>
-    </a>
-  );
-}
-
-const STEPS = [
-  {
-    title: "01. Promise and lock.",
-    body: (
-      <>
-        Alex promises: <em>I&apos;ll run three times this week.</em> Alex locks $20 in USDC, picks Sunday 9 pm as the deadline, and names a
-        brother, Jo, to receive it if the promise is missed.
-      </>
-    ),
-  },
-  {
-    title: "02. Share and judge.",
-    body: (
-      <>
-        Alex sends the promise&apos;s link to Sam, the referee. SatStake sends no messages; the link is how Sam finds it. Before Sunday 9
-        pm, Sam marks it kept or broken. Only Sam can mark it, and once marked it is final.
-      </>
-    ),
-  },
-  { title: "03. The money moves.", body: <>Anyone can then send the stake where the rules say:</> },
-];
-
-const ENDINGS = [
-  { label: "Kept", outcome: "Back to Alex", kept: true },
-  { label: "Broken", outcome: "To Jo", kept: false },
-  { label: "No answer by the deadline", outcome: "To Jo", kept: false },
-];
-
-const CLAIMS = [
-  {
-    title: "Rules, not people, move the money.",
-    body: "After a promise is made, the stake can only go back to you or to the person you named, by the rules above.",
-  },
-  { title: "No owner, no fees, no admin.", body: "Not even the builder can touch a promise." },
-  { title: "Anyone can check.", body: "Every promise is public and readable without a wallet, and the source code is verified." },
-];
-
-const QUESTIONS = [
-  {
-    q: "What do I need?",
-    a: "A browser wallet with the Arc network added, and some USDC on Arc: fees are paid in USDC and cost cents.",
-  },
-  {
-    q: "What if my referee does not answer?",
-    a: "After the deadline the referee can no longer answer, and the stake goes to the person you named. Pick someone who will reply.",
-  },
-  { q: "Can I cancel or change a promise?", a: "No. Only the referee's verdict or the deadline decides it." },
-  { q: "Does SatStake charge anything?", a: "No. Only Arc's network fee, a few cents in USDC." },
-  {
-    q: "Who can see my promise?",
-    a: "Anyone. Promises are public on the blockchain, with or without the link. Do not write anything private in one.",
-  },
-];
+// Values for the agreement and clock below. They illustrate the rules and belong to no promise, so each widget
+// that shows them says it is an example.
+const EXAMPLE = {
+  staker: "0xd172…809f",
+  referee: "0x8a3e…11c0",
+  beneficiary: "0x4f2b…a9d1",
+};
 
 /**
  * What SatStake does and how, for someone without a wallet, with the proof that it is live: the network, the
- * whole contract address to compare with a published one, its verified source, and figures read from it.
+ * whole contract address to compare with a published one, its verified source, and figures read from it. The
+ * hero's pad is where the create flow mounts; here it shows the demonstration signature and cannot seal.
  *
  * @trace LLR-FE-070
  */
 export function HomeView({ reads, network }: { reads: Reads; network: SelectedNetwork }) {
+  const [custom, setCustom] = useState<string | null>(null);
   return (
     <div className="home">
-      <section className="home-hero">
-        <p className="home-eyebrow">{`Live on ${network.name}`}</p>
-        <PageHeading title="SatStake" className="home-title">
-          Put money behind your <span className="hot">promise.</span>
-        </PageHeading>
-        <p className="lead">
-          Lock USDC or Bitcoin-backed cirBTC against something you said you would do. A friend you choose confirms whether you kept it.{" "}
-          <strong>Kept, and your money comes back.</strong> Missed, or no answer by the deadline, and it goes to the person you named.
-        </p>
-        <p className="actions">
-          <CreateLink>Make a promise</CreateLink>
-          <a className="textlink" href={`#/p/${network.examplePledgeId.toString()}`}>
-            See a live promise
-          </a>
-        </p>
-        <p className="home-need">You need a browser wallet on Arc with a little USDC for network fees.</p>
-      </section>
-
-      <PromiseRotator reads={reads} network={network} />
-
-      <section className="home-sec" aria-labelledby="home-how">
-        <h2 className="display" id="home-how">
-          How it works
-        </h2>
-        <ol className="home-steps">
-          {STEPS.map((step) => (
-            <li key={step.title}>
-              <span className="rule" aria-hidden="true" />
-              <h3 className="label">{step.title}</h3>
-              <p>{step.body}</p>
-            </li>
-          ))}
-        </ol>
-        <dl className="rows home-endings">
-          {ENDINGS.map((ending) => (
-            <div key={ending.label} className={ending.kept ? "is-kept" : undefined}>
-              <dt className="label">{ending.label}</dt>
-              <dd>{ending.outcome}</dd>
+      <Hero
+        custom={custom}
+        onCustomChange={setCustom}
+        sub="Or my stake goes to someone I chose. A friend decides whether I kept it, and code makes sure the money goes where they say."
+      >
+        <SignaturePad
+          head={
+            <>
+              <span className="label">
+                <ExampleBadge>Preview</ExampleBadge>
+              </span>
+              <span className="note">Your promise, your referee and your stake are set when you make one.</span>
+            </>
+          }
+          foot={
+            <div className="pad-foot">
+              <span className="note">The signature writes itself. Nothing is drawn by hand.</span>
+              <div className="btns">
+                <a className="b ghost" href={`#/p/${network.examplePledgeId.toString()}`}>
+                  See a live promise
+                </a>
+                <a className="b sat" href="#/create">
+                  Make a promise
+                </a>
+                <button type="button" className="b ink" disabled>
+                  Seal it
+                </button>
+              </div>
             </div>
-          ))}
-        </dl>
-        <p className="home-silence">Silence counts as broken, so make sure your referee answers in time.</p>
-        <p className="home-uses">People use it for habits, friendly bets, work deadlines, or a donation to a cause if they miss.</p>
-        <p className="home-before">
-          <strong>Before you start:</strong> a promise cannot be cancelled or changed once made, and every promise is public.
-        </p>
+          }
+        />
+        <p className="home-need">You need a browser wallet on Arc with a little USDC for network fees. Reading needs none.</p>
+      </Hero>
+
+      <section className="s" id="agreement" aria-labelledby="home-agreement">
+        <SectionHead label="The agreement" title={<span id="home-agreement">Seven lines. <em>No fine print.</em></span>}>
+          Every promise is the same short contract. Pick a role to see the lines that apply to it.
+        </SectionHead>
+        <AgreementDoc
+          example
+          title="An example promise"
+          meta={`${network.name} · the same for every promise`}
+          amountLabel="1,000 sats"
+          deadlineText="7 days after it is made"
+          staker={EXAMPLE.staker}
+          referee={EXAMPLE.referee}
+          beneficiary={EXAMPLE.beneficiary}
+        />
       </section>
 
-      <section className="home-sec" aria-labelledby="home-trust">
-        <h2 className="display" id="home-trust">
-          Why you can trust it
-        </h2>
-        <ul className="home-claims">
-          {CLAIMS.map((claim) => (
-            <li key={claim.title}>
-              <strong>{claim.title}</strong>
-              {claim.body}
-            </li>
-          ))}
-        </ul>
-        <p className="home-limits">
-          <strong>What it cannot do, said plainly:</strong> your referee is trusted by you and could judge you unfairly. Circle, which
-          issues USDC and cirBTC, can pause a token or block an address, which can hold a payout until it is lifted. It is tested, not
-          audited.
-        </p>
-        <div className="home-proof">
+      <section className="s" id="clock" aria-labelledby="home-clock">
+        <SectionHead label="The clock" title={<span id="home-clock">Drag through a week. <em>Watch the money move.</em></span>}>
+          Pick what the referee does, then scrub the timeline. There are only three endings, and the contract plays them the same way every
+          time.
+        </SectionHead>
+        <Clock mode="demo" />
+      </section>
+
+      <section className="s" aria-labelledby="home-strikes">
+        <SectionHead label="Once it’s sealed" title={<span id="home-strikes">Nobody can <em>take it back.</em></span>}>
+          Not you, not your referee, not the people who built it. The rules live in code that has no owner.
+        </SectionHead>
+        <Strikes />
+      </section>
+
+      <section className="s" aria-labelledby="home-trust">
+        <Trust />
+      </section>
+
+      <section className="s" aria-labelledby="home-live">
+        <SectionHead label={`Live on ${network.name}`} title={<span id="home-live">Check it <em>yourself.</em></span>}>
+          Everything in this section is read from the contract, with no wallet and nothing invented. SatStake uses cirBTC as the stake, USDC
+          as gas so a promise costs cents to make, and Arc’s deterministic, sub-second finality so a payout is final the moment it lands.
+        </SectionHead>
+        <PromiseRotator reads={reads} network={network} />
+        <div className="proof">
           <div>
             <b>
               <PledgeCount reads={reads} network={network} />
             </b>
-            <span>Promises made</span>
+            <span className="label">Promises made</span>
           </div>
           {network.tokens.map((token) => (
             <LockedNow key={token.address} reads={reads} network={network} token={token} />
           ))}
+          <div>
+            <b>{network.name}</b>
+            <span className="label">{`Chain ${network.chainId.toString()}`}</span>
+          </div>
+        </div>
+        <div className="proof-contract">
+          <span className="label">Contract</span>
+          <HashValue
+            kind="address"
+            value={network.contract}
+            explorerUrl={network.explorerUrl}
+            copyNoun="the contract address"
+            viewNoun="the contract"
+            full
+          />
+          <p className="proof-links">
+            <a href={`https://repo.sourcify.dev/${network.chainId.toString()}/${network.contract}`}>Verified on Sourcify</a>
+            <a href={`#/p/${network.examplePledgeId.toString()}`}>A live promise</a>
+            <a href={REPOSITORY}>GitHub repository</a>
+          </p>
         </div>
       </section>
 
-      <section className="home-sec" aria-labelledby="home-reviewers">
-        <h2 className="display" id="home-reviewers">
-          For reviewers
+      <section className="end" aria-labelledby="home-close-title">
+        <h2 id="home-close-title">
+          Your word, <em>in writing.</em>
         </h2>
-        <div className="home-rev">
-          <div>
-            <span className="label">Why Arc</span>
-            <p className="home-why">
-              SatStake uses cirBTC as the stake, USDC as gas so a $5 promise costs cents to make, and Arc&apos;s deterministic finality so a
-              forfeit is final the moment it lands.
-            </p>
-          </div>
-          <div>
-            <span className="label">Contract</span>
-            <div className="home-contract">
-              <HashValue
-                kind="address"
-                value={network.contract}
-                explorerUrl={network.explorerUrl}
-                copyNoun="the contract address"
-                viewNoun="the contract"
-                full
-              />
-            </div>
-            <p className="home-links">
-              <a className="pill" href={`https://repo.sourcify.dev/${network.chainId.toString()}/${network.contract}`}>
-                Verified on Sourcify
-              </a>
-            </p>
-            <p className="home-network">{`${network.name}, chain ${network.chainId.toString()}`}</p>
-            <p className="home-more">
-              <a className="textlink" href={REPOSITORY}>
-                GitHub repository
-              </a>
-              , built test first, every requirement traced to its test
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="home-sec" aria-labelledby="home-faq">
-        <h2 className="display" id="home-faq">
-          Questions
-        </h2>
-        <dl className="home-faq">
-          {QUESTIONS.map((item) => (
-            <div key={item.q}>
-              <dt>{item.q}</dt>
-              <dd>{item.a}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
-
-      <section className="home-close" aria-labelledby="home-close-title">
-        <h2 className="display" id="home-close-title">
-          Ready to put something on <span className="hot">it?</span>
-        </h2>
-        <CreateLink>Make a promise</CreateLink>
+        <p>No signup, no email, no account. A wallet on Arc and a little USDC for fees. Reading a promise needs nothing at all.</p>
+        <a className="b sat" href="#/create">
+          Make a promise
+        </a>
       </section>
     </div>
   );

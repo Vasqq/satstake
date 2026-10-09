@@ -55,7 +55,7 @@ afterEach(() => {
 describe("LLR-FE-013 the shell shows the view for each route", () => {
   it("shows one view per documented route", async () => {
     const cases: [string, string][] = [
-      ["#/", "Put money behind your promise."],
+      ["#/", "I promise to"],
       ["#/create", "New promise"],
       ["#/mine", "My promises"],
       ["#/about", "About SatStake"],
@@ -120,7 +120,7 @@ describe("LLR-FE-013 the shell shows the view for each route", () => {
 
   it("changes view when the hash changes", async () => {
     setup("#/");
-    expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe("Put money behind your promise.");
+    expect((await screen.findByRole("heading", { level: 1 })).textContent?.startsWith("I promise to")).toBe(true);
     act(() => {
       window.location.hash = "#/about";
     });
@@ -486,6 +486,26 @@ describe("LLR-FE-013 the header and footer", () => {
     }
   });
 
+  it("names the configured network in a live indicator on every page", async () => {
+    for (const hash of ["#/", "#/about", "#/p/1", "#/nowhere"]) {
+      setup(hash);
+      const header = (await screen.findByRole("banner")) as HTMLElement;
+      expect(header.querySelector(".live")?.textContent, hash).toBe("Live on Arc testnet");
+      cleanup();
+    }
+  });
+
+  it("offers on every page the landing page, the create form, the account's list, the about page, the network and the repository", async () => {
+    for (const hash of ["#/", "#/create", "#/mine", "#/about", "#/p/1", "#/nowhere"]) {
+      setup(hash);
+      await screen.findByRole("heading", { level: 1 });
+      const hrefs = Array.from(document.querySelectorAll("a")).map((a) => a.getAttribute("href"));
+      for (const wanted of ["#/", "#/create", "#/mine", "#/about", "https://github.com/Vasqq/satstake"]) expect(hrefs, `${hash} ${wanted}`).toContain(wanted);
+      expect(document.body.textContent, hash).toContain(network.name);
+      cleanup();
+    }
+  });
+
   it("links the about page and the source repository from the footer", async () => {
     setup("#/");
     const footer = await screen.findByRole("contentinfo");
@@ -528,7 +548,7 @@ describe("LLR-FE-072 each page sets the title and moves focus to its heading", (
 
   it("moves the title and the focus when the route changes", async () => {
     setup("#/");
-    await screen.findByRole("heading", { name: "Put money behind your promise.", level: 1 });
+    await screen.findByRole("heading", { name: "I promise to", level: 1 });
     act(() => {
       window.location.hash = "#/about";
     });

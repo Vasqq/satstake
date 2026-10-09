@@ -8,7 +8,6 @@ import { formatAmount, formatLocalTime } from "../format";
 import { PageHeading } from "./PageHeading";
 import { type Role, roleOf } from "./roles";
 import { STATE_NAMES } from "./stateLabels";
-import "../styles/forms.css";
 
 export const PAGE_SIZE = 20n;
 /** A failed read is retried this often while the page is open. */

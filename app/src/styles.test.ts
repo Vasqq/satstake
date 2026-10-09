@@ -11,9 +11,9 @@ const sheets = (readdirSync(import.meta.dirname, { recursive: true }) as string[
 const css = sheets.map((f) => readFileSync(resolve(import.meta.dirname, f), "utf8")).join("\n");
 
 describe("LLR-FE-073 every style sheet is checked", () => {
-  it("reads the global sheet and the view sheets", () => {
+  it("reads the one style sheet, and finds no other", () => {
     expect(sheets.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(
-      expect.arrayContaining(["styles.css", "styles/forms.css", "styles/home.css", "styles/pledge.css"]),
+      ["styles.css"],
     );
   });
 });
@@ -32,15 +32,18 @@ describe("LLR-FE-073 fonts and images come from the site's own files", () => {
   it("declares the three families and the weights the design uses", () => {
     const declared = fontFaces.map((f) => [/font-family:\s*"?([^";]+)"?/.exec(f)?.[1], /font-weight:\s*(\d+)/.exec(f)?.[1]]);
     expect(declared).toEqual([
-      ["Inter Tight", "800"],
-      ["Inter Tight", "900"],
-      ["Inter", "400"],
-      ["Inter", "500"],
-      ["Inter", "600"],
-      ["Inter", "700"],
-      ["IBM Plex Mono", "400"],
-      ["IBM Plex Mono", "500"],
+      ["Newsreader", "300"],
+      ["Newsreader", "300"],
+      ["Hanken Grotesk", "400"],
+      ["Hanken Grotesk", "500"],
+      ["Hanken Grotesk", "600"],
+      ["Hanken Grotesk", "700"],
+      ["JetBrains Mono", "400"],
+      ["JetBrains Mono", "500"],
     ]);
+    // Newsreader is one variable file per style, so its weight is a range; the design uses 300 to 600.
+    expect(fontFaces.filter((f) => /Newsreader/.test(f)).map((f) => /font-weight:\s*(\d+ \d+)/.exec(f)?.[1])).toEqual(["300 600", "300 600"]);
+    expect(fontFaces.filter((f) => /Newsreader/.test(f)).map((f) => /font-style:\s*(\w+)/.exec(f)?.[1])).toEqual(["normal", "italic"]);
   });
 
   it("points every @font-face at a same-origin file that exists in public/fonts", () => {
@@ -75,9 +78,28 @@ describe("LLR-FE-072 motion is gentle and can be turned off", () => {
     expect(css).toMatch(/@media\s*\(hover:\s*hover\)\s*and\s*\(pointer:\s*fine\)/);
   });
 
-  it("has one dark theme and does not follow the system setting", () => {
-    expect(css).toMatch(/color-scheme:\s*dark\s*;/);
-    expect(css).not.toMatch(/prefers-color-scheme/);
+  it("has a light theme, a dark theme that follows the system, and a data-theme override for each", () => {
+    expect(css).toMatch(/@media\s*\(prefers-color-scheme:\s*dark\)\s*{\s*:root:not\(\[data-theme="light"\]\)/);
+    expect(css).toMatch(/:root\[data-theme="dark"\]\s*{/);
+    expect(css.match(/color-scheme:\s*dark\s*;/g)?.length).toBe(2);
+  });
+
+  it("carries the design's palette in both themes", () => {
+    const light = /:root\s*{([^}]*)}/.exec(css)?.[1] ?? "";
+    const dark = /:root\[data-theme="dark"\]\s*{([^}]*)}/.exec(css)?.[1] ?? "";
+    for (const [token, value] of [["paper", "#f7f8fa"], ["sheet", "#ffffff"], ["ink", "#14213d"], ["sat", "#e86a12"], ["kept", "#17784c"], ["broken", "#c23a26"]]) {
+      expect(light, token).toContain(`--${token}: ${value}`);
+    }
+    for (const [token, value] of [["paper", "#0c0f15"], ["sheet", "#121620"], ["ink", "#e3e9f5"], ["sat", "#ff9549"], ["kept", "#4fcf8f"], ["broken", "#ff7a66"]]) {
+      expect(dark, token).toContain(`--${token}: ${value}`);
+    }
+  });
+
+  it("repeats the system dark palette in the data-theme override, so the two cannot drift", () => {
+    const system = /prefers-color-scheme:\s*dark\)\s*{\s*:root:not\(\[data-theme="light"\]\)\s*{([^}]*)}/.exec(css)?.[1] ?? "";
+    const forced = /:root\[data-theme="dark"\]\s*{([^}]*)}/.exec(css)?.[1] ?? "";
+    const norm = (block: string) => block.split(";").map((d) => d.trim()).filter(Boolean).sort();
+    expect(norm(system)).toEqual(norm(forced));
   });
 });
 

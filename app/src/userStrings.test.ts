@@ -7,6 +7,9 @@ import { networks } from "./config/networks";
 const SRC = import.meta.dirname;
 // The words that would claim more than NS P7 allows. Wording and style are otherwise free (05 v1.27).
 const BANNED_WORDS = ["trustless", "guaranteed", "unstoppable", "100% secure"];
+// The sentences that name a banned word only to disclaim it (05 v1.28). Listed word for word, with the
+// design's typographic apostrophe: a near copy is a different sentence and is refused.
+const ALLOWED_DISCLAIMERS = ["SatStake doesn’t claim to be trustless."];
 
 /**
  * Every string a source file can show a visitor: string literals, the pieces of template literals, and the
@@ -33,7 +36,7 @@ function userStrings(source: string, fileName = "file.tsx"): string[] {
 }
 
 function problemsIn(text: string): string[] {
-  const lower = text.toLowerCase();
+  const lower = ALLOWED_DISCLAIMERS.reduce((rest, sentence) => rest.split(sentence).join(" "), text).toLowerCase();
   return BANNED_WORDS.filter((word) => lower.includes(word));
 }
 
@@ -49,6 +52,33 @@ function applicationSources(dir: string): string[] {
 describe("LLR-FE-071 the scan refuses exactly what the requirement names", () => {
   it("lists the four banned words of the requirement, so the list cannot be shortened unseen", () => {
     expect(BANNED_WORDS).toEqual(["trustless", "guaranteed", "unstoppable", "100% secure"]);
+  });
+});
+
+describe("LLR-FE-071 the scan allows a listed disclaimer and still refuses the claim", () => {
+  it("lists exactly one disclaimer, so the allowance cannot grow unseen", () => {
+    expect(ALLOWED_DISCLAIMERS).toEqual(["SatStake doesn’t claim to be trustless."]);
+  });
+
+  it("allows the disclaimer alone and inside a longer paragraph", () => {
+    expect(problemsIn("SatStake doesn’t claim to be trustless.")).toEqual([]);
+    expect(problemsIn("SatStake doesn’t claim to be trustless. The code holds the money, and two parties still matter.")).toEqual([]);
+  });
+
+  it("still refuses the bare claim, and the claim beside the disclaimer", () => {
+    expect(problemsIn("SatStake is trustless.")).toEqual(["trustless"]);
+    expect(problemsIn("SatStake doesn’t claim to be trustless. It is trustless.")).toEqual(["trustless"]);
+    expect(problemsIn("Trustless by design. SatStake doesn’t claim to be trustless.")).toEqual(["trustless"]);
+  });
+
+  it("refuses a sentence that only resembles the disclaimer", () => {
+    expect(problemsIn("SatStake doesn't claim to be trustless.")).toEqual(["trustless"]);
+    expect(problemsIn("SatStake claims to be trustless.")).toEqual(["trustless"]);
+    expect(problemsIn("SatStake doesn’t claim to be trustless")).toEqual(["trustless"]);
+  });
+
+  it("does not let the disclaimer excuse the other banned words", () => {
+    expect(problemsIn("SatStake doesn’t claim to be trustless. Funds are guaranteed.")).toEqual(["guaranteed"]);
   });
 });
 

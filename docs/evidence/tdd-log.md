@@ -6425,3 +6425,71 @@ Sources verified restored by the green runs after each script.
 ### Lead, before commit
 
 The LLR-SB-005 marker scan failed on two things. (1) The five agent skills, committed with the foundation, carry third-party data with marker words; they are not project source, so `.claude/skills/` is now gitignored and untracked, and the committed `skills-lock.json` records each source and hash. (2) The timeline's name for a step still to come was itself one of the scanned marker words, which a case-insensitive scan reads as a leftover; it is now `ahead`. (This line first quoted the word and failed CI on `4f57e63` for it.) Final: app 1146 passed, 9 skipped; tool tests 475 passed; lint, typecheck, both builds clean; trace check OK, 106 of 113.
+
+## Signed port, phase A
+
+Foundation and landing of the "Signed" design (05 v1.27 and v1.28). Paths relative to the repository.
+
+### Red
+
+Command: `npx vitest run src/design` from `app/`. Four suites written before any component existed, then three more (Hero, SignaturePad, chrome) whose code was written before they were run; their red was reproduced afterwards by moving the four implementation files out of the tree.
+
+```
+FAIL  src/design/clockState.test.ts   Error: Failed to resolve import "./clockState"
+FAIL  src/design/Seal.test.tsx        Error: Failed to resolve import "./Seal"
+FAIL  src/design/Clock.test.tsx       Error: Failed to resolve import "./Clock"
+FAIL  src/design/AgreementDoc.test.tsx Error: Failed to resolve import "./AgreementDoc"
+FAIL  src/design/Hero.test.tsx        Error: Failed to resolve import "./Hero"        (reproduced)
+FAIL  src/design/SignaturePad.test.tsx Error: Failed to resolve import "./ink"        (reproduced)
+FAIL  src/design/chrome.test.ts       Error: Failed to resolve import "./chrome"      (reproduced)
+```
+
+The reason is the predicted one: the modules the requirements describe do not exist. Changed behaviour went red on assertions. `src/userStrings.test.ts` with the allowance emptied (the pre-v1.28 rule): 4 failed, among them `allows the disclaimer alone and inside a longer paragraph` (`expected [ 'trustless' ] to deeply equal []`) and `holds for every string in app/src` (`design/Sections.tsx: trustless in "SatStake doesn’t claim to be trustless. The code ho…"`). The stylesheet tests (`src/styles.test.ts`) were updated after the new sheet was written, so their red was not observed on the old sheet; their strength rests on the table of one-line CSS facts they pin (fonts, tokens, both themes, no remote url).
+
+Updated or removed because they pinned released wording or the old look (recorded per 06 section 10): `src/styles.test.ts` (one sheet instead of four; the three font families; the dark-only rule replaced by light, system dark and `data-theme` checks), `src/views/HomeView.test.tsx` (the heading "Put money behind your promise.", the worked example Alex and Jo, "How it works", the five questions, "Why you can trust it", "For reviewers" and the closing heading; the live-evidence tests are unchanged), `src/App.test.tsx` and `src/wallet/WalletBar.test.tsx` (the landing heading now begins "I promise to"). The PromiseRotator suite is unchanged.
+
+### Green
+
+Added: `src/design/Seal.test.tsx` (8), `clockState.test.ts` (9), `Clock.test.tsx` (12), `AgreementDoc.test.tsx` (18), `SignaturePad.test.tsx` (9), `Hero.test.tsx` (7), `chrome.test.ts` (1), the disclaimer tests in `userStrings.test.ts` (5), the stylesheet palette and theme tests, the landing tests in `HomeView.test.tsx`, and two header tests in `App.test.tsx` (the live indicator on four routes; the navigation, network and repository on six). From `app/`: `npm test` 1222 passed, 9 skipped (live tests); `npm run lint`, `npm run typecheck`, `npm run build:testnet` and `npm run build:mainnet` clean. Root: `node --test test/tools/*.test.mjs` 475 passed; `node tools/trace-check.mjs` OK, 106 of 113.
+
+### Mutations 1900 to 1922 (logic only; copies in `cache/mutants/`, restored and checked with `cmp`)
+
+Command per row: one edit to the named file, then `npx vitest run` on the file's tests; the original compared with `cmp` after.
+
+| # | Mutant | Result |
+|---|---|---|
+| 1900 | Seal tick ignores its bit | killed, 1 |
+| 1901 | Seal accepts any length | killed, 1 |
+| 1902 | Live time: zero span never counts as passed | killed, 1 |
+| 1903 | Live time capped at the deadline mark | killed, 1 |
+| 1904 | Paid-back stake sits with the beneficiary | killed, 1 |
+| 1905 | Silent payout day moved | killed, 1 |
+| 1906 | Verdict bubble invented for a payout to the beneficiary | killed, 1 |
+| 1907 | Clause 3 no longer applies to the referee | survived at first: the test compared the lit lines with the component's own table. Now the table is written out in the test; killed, 4 |
+| 1908 | Same role chosen twice stays chosen | killed, 2 |
+| 1909 | Role never controlled from outside | killed, 2 |
+| 1910 | Mainnet indicator reads testnet | killed, 2 |
+| 1911 | Write your own keeps the full stop | killed, 1 |
+| 1912 | Rotation ignores reduced motion | survived at first: one sample after 60 s landed on the first example by chance. Now sampled every 100 ms; killed, 1 |
+| 1913 | Demo signature never reports done | killed, 1 |
+| 1914 | Live clock marks an invented verdict day | killed, 1 |
+| 1915 | Deadline at chain time reads as not passed | killed, 1 |
+| 1916 | Knob position unrounded | killed, 1 |
+| 1917 | Live clock still offers a slider | killed, 2 |
+| 1918 | Unknown chain time shown with no words | killed, 1 |
+| 1919 | Referee stays active after a verdict | survived at first, no test on the referee's note. Added; killed, 1 |
+| 1920 | Example badge dropped from the agreement | killed, 2 |
+| 1921 | Unknown party shown as blank | killed, 1 |
+| 1922 | Pad collapse never reports | survived at first, no collapse test. Added; killed, 1 |
+
+### Contrast, by inspection of the final tokens (LLR-FE-072)
+
+Light, WCAG ratios: ink on paper 15.0, second ink on sheet 8.9, muted text on paper 4.7 and on sheet 5.0, control border on paper 4.7, text on the orange 4.9, error text 6.5, notice text 8.0, kept 5.5 and broken 5.4 on sheet, orange used as text 6.0 (`--sat-text`). Dark: every pair 5.2 or above (muted 6.0 on paper, orange 8.8). Three values differ from the design file, each the smallest change that meets AA: muted text `#667085` for `#6b7488` (4.41 on paper in the design); the text on the orange is the dark ink, not white (white on the design's orange is 3.2 in light and 2.2 in dark); the control border is the muted text colour, since the design's hairline `#dde1e8` is 1.3 on white. The brand wordmark stays the design's orange, as large text.
+
+### Fonts
+
+`npm pack` of `@fontsource-variable/newsreader`, `@fontsource/hanken-grotesk`, `@fontsource/jetbrains-mono` 5.3.0 into `cache/fonts/`; tarball SHA-256 `4b8cfba8…` hex in full: `4b8cfba8f4e79abe7b221b761b751d76569fd2d2303a9cace2e90b862c56630d`, `d2d770507b6216cced24ff3cced1ce59dade9ae61a4ed2b940290386a2e11bc7`, `1bbea47d1387406da5b6ccc4184cc61eae6851cc0db5c1d9bbd088ea9daa0b4a` (Newsreader, Hanken Grotesk, JetBrains Mono). Only the Latin woff2 files and each OFL licence are in `app/public/fonts/`; the old Inter, Inter Tight and IBM Plex Mono files are deleted.
+
+### Screenshots
+
+`npm run screenshots` (browser fetched once into `app/node_modules` with `PLAYWRIGHT_BROWSERS_PATH=0`) now covers 390, 768 and 1440 px in light and dark. The landing page was compared with the design at 1440 light and 390 dark and light: type, paper palette, the pad, the agreement with "Read as", the clock, the strikes and the trust section match. At 390 px the clock's three timeline labels crowd as they do in the design file.

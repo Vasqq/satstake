@@ -10,7 +10,6 @@ import type { Reads } from "../chain/reads";
 import type { Health } from "../chain/useHealth";
 import type { SelectedNetwork, TokenConfig } from "../config/networks";
 import { PageHeading } from "../views/PageHeading";
-import "../styles/forms.css";
 import { RequestNotice, useConnectionFailure } from "../wallet/failure";
 import { useWriteGate } from "../wallet/gate";
 import { formatLocalTime, formatSats } from "../format";

@@ -4,6 +4,7 @@ import { WagmiProvider, usePublicClient, type Config } from "wagmi";
 import type { PublicClient } from "viem";
 import { type NetworkCheck, type TokenCheck } from "./chain/health";
 import { createReads } from "./chain/reads";
+import { liveLabel } from "./design/chrome";
 import { useHealth } from "./chain/useHealth";
 import type { SelectedNetwork } from "./config/networks";
 import type { Route } from "./routes";
@@ -65,8 +66,8 @@ function Header({ route, network }: { route: Route; network: SelectedNetwork }) 
     <header className="site-header">
       <div className="wrap site-header-row">
         {/* The accessible name is the plain word; the visible text splits it only to colour its second half. */}
-        <a className="brand" href="#/" aria-label="SatStake" aria-current={route.name === "home" ? "page" : undefined}>
-          Sat<span className="accent">Stake</span>.
+        <a className="word" href="#/" aria-label="SatStake" aria-current={route.name === "home" ? "page" : undefined}>
+          Sat<b>Stake</b>
         </a>
         {/* Never hidden at any width: on a phone it wraps below the logo, so every page stays one tap away. */}
         <nav aria-label="Main">
@@ -76,7 +77,13 @@ function Header({ route, network }: { route: Route; network: SelectedNetwork }) 
             </a>
           ))}
         </nav>
-        <WalletBar network={network} onLanding={route.name === "home"} />
+        <div className="header-end">
+          <span className="live">
+            <i aria-hidden="true" />
+            {liveLabel(network)}
+          </span>
+          <WalletBar network={network} onLanding={route.name === "home"} />
+        </div>
       </div>
     </header>
   );
@@ -86,9 +93,12 @@ function Footer({ network }: { network: SelectedNetwork }) {
   return (
     <footer className="site-footer">
       <div className="wrap footer-row">
-        <p>Runs on {network.name}</p>
-        <a href="#/about">About and limits</a>
-        <a href="https://github.com/Vasqq/satstake">GitHub</a>
+        <p>{`SatStake · solo entry, Circle Arc Microgrants · Runs on ${network.name}`}</p>
+        <p>USDC or cirBTC · fees in cents · no fee to SatStake</p>
+        <div className="footer-links">
+          <a href="#/about">About and limits</a>
+          <a href="https://github.com/Vasqq/satstake">GitHub</a>
+        </div>
       </div>
     </footer>
   );

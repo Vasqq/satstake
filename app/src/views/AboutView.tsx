@@ -1,4 +1,3 @@
-import "../styles/forms.css";
 import { PageHeading } from "./PageHeading";
 
 /**

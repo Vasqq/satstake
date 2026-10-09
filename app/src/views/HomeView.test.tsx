@@ -129,11 +129,10 @@ describe("LLR-FE-070 the evidence that it is live", () => {
 const heading = (name: string | RegExp) => screen.getByRole("heading", { name });
 
 describe("LLR-FE-070 what SatStake does, for a visitor without a wallet", () => {
-  it("leads with the promise and says how the stake is kept or lost", () => {
+  it("opens with the sentence to finish, and says how a stake is kept or lost", () => {
     home();
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Put money behind your promise.");
-    expect(document.body.textContent).toContain("Kept, and your money comes back.");
-    expect(document.body.textContent).toContain("no answer by the deadline");
+    expect(screen.getByRole("heading", { level: 1 }).textContent?.startsWith("I promise to")).toBe(true);
+    expect(document.body.textContent).toContain("A friend decides whether I kept it");
     expect(screen.getByText(/You need a browser wallet on Arc/)).toBeTruthy();
     expect(document.title).toBe("SatStake");
   });
@@ -141,47 +140,52 @@ describe("LLR-FE-070 what SatStake does, for a visitor without a wallet", () => 
   it("offers the create call to action in the hero and again at the close", () => {
     home();
     const toCreate = [...document.querySelectorAll("a")].filter((a) => a.getAttribute("href") === "#/create");
-    expect(toCreate.some((a) => a.textContent?.startsWith("Make a promise"))).toBe(true);
+    expect(toCreate.some((a) => a.textContent === "Make a promise")).toBe(true);
     expect(toCreate.length).toBeGreaterThanOrEqual(3); // header, hero, close
-    expect(heading(/^Ready to put something on it\?$/)).toBeTruthy();
+    expect(heading(/^Your word, in writing\.$/)).toBeTruthy();
   });
 
-  it("explains the three steps with the worked example and the three endings", () => {
+  it("explains the rules in the agreement, the clock and the list of what cannot be done", () => {
     home();
-    expect(heading("How it works")).toBeTruthy();
-    expect(screen.getByText(/Alex promises/)).toBeTruthy();
-    for (const [ending, outcome] of [
-      ["Kept", "Back to Alex"],
-      ["Broken", "To Jo"],
-      ["No answer by the deadline", "To Jo"],
-    ]) {
-      const term = screen.getAllByText(ending as string, { selector: "dt" })[0]!;
-      expect(term.parentElement!.textContent).toContain(outcome);
-    }
-    expect(screen.getByText("Silence counts as broken, so make sure your referee answers in time.")).toBeTruthy();
-    expect(screen.getByText(/a promise cannot be cancelled or changed once made, and every promise is public/)).toBeTruthy();
+    expect(heading(/^Seven lines\. No fine print\.$/)).toBeTruthy();
+    expect(document.querySelectorAll(".doc li").length).toBe(7);
+    expect(heading(/^Drag through a week\./)).toBeTruthy();
+    expect(screen.getByRole("slider", { name: "Time" })).toBeTruthy();
+    expect(heading(/^Nobody can take it back\.$/)).toBeTruthy();
+    expect(document.querySelectorAll(".strikes li").length).toBe(6);
+  });
+
+  it("labels the agreement and the clock as examples, and no widget of illustrative values goes unlabelled", () => {
+    home();
+    const doc = document.querySelector(".doc") as HTMLElement;
+    expect(doc.querySelector(".example")?.textContent).toMatch(/example/i);
+    expect(document.querySelector(".clock-card .example")?.textContent).toMatch(/example/i);
+    // The three addresses and the 1,000 sats of the illustration are inside those two labelled widgets only.
+    const illustrated = [...document.querySelectorAll("*")].filter((el) => el.children.length === 0 && /0xd172…809f|1,000 sats/.test(el.textContent ?? ""));
+    expect(illustrated.length).toBeGreaterThan(0);
+    for (const el of illustrated) expect(el.closest(".doc, .clock-card"), el.outerHTML).toBeTruthy();
+  });
+
+  it("shows no promise number, address or amount of its own outside those two examples", () => {
+    home();
+    const hero = document.querySelector(".hero") as HTMLElement;
+    expect(hero.textContent).not.toMatch(/Promise #\d|0x[0-9a-f]{4}…|sats/i);
+  });
+
+  it("shows the pad with a signature that writes itself, and a seal button that cannot be pressed", () => {
+    home();
+    expect(document.querySelector(".pad canvas")).toBeTruthy();
+    const seal = screen.getByRole("button", { name: "Seal it" }) as HTMLButtonElement;
+    expect(seal.disabled).toBe(true);
   });
 
   it("says plainly what it cannot do beside the claims it makes", () => {
     home();
-    expect(heading("Why you can trust it")).toBeTruthy();
-    expect(screen.getByText(/your referee is trusted by you and could judge you unfairly/)).toBeTruthy();
+    expect(heading(/^What you’re trusting\.$/)).toBeTruthy();
+    expect(screen.getByText(/SatStake doesn’t claim to be trustless\./)).toBeTruthy();
+    expect(screen.getByText(/A dishonest referee can mark a kept promise broken/)).toBeTruthy();
     expect(screen.getByText(/can pause a token or block an address/)).toBeTruthy();
-    expect(screen.getByText(/tested, not audited/)).toBeTruthy();
-  });
-
-  it("answers the five questions without sending the visitor elsewhere", () => {
-    home();
-    const section = heading("Questions").closest("section")!;
-    const questions = [...section.querySelectorAll("dt")].map((q) => q.textContent);
-    expect(questions).toEqual([
-      "What do I need?",
-      "What if my referee does not answer?",
-      "Can I cancel or change a promise?",
-      "Does SatStake charge anything?",
-      "Who can see my promise?",
-    ]);
-    expect(section.querySelectorAll("a").length).toBe(0);
+    expect(screen.getByText(/not audited/)).toBeTruthy();
   });
 
   it("links to nothing inside the page, since a hash link would change the route", () => {
@@ -190,14 +194,16 @@ describe("LLR-FE-070 what SatStake does, for a visitor without a wallet", () => 
   });
 });
 
-describe("LLR-FE-070 the evidence for reviewers", () => {
+describe("LLR-FE-070 the evidence that it is live, for reviewers", () => {
   it("names the network, its chain, and why Arc", () => {
     home();
-    const section = heading("For reviewers").closest("section")!;
-    expect(section.textContent).toContain(`${network.name}, chain ${network.chainId}`);
+    const section = document.querySelector("section[aria-labelledby='home-live']") as HTMLElement;
+    expect(section.textContent).toContain(network.name);
+    expect(section.textContent).toContain(`Chain ${network.chainId}`);
     expect(section.textContent).toMatch(/cirBTC/);
     expect(section.textContent).toMatch(/USDC/);
-    expect(section.textContent).toMatch(/deterministic finality/);
+    expect(section.textContent).toMatch(/deterministic, sub-second finality/);
+    expect(section.textContent).not.toMatch(/\d\s?ms\b/);
   });
 
   it("links to the repository and to the verified source", () => {
@@ -206,18 +212,18 @@ describe("LLR-FE-070 the evidence for reviewers", () => {
     expect(screen.getByRole("link", { name: "Verified on Sourcify" })).toBeTruthy();
   });
 
-  it("names the network in the hero as plain text, since the full address with its explorer link is shown further down", () => {
+  it("names the configured network in the header's live indicator, as plain text", () => {
     home();
-    const eyebrow = screen.getByText(`Live on ${network.name}`);
-    expect(eyebrow.closest("a")).toBeNull();
-    expect(eyebrow.querySelector("a")).toBeNull();
+    const indicator = document.querySelector(".live") as HTMLElement;
+    expect(indicator.textContent).toBe("Live on Arc testnet");
+    expect(indicator.closest("a")).toBeNull();
   });
 
-  it("shows the whole address once, in the reviewer section", () => {
+  it("shows the whole address once, in the live section", () => {
     home();
     const full = [...document.querySelectorAll("code")].filter((c) => c.textContent === network.contract);
     expect(full.length).toBe(1);
-    expect(heading("For reviewers").closest("section")!.contains(full[0]!)).toBe(true);
+    expect(document.querySelector("section[aria-labelledby='home-live']")!.contains(full[0]!)).toBe(true);
   });
 });
 

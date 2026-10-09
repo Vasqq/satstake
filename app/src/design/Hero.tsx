@@ -1,0 +1,114 @@
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { PageHeading } from "../views/PageHeading";
+import { prefersReducedMotion } from "./motion";
+
+export const EXAMPLES: readonly string[] = [
+  "run three times this week.",
+  "send the draft by Friday.",
+  "stop ordering takeout.",
+  "ship the release notes by the 31st.",
+];
+
+// Types an example out, holds it, erases it, and moves to the next. Reduced motion keeps the first one still.
+function useTyper(active: boolean): string {
+  const [text, setText] = useState(EXAMPLES[0] as string);
+  useEffect(() => {
+    if (!active || prefersReducedMotion()) return;
+    let i = 0;
+    let pos = (EXAMPLES[0] as string).length;
+    let dir = -1;
+    let hold = 55;
+    let id: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      if (hold > 0) hold--;
+      else {
+        pos += dir;
+        if (pos <= 0) {
+          dir = 1;
+          i = (i + 1) % EXAMPLES.length;
+          hold = 8;
+        }
+        if (pos >= (EXAMPLES[i] as string).length) {
+          dir = -1;
+          hold = 80;
+        }
+        setText((EXAMPLES[i] as string).slice(0, Math.max(0, pos)));
+      }
+      id = setTimeout(tick, dir < 0 ? 18 : 48);
+    };
+    id = setTimeout(tick, 1800);
+    return () => clearTimeout(id);
+  }, [active]);
+  return text;
+}
+
+export interface HeroProps {
+  /** The visitor's own ending of the sentence, or null while the examples rotate. The owner keeps it. */
+  custom: string | null;
+  onCustomChange: (next: string | null) => void;
+  /** The longest ending the field takes. */
+  maxLength?: number;
+  /** The sentence under the heading. */
+  sub: ReactNode;
+  /** Mounted under the sentence: the pad, and whatever the create flow shows around it. */
+  children?: ReactNode;
+}
+
+/**
+ * The first screen: "I promise to" finished by rotating examples, or by the visitor's own words, then one
+ * sentence on how it works, then the slot the pad goes in.
+ *
+ * @trace LLR-FE-070
+ */
+export function Hero({ custom, onCustomChange, maxLength = 200, sub, children }: HeroProps) {
+  const typed = useTyper(custom === null);
+  const input = useRef<HTMLInputElement>(null);
+  const writing = custom !== null;
+  // Set when the visitor chose to write, so the field takes focus once it exists and not when a parent restores one.
+  const focusNext = useRef(false);
+  useEffect(() => {
+    if (!writing || !focusNext.current) return;
+    focusNext.current = false;
+    input.current?.focus();
+    input.current?.select();
+  }, [writing]);
+  const start = () => {
+    onCustomChange(typed.replace(/\.$/, ""));
+    focusNext.current = true;
+  };
+  return (
+    <section className="hero" aria-label="Make a promise">
+      <PageHeading title="SatStake" className="hero-h1">
+        I promise to
+        {writing ? (
+          <input
+            className="typed typed-in"
+            ref={input}
+            value={custom}
+            onChange={(e) => onCustomChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+            }}
+            aria-label="Your promise"
+            maxLength={maxLength}
+            autoComplete="off"
+          />
+        ) : (
+          <span className="typed" onClick={start} aria-hidden="true">
+            {typed}
+            <span className="caret" />
+          </span>
+        )}
+      </PageHeading>
+      <div className="hero-sub">
+        <p>{sub}</p>
+        {!writing && (
+          <button type="button" className="writebtn" onClick={start}>
+            Write your own ↗
+          </button>
+        )}
+      </div>
+      {children}
+    </section>
+  );
+}

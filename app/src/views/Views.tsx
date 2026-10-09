@@ -1,4 +1,3 @@
-import "../styles/forms.css";
 import { PageHeading } from "./PageHeading";
 
 /** The wording of 05 section 2.2 for PledgeNotFound. */
@@ -7,10 +6,10 @@ export const PLEDGE_NOT_FOUND_MESSAGE = "This promise does not exist. Check the 
 function Ways() {
   return (
     <div className="actions">
-      <a className="button-secondary" href="#/">
+      <a className="b ghost" href="#/">
         Go to the home page
       </a>
-      <a className="button-secondary" href="#/mine">
+      <a className="b ghost" href="#/mine">
         My promises
       </a>
     </div>
