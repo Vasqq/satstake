@@ -6,7 +6,7 @@ import type { SelectedNetwork } from "../../config/networks";
 /** The figures are a courtesy on a page that must still work without them, so a failure is retried slowly. */
 export const COUNT_RETRY_MS = 30_000;
 
-// Once a figure is known the page stays as it was read: it is a proof of life, not a live feed.
+// The card re-reads these every 30 seconds while the page is visible: it is a proof of life, not a live feed.
 const retryOnlyAfterError = (query: { state: { status: string } }) => (query.state.status === "error" ? COUNT_RETRY_MS : false);
 
 /**
