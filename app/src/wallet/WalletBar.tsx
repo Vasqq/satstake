@@ -3,7 +3,7 @@ import { type Connector, useConnect, useConnection, useSwitchChain } from "wagmi
 import { addChainParameter } from "../chain/wagmi";
 import type { SelectedNetwork } from "../config/networks";
 import { shortAddress } from "./address";
-import { RequestNotice, useConnectionFailure } from "./failure";
+import { CONNECTION_REJECTED_MESSAGE, REJECTED_MESSAGE, RequestNotice, useConnectionFailure } from "./failure";
 
 // The id wagmi gives the connector for window.ethereum, as set up in createAppConfig.
 const FALLBACK_ID = "injected";
@@ -36,6 +36,8 @@ export function WalletBar({ network, onLanding = false }: { network: SelectedNet
   const switchInFlight = useRef(false);
   const windowEthereum = useSyncExternalStore(subscribeToInjection, hasWindowEthereum);
   const [wasConnected, setWasConnected] = useState(false);
+  // Which request the notice below answers, since cancelling a connection and cancelling a switch say different things.
+  const [asked, setAsked] = useState<"connect" | "switch">("connect");
 
   const failure = useConnectionFailure();
 
@@ -79,6 +81,7 @@ export function WalletBar({ network, onLanding = false }: { network: SelectedNet
   function pick(connector: Connector, pressed: Element) {
     if (busy) return;
     failure.clear();
+    setAsked("connect");
     // The wallet is asked for accounts here and nowhere else, so nothing is requested before this click.
     connect({ connector }, { onError: failure.fail, onSuccess: () => moveFocus(pressed) }); // LLR-FE-020
   }
@@ -87,6 +90,7 @@ export function WalletBar({ network, onLanding = false }: { network: SelectedNet
     if (switching || switchInFlight.current) return; // LLR-FE-022
     switchInFlight.current = true;
     failure.clear();
+    setAsked("switch");
     switchChain(
       { chainId: network.chainId, addEthereumChainParameter: addChainParameter(network) }, // LLR-FE-022
       {
@@ -131,10 +135,14 @@ export function WalletBar({ network, onLanding = false }: { network: SelectedNet
         </>
       ) : (
         !onLanding && (
-          <p>Reading needs no wallet. To act, connect a browser wallet; on a phone, use your wallet app&apos;s browser.</p> // LLR-FE-020
+          <p>Reading needs no wallet. To act, connect a browser wallet; on a phone, use your wallet app’s browser.</p> // LLR-FE-020
         )
       )}
-      <RequestNotice error={failure.error} label="Wallet notices" />
+      <RequestNotice
+        error={failure.error}
+        label="Wallet notices"
+        rejectedMessage={asked === "connect" ? CONNECTION_REJECTED_MESSAGE : REJECTED_MESSAGE}
+      />
     </section>
   );
 }

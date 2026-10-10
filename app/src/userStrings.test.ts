@@ -147,3 +147,10 @@ describe("LLR-FE-071 LLR-VV-006 no user-facing string holds a banned word", () =
     expect(offences).toEqual([]);
   });
 });
+
+describe("LLR-FE-071 the pages the design wrote use its curly apostrophe, and no straight one", () => {
+  it.each([join("views", "AboutView.tsx"), join("wallet", "WalletBar.tsx"), join("design", "Sections.tsx")])("holds for %s", (file) => {
+    const straight = userStrings(readFileSync(join(SRC, file), "utf8"), file).filter((text) => /'|&apos;/.test(text));
+    expect(straight).toEqual([]);
+  });
+});

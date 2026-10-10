@@ -3,6 +3,10 @@ import { ExampleBadge } from "./ExampleBadge";
 
 export type ReadAs = "staker" | "referee" | "beneficiary" | "anyone";
 type Party = "staker" | "referee" | "beneficiary";
+type PartyValue = ReactNode | ((note: string) => ReactNode);
+
+// The dot is bound to what comes before it, so a line that wraps never begins with it.
+const joined = (note: string) => `\u00a0· ${note}`;
 
 const ROLES: readonly (readonly [ReadAs, string])[] = [
   ["staker", "Staker"],
@@ -62,10 +66,15 @@ export interface AgreementDocProps {
   amountLabel: string;
   /** The deadline as it is written for a reader. */
   deadlineText: string;
-  /** The three parties: an address, a control showing one, or nothing yet. */
-  staker?: ReactNode;
-  referee?: ReactNode;
-  beneficiary?: ReactNode;
+  /**
+   * The three parties: an address, a control showing one, or nothing yet. A function is given the party's note
+   * (such as "rules once") to set on the line of the address, before whatever else the control shows under it.
+   */
+  staker?: PartyValue;
+  referee?: PartyValue;
+  beneficiary?: PartyValue;
+  /** The party the connected account is, marked "(you)" beside the role's name. */
+  you?: Party | null;
   /** A line under the title, such as the network. */
   meta?: ReactNode;
   /** Marks the document as an illustration, not a real promise. */
@@ -99,16 +108,16 @@ export function AgreementDoc(props: AgreementDocProps) {
     props.onRoleChange?.(value);
   };
   const lines = clauseText(on ?? null, props.amountLabel, props.deadlineText);
-  const parties: { who: Party; label: string; value: ReactNode; note: string }[] = [
+  const parties: { who: Party; label: string; value: PartyValue; note: string }[] = [
     { who: "staker", label: "Staker", value: props.staker, note: "" },
-    { who: "referee", label: "Referee", value: props.referee, note: " · rules once" },
-    { who: "beneficiary", label: "Beneficiary", value: props.beneficiary, note: " · receives if broken or silent" },
+    { who: "referee", label: "Referee", value: props.referee, note: "rules once" },
+    { who: "beneficiary", label: "Beneficiary", value: props.beneficiary, note: "receives if broken or silent" },
   ];
   return (
     <>
       <div className="readas" role="group" aria-label="Read as">
         {ROLES.map(([k, label]) => (
-          <button key={k} type="button" aria-pressed={on === k} onClick={() => choose(k)}>
+          <button key={k} type="button" className="readbtn" aria-pressed={on === k} onClick={() => choose(k)}>
             {label}
           </button>
         ))}
@@ -135,10 +144,24 @@ export function AgreementDoc(props: AgreementDocProps) {
           {parties.map(({ who, label, value, note }) => (
             <div key={who} className={"sig" + (on === who ? " on" : "")} onClick={() => choose(who)}>
               <div className="line">{props.signatures?.[who]}</div>
-              <b>{label}</b>
+              <b>
+                {label}
+                {props.you === who && (
+                  <>
+                    {" "}
+                    <span className="you-mark">(you)</span>
+                  </>
+                )}
+              </b>
               <code>
-                <span>{value ?? UNSET}</span>
-                {note}
+                {typeof value === "function" ? (
+                  <span>{value(note)}</span>
+                ) : (
+                  <>
+                    <span>{value ?? UNSET}</span>
+                    {note !== "" && joined(note)}
+                  </>
+                )}
               </code>
             </div>
           ))}

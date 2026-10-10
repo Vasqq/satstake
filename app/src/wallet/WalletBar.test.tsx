@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { FakeWallet, installWindowEthereum, rejection, walletError } from "../test/fakeWallet";
 import { ACCOUNT, FOREIGN_CHAIN, OTHER_ACCOUNT, mountApp, network, reloadPage, shortOf, teardownWallets, walletStatus } from "../test/walletHarness";
 import { shortAddress } from "./address";
-import { FAILED_MESSAGE, REJECTED_MESSAGE } from "./failure";
+import { CONNECTION_REJECTED_MESSAGE, FAILED_MESSAGE, REJECTED_MESSAGE } from "./failure";
 import { STATE_MEANINGS } from "../views/stateLabels";
 
 afterEach(teardownWallets);
@@ -439,12 +439,13 @@ describe("LLR-FE-022 a wallet on another chain is told so and offered a switch i
 });
 
 describe("LLR-FE-061 a refused connection returns to the state before it, with the neutral message and no error styling", () => {
-  it("shows the section 2.2 message and the connect list again", async () => {
+  it("says the connection was cancelled and never that something was sent, then shows the connect list again", async () => {
     const w = fresh();
     w.failNext("wallet_requestPermissions", rejection());
     mountApp({ wallets: [alpha(w)] });
     fireEvent.click(await connectButton("Alpha Wallet"));
-    await within(notices()).findByText("You cancelled the request in your wallet. Nothing was sent.");
+    await within(notices()).findByText("You cancelled the connection in your wallet.");
+    expect(notices().textContent).not.toMatch(/sent/i);
     expect(screen.getByRole("button", { name: "Connect Alpha Wallet" })).toBeTruthy();
     expect(walletStatus().textContent).not.toContain(shortOf(ACCOUNT));
     expect(screen.queryByRole("alert")).toBeNull();
@@ -457,7 +458,7 @@ describe("LLR-FE-061 a refused connection returns to the state before it, with t
     w.failNext("eth_requestAccounts", rejection());
     mountApp({ wallets: [alpha(w)] });
     fireEvent.click(await connectButton("Alpha Wallet"));
-    await within(notices()).findByText(REJECTED_MESSAGE);
+    await within(notices()).findByText(CONNECTION_REJECTED_MESSAGE);
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -466,10 +467,10 @@ describe("LLR-FE-061 a refused connection returns to the state before it, with t
     w.failNext("wallet_requestPermissions", rejection());
     mountApp({ wallets: [alpha(w)] });
     fireEvent.click(await connectButton("Alpha Wallet"));
-    await within(notices()).findByText(REJECTED_MESSAGE);
+    await within(notices()).findByText(CONNECTION_REJECTED_MESSAGE);
     fireEvent.click(screen.getByRole("button", { name: "Connect Alpha Wallet" }));
     await connectedAddress();
-    expect(within(notices()).queryByText(REJECTED_MESSAGE)).toBeNull();
+    expect(within(notices()).queryByText(CONNECTION_REJECTED_MESSAGE)).toBeNull();
   });
 });
 
@@ -658,7 +659,7 @@ describe("LLR-FE-072 one live status element carries the state of the wallet bar
       w.failNext("wallet_requestPermissions", rejection());
       mountApp({ wallets: [alpha(w)] });
       fireEvent.click(await connectButton("Alpha Wallet"));
-      await within(notices()).findByText(REJECTED_MESSAGE);
+      await within(notices()).findByText(CONNECTION_REJECTED_MESSAGE);
       expect(document.activeElement).not.toBe(walletStatus());
     });
   });
@@ -746,14 +747,24 @@ describe("LLR-FE-061 a notice about an earlier request goes when the connection 
     await waitFor(() => expect(within(notices()).queryByText(REJECTED_MESSAGE)).toBeNull());
   });
 
+  it("words a refused connection as a connection even after a refused switch, since the words follow the request", async () => {
+    const { w } = await declinedSwitch();
+    act(() => w.changeAccounts([]));
+    await waitFor(() => expect(within(notices()).queryByText(REJECTED_MESSAGE)).toBeNull());
+    w.failNext("wallet_requestPermissions", rejection());
+    fireEvent.click(await connectButton("Alpha Wallet"));
+    await within(notices()).findByText(CONNECTION_REJECTED_MESSAGE);
+    expect(within(notices()).queryByText(REJECTED_MESSAGE)).toBeNull();
+  });
+
   it("keeps the notice of a refused connection while the connection settles back to disconnected", async () => {
     const w = fresh();
     w.failNext("wallet_requestPermissions", rejection());
     mountApp({ wallets: [alpha(w)] });
     fireEvent.click(await connectButton("Alpha Wallet"));
-    await within(notices()).findByText(REJECTED_MESSAGE);
+    await within(notices()).findByText(CONNECTION_REJECTED_MESSAGE);
     await new Promise((resolve) => setTimeout(resolve, 150));
-    expect(within(notices()).queryByText(REJECTED_MESSAGE)).toBeTruthy();
+    expect(within(notices()).queryByText(CONNECTION_REJECTED_MESSAGE)).toBeTruthy();
   });
 });
 

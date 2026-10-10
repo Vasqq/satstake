@@ -234,7 +234,7 @@ export function usePledgeActions(props: PledgeActionsProps): PledgeActionsParts 
           </button>
         </div>
         {reasons}
-        <p className="hint">Your verdict is final. Record it before the deadline, or the stake goes to the person named to get it.</p>
+        <p className="hint">Your verdict is final. Record it before the deadline, or the stake goes to the beneficiary.</p>
         {confirmOpen && pledge !== null && (
           <BrokenConfirm
             amount={formatAmount(network, pledge.token, pledge.amount)}

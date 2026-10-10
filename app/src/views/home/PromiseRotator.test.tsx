@@ -191,13 +191,22 @@ describe("LLR-FE-070 what a slide says", () => {
     show(chain);
     const card = await screen.findByRole("region", { name: /Recent promises/ });
     expect(within(card).getAllByText(word).length).toBeGreaterThan(0);
-    expect(within(card).getByText(big, { selector: "p" })).toBeTruthy();
+    const outcome = within(card).getByText(big, { selector: "p" });
+    expect(outcome.getAttribute("data-tone")).toBe(state === 2 || state === 4 ? "kept" : "broken");
     expect(within(card).queryByRole("img")).toBeNull();
     const where = within(card).getByText(new RegExp(`stake ${phrase}`));
     expect(where.textContent).toContain(short(who));
     expect(within(card).queryByText(/^Deadline /)).toBeNull();
     // Silence counts as broken is said only where silence is what happened.
     expect(within(card).queryAllByText(/Silence counts as broken/).length).toBe(state === 1 ? 1 : 0);
+  });
+});
+
+describe("LLR-FE-070 an open promise's countdown carries no outcome tone", () => {
+  it("has no tone on the countdown of an open promise, since nothing has been decided", async () => {
+    show(chainWith(1));
+    const card = await screen.findByRole("region", { name: /Recent promises/ });
+    expect(card.querySelector(".home-rot-clock[data-tone]")).toBeNull();
   });
 });
 

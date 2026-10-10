@@ -456,6 +456,17 @@ describe("LLR-FE-013 the header and footer", () => {
     expect(header.contains(nav)).toBe(true);
   });
 
+  it("marks the main area of the landing only, so the hero can sit close under the header", async () => {
+    setup("#/");
+    expect((await screen.findByRole("main")).classList.contains("landing")).toBe(true);
+    cleanup();
+    for (const hash of ["#/create", "#/mine", "#/about", "#/p/1"]) {
+      setup(hash);
+      expect((await screen.findByRole("main")).classList.contains("landing"), hash).toBe(false);
+      cleanup();
+    }
+  });
+
   it.each([
     ["#/", "#/"],
     ["#/create", "#/create"],

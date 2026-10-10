@@ -17,6 +17,11 @@ describe("LLR-FE-040 the example clock is labelled as an example and can be play
     expect(screen.getByRole("slider", { name: "Time" })).toBeTruthy();
   });
 
+  it("gives each scenario button a class of its own, so the plain-button style of the other views never reaches it", () => {
+    render(<Clock mode="demo" />);
+    for (const button of screen.getAllByRole("button", { name: /^Says/ })) expect(button.className, button.textContent ?? "").not.toBe("");
+  });
+
   it("moves the slider with the arrow keys and Home and End, and tells the ending on the way", () => {
     render(<Clock mode="demo" />);
     const slider = screen.getByRole("slider", { name: "Time" });
@@ -38,6 +43,19 @@ describe("LLR-FE-040 the example clock is labelled as an example and can be play
     fireEvent.click(screen.getByRole("button", { name: "Says nothing" }));
     expect(screen.getAllByText(/Silence counts as broken|No answer|Paid out/).length).toBeGreaterThan(0);
     expect(document.querySelector(".mk")).toBeTruthy();
+  });
+});
+
+describe("LLR-FE-072 the clock's coloured marks keep AA contrast in both themes", () => {
+  it("sets the verdict bubble's words in the token made for text on a state colour, not in fixed white", () => {
+    render(<Clock mode="live" {...base} now={1_500n} state="Kept" />);
+    expect((document.querySelector(".bubble text") as SVGTextElement).style.fill).toBe("var(--on-state)");
+  });
+
+  it("writes the payout mark in the orange made for text, since the plain orange is too light on the sheet", () => {
+    render(<Clock mode="demo" />);
+    const payout = [...document.querySelectorAll(".mk")].find((m) => m.textContent === "payout") as HTMLElement;
+    expect((payout.querySelector("span") as HTMLElement).style.color).toBe("var(--sat-text)");
   });
 });
 

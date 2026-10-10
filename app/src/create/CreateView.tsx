@@ -46,7 +46,6 @@ const PROMISE_FIELD_LIMIT = 1000;
 const HINTS = {
   promise: "Anyone can read this, and it cannot be changed later.",
   referee: "The person who decides. They must mark the promise kept before the deadline.",
-  beneficiary: "Receives your stake if the promise is broken or not confirmed in time.",
 };
 
 const FIELD_ORDER: Field[] = ["promise", "token", "amount", "referee", "beneficiary", "deadline", "acknowledged"];
@@ -91,7 +90,10 @@ function stepLabel(step: Step, progress: Progress): string {
   return numbered ? "Step 2 of 2: create the promise" : "Create the promise";
 }
 
-/** Always shown beside the beneficiary field, since the mistake is made there and cannot be undone (LLR-FE-034). */
+/**
+ * Always shown beside the beneficiary field, since the mistake is made there and cannot be undone (LLR-FE-034). It
+ * is also what the field is for, so there is no separate hint saying the same thing a second time.
+ */
 const BENEFICIARY_CAUTION =
   "This address receives your stake if the promise is broken or missed. If nobody controls it, the stake is lost for good.";
 
@@ -556,7 +558,6 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
             id={`${ids}-beneficiary`}
             label="Beneficiary address"
             error={shown("beneficiary")}
-            hints={[HINTS.beneficiary]}
             caution={BENEFICIARY_CAUTION} // LLR-FE-034
             warning={shown("beneficiary") === undefined && beneficiaryHasCode ? WARNINGS.beneficiary : ""}
             control={(props) => (
@@ -608,8 +609,9 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
         <b>{`#${created.id.toString()}`}</b>
       </div>
       <div>
-        <span className="label">Locked until</span>
-        <b>{`Referee rules, or ${formatLocalTime(created.deadline)}`}</b>
+        {/* The stake leaves the contract only when someone sends the payout, which no verdict or deadline does by itself. */}
+        <span className="label">Stake held</span>
+        <b>{`Until the payout is sent, after the referee rules or ${formatLocalTime(created.deadline)}`}</b>
       </div>
       <div className="sealed-share">
         <span className="label">Send this link to your referee and your beneficiary</span>
@@ -703,45 +705,48 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
         <button type="submit" className="b ink" aria-disabled={!canSubmit} aria-describedby={`${ids}-prompts ${ids}-submit-help`}>
           {sealLabel}
         </button>
-        <p id={`${ids}-prompts`} className="hint">
-          {progress === null ? PROMPT_COUNT_HINT : ""}
-        </p>
-        <div id={`${ids}-submit-help`} className="hint">
-          {gate.reasons.map((reason) => (
-            <p key={reason}>{reason}</p>
-          ))}
-          {health.tokens === null && <p>Checking the tokens.</p>}
-          {incomplete.length > 0 && <p>Still to complete: {incomplete.join(", ")}.</p>}
+        {/* The status and every note, in one block: beside the button on a wide pad, under it on a phone. */}
+        <div className="submit-notes">
+          <p id={`${ids}-prompts`} className="hint">
+            {progress === null ? PROMPT_COUNT_HINT : ""}
+          </p>
+          <div id={`${ids}-submit-help`} className="hint">
+            {gate.reasons.map((reason) => (
+              <p key={reason}>{reason}</p>
+            ))}
+            {health.tokens === null && <p>Checking the tokens.</p>}
+            {incomplete.length > 0 && <p>Still to complete: {incomplete.join(", ")}.</p>}
+          </div>
+          <div role="status" aria-label="Promise progress" className="progress">
+            {progress !== null && (
+              <>
+                <ul>
+                  {progress.steps.map((step) => (
+                    <li key={step.id}>
+                      {stepLabel(step, progress)}. {STAGE_TEXT[step.stage]}
+                    </li>
+                  ))}
+                </ul>
+                {progress.kept && (
+                  <p>Your approval of {progress.amountText} is confirmed and stays in place, so trying again asks your wallet once.</p>
+                )}
+              </>
+            )}
+          </div>
+          <RequestNotice error={failure.error} label="Create notices">
+            {unconfirmed !== null && (
+              <>
+                <p className="notice notice-failure">{UNCONFIRMED_MESSAGE}</p>
+                <p>
+                  Transaction: <code>{unconfirmed.hash}</code>
+                </p>
+                <p>
+                  <a href="#/mine">My promises</a>
+                </p>
+              </>
+            )}
+          </RequestNotice>
         </div>
-        <div role="status" aria-label="Promise progress" className="progress">
-          {progress !== null && (
-            <>
-              <ul>
-                {progress.steps.map((step) => (
-                  <li key={step.id}>
-                    {stepLabel(step, progress)}. {STAGE_TEXT[step.stage]}
-                  </li>
-                ))}
-              </ul>
-              {progress.kept && (
-                <p>Your approval of {progress.amountText} is confirmed and stays in place, so trying again asks your wallet once.</p>
-              )}
-            </>
-          )}
-        </div>
-        <RequestNotice error={failure.error} label="Create notices">
-          {unconfirmed !== null && (
-            <>
-              <p className="notice notice-failure">{UNCONFIRMED_MESSAGE}</p>
-              <p>
-                Transaction: <code>{unconfirmed.hash}</code>
-              </p>
-              <p>
-                <a href="#/mine">My promises</a>
-              </p>
-            </>
-          )}
-        </RequestNotice>
       </div>
     </div>
   );

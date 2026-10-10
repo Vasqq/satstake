@@ -81,9 +81,15 @@ describe("LLR-FE-037 the creation ends where it was made", () => {
 
   it("says until when the stake is locked, in the visitor's time, from the deadline in the event", async () => {
     const { panel } = await seal({}, { deadline: "7 days" });
-    const locked = within(panel).getByText("Locked until").parentElement as HTMLElement;
-    expect(locked.textContent).toContain(formatLocalTime(T0 + 604_800n));
-    expect(locked.textContent).toMatch(/referee/i);
+    const held = within(panel).getByText("Stake held").parentElement as HTMLElement;
+    expect(held.textContent).toContain(formatLocalTime(T0 + 604_800n));
+    expect(held.textContent).toContain("Until the payout is sent, after the referee rules or ");
+  });
+
+  it("does not say the stake is released by the verdict or the deadline alone, since only the payout moves it", async () => {
+    const { panel } = await seal();
+    expect(panel.textContent).not.toMatch(/Locked until/);
+    expect(panel.textContent).not.toMatch(/Referee rules, or/);
   });
 
   it("gives the link to the promise in full, copies it, says so, and opens it", async () => {
@@ -112,7 +118,8 @@ describe("LLR-FE-037 the creation ends where it was made", () => {
 
   it("keeps the promise as it was written, locked, in the sentence above the pad", async () => {
     await seal({}, { promise: "Run 5 km before Friday" });
-    const input = field("Promise") as HTMLInputElement;
+    const input = field("Promise") as HTMLTextAreaElement;
+    expect(input.tagName).toBe("TEXTAREA");
     expect(input.value).toBe("Run 5 km before Friday");
     expect(input.readOnly).toBe(true);
   });
@@ -122,7 +129,7 @@ describe("LLR-FE-037 the creation ends where it was made", () => {
     click(screen.getByRole("button", { name: "Make another promise" }));
     expect(screen.queryByRole("region", { name: "Sealed promise" })).toBeNull();
     expect(sealSvg()).toBeNull();
-    expect((field("Promise") as HTMLInputElement).value).toBe("");
+    expect((field("Promise") as HTMLTextAreaElement).value).toBe("");
     expect((field("Amount") as HTMLInputElement).value).toBe("");
     expect(isDisabled(submit())).toBe(true);
     expect(window.location.hash).toBe("#/create");
@@ -166,7 +173,7 @@ describe("LLR-FE-037 the seal is drawn from the creation hash and from no other 
     const { world } = await seal({ prepare: ({ world: w }) => void (w.nextPledgeId = 7n) }, { token: cirbtc.address, amount: "0.00001" });
     const hash = world.sent.find((s) => s.functionName === "createPledge")!.hash;
     const ring = document.querySelector("svg.seal-svg textPath")?.textContent;
-    expect(ring).toBe(`PROMISE № 7 · 1,000 SATS · SEALED ON ${network.name.toUpperCase()} · ${hash.slice(2, 10).toUpperCase()}`);
+    expect(ring).toBe(`PROMISE № 7 · 1,000 SATS OF CIRBTC · SEALED ON ${network.name.toUpperCase()} · ${hash.slice(2, 10).toUpperCase()}`);
   });
 
   it("shows no seal before the creation has landed, however far the steps have got", async () => {
@@ -222,7 +229,7 @@ describe("LLR-FE-037 the signature collapses into the ring before the seal appea
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => context as unknown as CanvasRenderingContext2D);
     vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
     const { chain, wallet } = await openCreate({ allowance: 5_000_000n });
-    await waitFor(() => expect(document.querySelector(".baseline span")?.textContent).toBe("SIGNED"), { timeout: 20_000 });
+    await waitFor(() => expect(document.querySelector(".baseline span")?.textContent).toBe("EXAMPLE SIGNATURE"), { timeout: 20_000 });
     let open = () => {};
     chain.receiptGate = new Promise<void>((resolve) => (open = resolve));
     fill();
@@ -285,7 +292,7 @@ describe("LLR-FE-037 the seal control says what will be sealed", () => {
     expect(submit().textContent).toBe("Seal it with $1.50 in USDC");
     fireEvent.change(field("Token"), { target: { value: cirbtc.address } });
     type("Amount", "0.00001");
-    expect(submit().textContent).toBe("Seal it with 1,000 sats");
+    expect(submit().textContent).toBe("Seal it with 1,000 sats of cirBTC");
     fireEvent.change(field("Token"), { target: { value: usdc.address } });
     expect(submit().textContent).toBe("Seal it with $0.00001 in USDC");
   });
@@ -303,6 +310,17 @@ describe("LLR-FE-037 the pad holds the form: its head the stake and the parties,
     expect(foot.contains(screen.getByRole("checkbox", { name: /I understand that the referee alone decides/ }))).toBe(true);
     expect(foot.contains(submit())).toBe(true);
     expect(foot.contains(progress())).toBe(true);
+  });
+
+  it("keeps the status and the notes in one block beside the button, so the foot can be one row", async () => {
+    await openCreate();
+    const area = submit().closest(".submit-area") as HTMLElement;
+    const notes = area.querySelector(".submit-notes") as HTMLElement;
+    expect(notes).not.toBeNull();
+    expect(notes.contains(submit())).toBe(false);
+    expect(notes.contains(progress())).toBe(true);
+    expect(notes.textContent).toContain("Your wallet may ask twice");
+    expect(notes.parentElement).toBe(area);
   });
 
   it("keeps the promise itself in the hero's sentence, with its byte count and its failure beside it", async () => {
@@ -349,7 +367,7 @@ describe("LLR-FE-070 the create page is the hero alone, with the promise in focu
   it("starts the landing's promise from the visitor's own words, never from a rotating example", async () => {
     await openCreate({ hash: "#/" });
     fill({ promise: "call my sister every Sunday" });
-    expect((field("Promise") as HTMLInputElement).value).toBe("call my sister every Sunday");
+    expect((field("Promise") as HTMLTextAreaElement).value).toBe("call my sister every Sunday");
   });
 
   it("takes focus to the promise when submit is pressed on the landing before the visitor has written one", async () => {

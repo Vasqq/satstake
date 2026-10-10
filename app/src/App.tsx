@@ -133,7 +133,7 @@ function Shell({ client, network }: { client: PublicClient; network: SelectedNet
           </p>
         ))}
       </div>
-      <main className="wrap">
+      <main className={route.name === "home" ? "wrap landing" : "wrap"}>
         {route.name === "home" && <HomeView reads={reads} network={network} />}
         {route.name === "create" && (
           <CreateView client={client} reads={reads} network={network} health={health} variant="page" onCreated={setCreated} />

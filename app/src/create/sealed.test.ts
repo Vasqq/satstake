@@ -49,9 +49,9 @@ describe("LLR-FE-037 the words round the seal come from the real promise", () =>
 });
 
 describe("LLR-FE-037 the stake is written in the words of its token (LLR-FE-045)", () => {
-  it("writes cirBTC as sats and USDC as dollars, and never adds a price", () => {
-    expect(stakeWords(network, cirbtc.address, 1_000n)).toBe("1,000 sats");
-    expect(stakeWords(network, cirbtc.address, 1n)).toBe("1 sat");
+  it("names the token with the sats of cirBTC, writes USDC as dollars, and never adds a price", () => {
+    expect(stakeWords(network, cirbtc.address, 1_000n)).toBe("1,000 sats of cirBTC");
+    expect(stakeWords(network, cirbtc.address, 1n)).toBe("1 sat of cirBTC");
     expect(stakeWords(network, usdc.address, 20_000_000n)).toBe("$20 in USDC");
     expect(stakeWords(network, usdc.address, 1_500_000n)).toBe("$1.50 in USDC");
   });

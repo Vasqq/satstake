@@ -1,4 +1,4 @@
-import { type InputHTMLAttributes, type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, type TextareaHTMLAttributes, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { PageHeading } from "../views/PageHeading";
 import { prefersReducedMotion } from "./motion";
 
@@ -42,6 +42,8 @@ function useTyper(active: boolean): string {
   return text;
 }
 
+
+
 export interface HeroProps {
   /** The visitor's own ending of the sentence, or null while the examples rotate. The owner keeps it. */
   custom: string | null;
@@ -55,7 +57,7 @@ export interface HeroProps {
   /** Takes focus into the field when the hero mounts already in writing mode, for a page that exists to be written in. */
   autoFocus?: boolean;
   /** Attributes for the field, such as the description that links it to its count and failure. Never its value, class or length. */
-  inputProps?: Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "className" | "maxLength" | "type">;
+  inputProps?: Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange" | "className" | "maxLength" | "rows" | "placeholder">;
   /** Mounted under the sentence: the pad, and whatever the create flow shows around it. */
   children?: ReactNode;
 }
@@ -68,8 +70,25 @@ export interface HeroProps {
  */
 export function Hero({ custom, onCustomChange, maxLength = 200, sub, title = "SatStake", autoFocus = false, inputProps, children }: HeroProps) {
   const typed = useTyper(custom === null);
-  const input = useRef<HTMLInputElement>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
   const writing = custom !== null;
+  // The field is kept as tall as what is written in it, so a promise of any length is read whole while it is typed
+  // and after it is sealed. It is measured again when the window changes size and when the fonts arrive, since
+  // both change where the lines break.
+  const fit = () => {
+    const el = input.current;
+    if (!el) return;
+    el.style.height = "auto";
+    // The underline is a border, which scrollHeight leaves out and a border-box height must include.
+    el.style.height = `${el.scrollHeight + (el.offsetHeight - el.clientHeight)}px`;
+  };
+  useLayoutEffect(fit, [custom, writing]);
+  useEffect(() => {
+    if (!writing) return;
+    window.addEventListener("resize", fit);
+    void document.fonts?.ready.then(fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [writing]);
   // Set when the visitor chose to write, so the field takes focus once it exists and not when a parent restores one.
   const focusNext = useRef(autoFocus);
   useEffect(() => {
@@ -87,14 +106,20 @@ export function Hero({ custom, onCustomChange, maxLength = 200, sub, title = "Sa
       <PageHeading title={title} className="hero-h1">
         I promise to
         {writing ? (
-          <input
+          <textarea
             {...inputProps}
             className="typed typed-in"
             ref={input}
+            rows={1}
             value={custom}
-            onChange={(e) => onCustomChange(e.target.value)}
+            // An example in an empty field, so a page with nothing typed yet is not a bare line.
+            placeholder={(EXAMPLES[0] as string).replace(/\.$/, "")}
+            // A promise is one sentence, so a line break is never kept: a pasted one becomes a space.
+            onChange={(e) => onCustomChange(e.target.value.replace(/\r?\n/g, " "))}
             onKeyDown={(e) => {
-              if (e.key === "Enter") e.currentTarget.blur();
+              if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+              e.preventDefault();
+              e.currentTarget.blur();
             }}
             aria-label="Your promise"
             maxLength={maxLength}

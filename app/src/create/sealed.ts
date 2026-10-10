@@ -24,14 +24,15 @@ export function sealLabelOf(parts: { id: bigint; stake: string; networkName: str
 }
 
 /**
- * A stake in the words of its token: sats for cirBTC and dollars for USDC, as LLR-FE-045 asks. The USDC form is
+ * A stake in the words of its token: sats of cirBTC and dollars for USDC, as LLR-FE-045 asks. The USDC form is
  * the shared one, so a figure reads the same here as on the promise page.
  *
  * @trace LLR-FE-037 LLR-FE-045
  */
 export function stakeWords(network: Pick<NetworkConfig, "tokens">, token: Address, amount: bigint): string {
   const match = network.tokens.find((t) => t.address.toLowerCase() === token.toLowerCase());
-  if (match?.symbol === "cirBTC") return formatSats(amount); // LLR-FE-045
+  // The token is named, since "1,000 sats" alone would not say which token is being locked.
+  if (match?.symbol === "cirBTC") return `${formatSats(amount)} of cirBTC`; // LLR-FE-045
   return formatAmount(network, token, amount);
 }
 

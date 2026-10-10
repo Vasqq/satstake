@@ -74,7 +74,8 @@
   --sheet: #ffffff;
   --ink: #14213d;
   --ink2: #3d4a66;
-  --sub: #667085;
+  /* Darker than the design's #6b7488, so muted text also reads at 4.5 to 1 on the wash (LLR-FE-072). */
+  --sub: #616b80;
   --rule: #dde1e8;
   --wash: #eef1f6;
   --sat: #e86a12;
@@ -86,6 +87,8 @@
      the orange, orange used as text, and the two message frames. */
   --control: #667085;
   --on-sat: #14213d;
+  /* Text set on a state colour: the verdict bubble of the clock. */
+  --on-state: #ffffff;
   --sat-text: #a84300;
   --error-bg: #fbe9e5;
   --error-fg: #9c2b1a;
@@ -117,6 +120,7 @@
     --grain: 0.05;
     --control: #8590a6;
     --on-sat: #1b1005;
+    --on-state: #0c0f15;
     --sat-text: #ff9549;
     --error-bg: #3a1512;
     --error-fg: #ffb4a9;
@@ -142,6 +146,7 @@
   --grain: 0.05;
   --control: #8590a6;
   --on-sat: #1b1005;
+  --on-state: #0c0f15;
   --sat-text: #ff9549;
   --error-bg: #3a1512;
   --error-fg: #ffb4a9;
@@ -374,11 +379,14 @@ h1,
   font-weight: 600;
 }
 
+/* The live line and the wallet control share one row, centred on the logo's line, so the wallet's sentence never
+   stacks under the live line. */
 .header-end {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px 18px;
 }
 
 .live {
@@ -409,21 +417,42 @@ h1,
   }
 }
 
+/* On a phone the logo and the nav keep the first row, and the live line and the wallet take one slim row under
+   it, so the headline is not pushed below the fold. */
 @media (max-width: 720px) {
+  .site-header {
+    padding-block: 14px 6px;
+  }
+
+  .site-header-row {
+    gap: 4px 10px;
+  }
+
   .header-end {
-    align-items: flex-start;
     flex-basis: 100%;
+    justify-content: space-between;
+    gap: 2px 12px;
   }
 
   .site-header nav {
-    margin-inline: -14px auto;
-    flex-basis: 100%;
+    margin-right: 0;
+    margin-left: auto;
+  }
+
+  .site-header nav a {
+    padding: 4px 8px;
+    font-size: 14px;
   }
 }
 
 main {
   flex: 1;
   padding-block: calc(var(--gap) * 2) calc(var(--gap) * 4);
+}
+
+/* The landing's hero brings its own space under the header. */
+main.landing {
+  padding-top: 0;
 }
 
 .site-footer {
@@ -490,29 +519,11 @@ main {
   font-weight: 400;
   color: var(--ink);
   min-height: 1em;
-  outline: none;
   border-radius: 6px;
 }
 
 .typed {
   cursor: text;
-}
-
-.typed-in {
-  width: 100%;
-  font: inherit;
-  font-style: italic;
-  font-weight: 400;
-  letter-spacing: inherit;
-  color: inherit;
-  background: transparent;
-  border: 0;
-  border-bottom: 2px solid var(--sat);
-  padding: 0;
-  outline: none;
-  line-height: 1.05;
-  min-height: 0;
-  border-radius: 0;
 }
 
 .caret {
@@ -558,8 +569,16 @@ main {
   font-size: 12.5px;
   color: var(--sub);
   border-bottom: 1px dashed var(--sub);
-  padding-bottom: 2px;
-  min-height: 2.75rem;
+  padding: 0 0 2px;
+  /* The dashed line sits under the words and spans only them. The 44 px target is drawn round it, out of
+     the flow, so it neither pushes the line away from the text nor widens it. */
+  position: relative;
+}
+
+.writebtn::after {
+  content: "";
+  position: absolute;
+  inset: -12px -10px;
 }
 
 .pad {
@@ -751,7 +770,7 @@ main {
 }
 
 .b.ghost {
-  box-shadow: inset 0 0 0 1px var(--control);
+  box-shadow: inset 0 0 0 1px var(--rule);
   color: var(--ink2);
 }
 
@@ -898,8 +917,8 @@ section.s {
   border-radius: 999px;
   font-size: 14px;
   font-weight: 600;
-  color: var(--ink2);
-  box-shadow: inset 0 0 0 1px var(--control);
+  color: var(--sub);
+  box-shadow: inset 0 0 0 1px var(--rule);
   transition:
     background 0.35s var(--out),
     color 0.35s var(--out);
@@ -977,7 +996,8 @@ section.s {
 }
 
 .doc.focus li {
-  color: color-mix(in srgb, var(--ink2) 45%, transparent);
+  /* The smallest share that keeps unlit lines at 4.5 to 1 on the sheet in both themes (76% light, 63% dark), with room. */
+  color: color-mix(in srgb, var(--ink2) 77%, transparent);
 }
 
 .doc.focus li.hit {
@@ -1106,7 +1126,7 @@ section.s {
   border-radius: 999px;
   font-size: 13.5px;
   font-weight: 600;
-  color: var(--ink2);
+  color: var(--sub);
   transition:
     background 0.35s var(--out),
     color 0.35s var(--out);
@@ -1267,7 +1287,7 @@ section.s {
   font-size: 11.5px;
   padding: 4px 9px;
   border-radius: 999px;
-  box-shadow: inset 0 0 0 1px var(--control);
+  box-shadow: inset 0 0 0 1px var(--rule);
   color: var(--sub);
   transition:
     background 0.3s,
@@ -1516,10 +1536,12 @@ section.s {
 .proof b {
   display: block;
   font-family: var(--serif);
-  font-size: 30px;
+  font-size: 26px;
   font-weight: 400;
   letter-spacing: -0.01em;
   overflow-wrap: anywhere;
+  /* "100 sats (0.000001 cirBTC)" breaks into two even lines and not three. */
+  text-wrap: balance;
 }
 
 .proof span.label {
@@ -1589,38 +1611,9 @@ section.s {
   top: var(--gap);
 }
 
-/* Outlined secondary action. A plain button already looks like this; the class gives the same look to a link. */
-.button-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 2.75rem;
-  padding: 0.5rem 1.25rem;
-  border: 1px solid var(--control);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink);
-  font-weight: 600;
-  text-decoration: none;
-  transition:
-    transform 140ms var(--out),
-    border-color 160ms ease;
-}
-
-.button-secondary:active {
-  transform: scale(0.97);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .button-secondary:hover {
-    border-color: var(--ink);
-  }
-}
-
 /* The one action a page is for. .button-primary is the older name of the same control, kept so existing
    views look right without markup changes. */
-.cta,
-.button-primary {
+.cta {
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -1638,8 +1631,7 @@ section.s {
     filter 160ms ease;
 }
 
-.cta:active,
-.button-primary:active {
+.cta:active {
   transform: scale(0.97);
 }
 
@@ -1648,8 +1640,7 @@ section.s {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .cta:hover,
-  .button-primary:hover {
+  .cta:hover {
     border-color: var(--sat);
     filter: brightness(1.06);
   }
@@ -1667,7 +1658,7 @@ section.s {
   align-items: center;
   min-height: 2rem;
   padding: 4px 14px;
-  border: 1px solid var(--control);
+  border: 1px solid var(--rule);
   border-radius: 999px;
   background: transparent;
   color: var(--ink);
@@ -1696,8 +1687,7 @@ section.s {
    at a readable contrast. The filled primary becomes an outline so muted text is never set on the accent. */
 button[aria-disabled="true"],
 button:disabled,
-.cta[aria-disabled="true"],
-.button-primary[aria-disabled="true"] {
+.cta[aria-disabled="true"] {
   border-style: dashed;
   border-color: var(--control);
   background: transparent;
@@ -1727,71 +1717,6 @@ button:disabled:active {
 
 .clock > span {
   white-space: nowrap;
-}
-
-/* Step marker: an accent dot, then a hairline running to the edge of its column. */
-.rule {
-  display: flex;
-  align-items: center;
-  height: 10px;
-}
-
-.rule::before {
-  content: "";
-  flex: none;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--sat);
-}
-
-.rule::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--rule);
-}
-
-/* A row of two to four columns divided by hairlines; set --cols or use .rows-2 and .rows-4. Every row
-   stacks to one column on a narrow screen. */
-.rows {
-  display: grid;
-  grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
-  border-top: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
-}
-
-.rows-2 {
-  --cols: 2;
-}
-
-.rows-4 {
-  --cols: 4;
-}
-
-.rows > * {
-  padding: 24px 24px 26px 0;
-}
-
-.rows > * + * {
-  padding-left: 24px;
-  border-left: 1px solid var(--rule);
-}
-
-@media (max-width: 860px) {
-  .rows {
-    grid-template-columns: 1fr;
-  }
-
-  .rows > * {
-    padding-right: 0;
-  }
-
-  .rows > * + * {
-    padding-left: 0;
-    border-left: 0;
-    border-top: 1px solid var(--rule);
-  }
 }
 
 /* The one card surface. */
@@ -1833,25 +1758,24 @@ button:disabled:active {
   color: var(--notice-fg);
 }
 
-/* The wallet control is quiet: small text, the address in mono. The status line stays in the page even when
-   empty so a screen reader announces what fills it, and takes no room while empty. */
+/* The wallet control is quiet: small text, the address in mono, and one row with the live line in the header. The
+   status line stays in the page even when empty so a screen reader announces what fills it, and takes no room
+   while empty. */
 .wallet-bar {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  max-width: 24rem;
-  font-size: 14px;
-  line-height: 1.45;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 12px;
+  max-width: 22rem;
+  font-size: 13px;
+  line-height: 1.4;
   color: var(--ink2);
   text-align: right;
 }
 
 .wallet-bar p {
   margin: 0;
-}
-
-.wallet-bar > * + :not(:empty) {
-  margin-top: 0.5rem;
 }
 
 .wallet-status {
@@ -1872,7 +1796,15 @@ button:disabled:active {
 }
 
 .wallet-bar button {
+  min-height: 2.25rem;
+  padding: 0.25rem 1rem;
   font-size: 14px;
+}
+
+@media (pointer: coarse) {
+  .wallet-bar button {
+    min-height: 2.75rem;
+  }
 }
 
 /* The state that asks the user to act takes the notice frame, so it is the one that stands out. */
@@ -1883,15 +1815,13 @@ button:disabled:active {
   color: var(--notice-fg);
 }
 
-@media (max-width: 860px) {
+@media (max-width: 720px) {
+  /* A wallet that is only a button shares the live line's row; a sentence is too long for it and takes the next. */
   .wallet-bar {
-    align-items: flex-start;
-    max-width: none;
+    max-width: 100%;
+    margin-left: auto;
+    font-size: 12.5px;
     text-align: left;
-  }
-
-  .wallet-bar ul {
-    justify-content: flex-start;
   }
 }
 
@@ -2087,8 +2017,15 @@ fieldset {
   font-size: 0.94em;
 }
 
-.hash-full {
+.hash-line {
+  min-width: 0;
+}
+
+.hash-line:has(.hash-full) {
   flex-basis: 100%;
+}
+
+.hash-full {
   overflow-wrap: anywhere;
 }
 
@@ -2119,68 +2056,6 @@ fieldset {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem 1.5rem;
-}
-
-.pledge-list {
-  display: grid;
-  gap: 0.75rem;
-  margin: var(--gap) 0;
-  padding: 0;
-  list-style: none;
-}
-
-.pledge-card {
-  display: grid;
-  gap: 0.25rem;
-  padding: 1rem 1.25rem;
-  border: 1px solid var(--rule);
-  border-radius: 20px;
-  background: var(--sheet);
-  color: var(--ink);
-  text-decoration: none;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .pledge-card:hover {
-    border-color: var(--control);
-  }
-}
-
-.pledge-card-head {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 0.25rem var(--gap);
-}
-
-.pledge-card-head span {
-  color: var(--ink2);
-}
-
-.pledge-card-promise {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  white-space: pre-wrap;
-}
-
-.pledge-card > span:last-child {
-  color: var(--ink2);
-  font-size: 0.875rem;
-}
-
-.pager {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem var(--gap);
-}
-
-.pager p {
-  flex-basis: 100%;
-  margin: 0;
 }
 
 /* Pledge page. The page's own layout is in styles/pledge.css; what remains here is shared with other views. */
@@ -2221,14 +2096,6 @@ fieldset {
   font-weight: 600;
 }
 
-.dialog-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.75rem;
-  margin-top: var(--gap);
-}
-
 /* Motion is optional: no transition or animation runs for a visitor who asks for less. */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -2238,30 +2105,6 @@ fieldset {
     animation: none !important;
     scroll-behavior: auto !important;
   }
-}
-
-/* Create form, My promises, About and the not-found views. Tokens come from styles.css; nothing here sets a colour
-   of its own. */
-
-/* ---- Create form ---- */
-
-.create-form {
-  gap: 2rem;
-  max-width: 44rem;
-  margin-top: 2rem;
-}
-
-.create-form .field {
-  gap: 0.5rem;
-}
-
-.create-form textarea {
-  resize: vertical;
-  min-height: 7rem;
-}
-
-.create-form .hint {
-  line-height: 1.45;
 }
 
 /* The beneficiary caution is always on the page: the mistake it guards against cannot be undone, so it does
@@ -2288,84 +2131,6 @@ fieldset {
   margin-top: 0.5em;
   border-radius: 50%;
   background: currentColor;
-}
-
-/* A failure sits right under its control, and a heavier frame keeps it from reading as a hint. */
-.create-form .field-error:not(:empty) {
-  border: 1px solid color-mix(in srgb, var(--error-fg) 40%, transparent);
-}
-
-.create-form legend {
-  margin-bottom: 0.5rem;
-  padding: 0;
-}
-
-/* Deadline presets read as a row of options; the chosen one takes the accent border, and the filled radio
-   inside it says so without colour. */
-.create-form .choices {
-  gap: 0.5rem;
-}
-
-.create-form fieldset .choice {
-  align-items: center;
-  padding: 0.5rem 1.1rem;
-  border: 1px solid var(--control);
-  border-radius: 999px;
-  cursor: pointer;
-  transition: border-color 160ms ease;
-}
-
-.create-form fieldset .choice:has(input:checked) {
-  border-color: var(--sat);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .create-form fieldset .choice:hover {
-    border-color: var(--ink);
-  }
-
-  .create-form fieldset .choice:has(input:checked):hover {
-    border-color: var(--sat);
-  }
-}
-
-.create-form input[type="radio"],
-.create-form input[type="checkbox"] {
-  flex: none;
-  width: 1.25rem;
-  height: 1.25rem;
-  margin: 0;
-}
-
-/* The acknowledgement is the last thing between a person and an irreversible stake, so it is a card of its own. */
-.create-form .ack {
-  align-items: flex-start;
-  padding: 1.1rem 1.25rem;
-  border: 1px solid var(--control);
-  border-radius: 20px;
-  background: var(--sheet);
-  line-height: 1.5;
-  cursor: pointer;
-}
-
-.create-form .ack:has(input:checked) {
-  border-color: var(--sat);
-}
-
-.create-form .ack input {
-  margin-top: 0.2rem;
-}
-
-.create-form .submit-area {
-  gap: 0;
-}
-
-.create-form .submit-area .hint {
-  max-width: 36rem;
-}
-
-.create-form .submit-area .cta {
-  margin-bottom: 0.25rem;
 }
 
 /* Progress: numbered by position, one accent dot per step, so the order is clear without the colour. */
@@ -2450,7 +2215,7 @@ fieldset {
 /* The state is a word in a frame and not a colour alone. */
 .mine-card-state {
   padding: 0.125rem 0.75rem;
-  border: 1px solid var(--control);
+  border: 1px solid var(--rule);
   border-radius: 999px;
   font-size: 0.8125rem;
   font-weight: 600;
@@ -2549,7 +2314,6 @@ fieldset {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .create-form fieldset .choice,
   .mine-card {
     transition: none;
   }
@@ -2661,10 +2425,6 @@ fieldset {
   font-size: 14px;
 }
 
-.pledge-page .pledge-card {
-  margin-top: 40px;
-}
-
 .pledge-state-row {
   display: flex;
   flex-wrap: wrap;
@@ -2690,65 +2450,6 @@ fieldset {
   white-space: nowrap;
 }
 
-.timeline {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin: 30px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.timeline li {
-  display: grid;
-  align-content: start;
-  gap: 12px;
-}
-
-.timeline .rule::before {
-  background: var(--control);
-}
-
-.timeline .done .rule::before,
-.timeline .now .rule::before {
-  background: var(--sat);
-}
-
-.timeline .done .rule::after {
-  background: var(--sat);
-  opacity: 0.6;
-}
-
-/* The ring is a second cue next to the colour; aria-current says the same to a screen reader. */
-.timeline [aria-current="step"] .rule::before {
-  box-shadow: 0 0 0 5px color-mix(in srgb, var(--sat) 24%, transparent);
-}
-
-.timeline .label {
-  color: var(--sub);
-}
-
-.timeline .done .label,
-.timeline [aria-current="step"] .label {
-  color: var(--ink);
-}
-
-.clock-block {
-  margin-top: 26px;
-}
-
-.pledge-card .clock {
-  margin: 0;
-}
-
-.pledge-card .clock.ended {
-  color: var(--ink);
-}
-
-.clock-note {
-  margin: 0;
-  color: var(--ink2);
-}
-
 .pledge-deadline {
   display: flex;
   flex-wrap: wrap;
@@ -2759,39 +2460,6 @@ fieldset {
 
 .pledge-deadline time {
   font-family: var(--mono);
-  font-size: 17px;
-}
-
-.people {
-  margin: 34px 0 0;
-}
-
-.people dt {
-  display: block;
-}
-
-.people dd {
-  margin: 10px 0 0;
-}
-
-.people .you-mark {
-  margin-left: 6px;
-  color: var(--sat-text);
-  font-family: var(--sans);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.people .hash-value {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 10px;
-}
-
-.people .hash-text {
-  flex-basis: 100%;
   font-size: 17px;
 }
 
@@ -2813,38 +2481,6 @@ fieldset {
   color: var(--ink2);
 }
 
-/* The verdict and the settle action each get their own card, so the one thing this visitor can do is the
-   one thing in the lower half of the page. */
-.pledge-page .pledge-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px 24px;
-  margin-top: 24px;
-}
-
-.pledge-actions h2 {
-  margin: 0;
-  font-family: var(--serif);
-  font-size: clamp(22px, 2.6vw, 30px);
-  font-weight: 800;
-  line-height: 1.1;
-  letter-spacing: -0.03em;
-}
-
-.pledge-actions .action-buttons {
-  gap: 12px;
-}
-
-.pledge-actions .hint,
-.pledge-actions > p {
-  flex-basis: 100%;
-  margin: 0;
-  color: var(--ink2);
-  font-size: 15px;
-}
-
 .pledge-page .pledge-progress {
   margin-top: 24px;
 }
@@ -2859,59 +2495,9 @@ fieldset {
   margin-top: 24px;
 }
 
-/* The Broken confirmation: a centred card over a dimmed page. The dialog is modal, so the page behind it is
-   inert and focus stays inside until it closes. */
-.broken-dialog {
-  width: min(32rem, calc(100vw - 2rem));
-  padding: clamp(24px, 4vw, 36px);
-  border: 1px solid var(--rule);
-  border-radius: 28px;
-  background: var(--sheet);
-  color: var(--ink);
-  animation: dialog-in 200ms var(--out);
-}
-
-.broken-dialog::backdrop {
-  background: rgb(0 0 0 / 0.72);
-}
-
-.broken-dialog h2 {
-  margin: 0 0 12px;
-  font-family: var(--serif);
-  font-size: clamp(22px, 3vw, 28px);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-}
-
-.broken-dialog p {
-  color: var(--ink2);
-}
-
-@keyframes dialog-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.98);
-  }
-}
-
-/* The timeline keeps its three columns at any width; a label wraps to a second line before the steps stack. */
 @media (max-width: 860px) {
   .pledge-page h1.pledge-heading {
     margin-top: 40px;
-  }
-
-  .pledge-page .pledge-actions .action-buttons {
-    flex: 1 1 100%;
-  }
-
-  .pledge-page .pledge-actions .action-buttons button {
-    flex: 1 1 8rem;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .broken-dialog {
-    animation: none;
   }
 }
 
@@ -3021,10 +2607,13 @@ fieldset {
   overflow: hidden;
   min-height: 2.5em;
   margin: 0;
-  font-weight: 600;
-  font-size: clamp(22px, 2.6vw, 30px);
-  line-height: 1.25;
-  letter-spacing: -0.01em;
+  /* The promise as the document sets a quotation: the serif in italic, as the hero's own sentence is. */
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(24px, 3vw, 36px);
+  line-height: 1.2;
+  letter-spacing: -0.015em;
   overflow-wrap: anywhere;
 }
 
@@ -3032,13 +2621,29 @@ fieldset {
   margin-top: 26px;
 }
 
+/* The state word and the countdown take the voice of the clock's state heading on the promise page: the serif at
+   that size, with the outcome's tone where there is one. */
 .home-rot-clock {
   min-height: 1em;
   margin: 0;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(32px, 3.6vw, 48px);
+  letter-spacing: -0.025em;
+  line-height: 1.02;
+  color: var(--ink);
 }
 
 .home-rot-clock.is-ended {
   color: var(--ink);
+}
+
+.home-rot-clock[data-tone="kept"] {
+  color: var(--kept);
+}
+
+.home-rot-clock[data-tone="broken"] {
+  color: var(--broken);
 }
 
 .home-rot-sub {
@@ -3117,21 +2722,6 @@ fieldset {
 }
 
 @media (max-width: 860px) {
-  .home-steps,
-  .home-claims,
-  .home-rev,
-  .home-faq {
-    grid-template-columns: 1fr;
-  }
-
-  .home-steps,
-  .home-claims {
-    gap: 32px;
-  }
-
-  .home-rev {
-    gap: 40px;
-  }
 
   .home-rot-facts {
     grid-template-columns: 1fr 1fr;
@@ -3168,19 +2758,12 @@ fieldset {
   box-shadow: inset 0 0 0 1px var(--rule);
 }
 
-.cta,
-.button-primary {
+.cta {
   border: 0;
   min-height: 48px;
   padding: 0 26px;
   font-size: 16px;
   font-weight: 600;
-}
-
-.button-secondary {
-  box-shadow: inset 0 0 0 1px var(--control);
-  border: 0;
-  color: var(--ink2);
 }
 
 .mine-card {
@@ -3202,7 +2785,6 @@ fieldset {
 }
 
 .mine-card-state {
-  border-color: var(--control);
   font-family: var(--mono);
   font-weight: 500;
 }
@@ -3225,23 +2807,10 @@ fieldset {
   font-weight: 500;
 }
 
-.wallet-bar {
-  gap: 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
-
 /* Create flow in the hero */
-/* The create pad: the form inside the hero's signature pad. Colours come from the tokens in styles.css. */
+/* The create pad: the form inside the hero's signature pad. Colours come from the tokens in styles.css. The head
+   and the foot are light: fields are a line with a label above it, in the mono and ink of the design's own
+   labels, and the foot is one row, the status and notes on the left and the button on the right. */
 
 .create-pad {
   display: flex;
@@ -3264,6 +2833,7 @@ fieldset {
 .create-pad .pad-head {
   flex-direction: column;
   align-items: stretch;
+  padding: 18px 22px 20px;
 }
 
 .create-pad .pad-form-head {
@@ -3275,7 +2845,7 @@ fieldset {
 .create-pad .pad-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px 20px;
+  gap: 14px 32px;
   align-items: start;
 }
 
@@ -3286,11 +2856,67 @@ fieldset {
 }
 
 .create-pad .field {
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
 
+.create-pad .field > label,
+.create-pad legend {
+  font-weight: 400;
+}
+
+/* The fields are a line, not a box. The line is the control border, which is 3 to 1 against the sheet. */
+.create-pad .pad-fields input,
+.create-pad .pad-fields select,
+.create-pad input[type="datetime-local"] {
+  min-height: 2.5rem;
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 1.5px solid var(--control);
+  border-radius: 0;
+  background-color: transparent;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 14px;
+  box-shadow: none;
+}
+
+.create-pad .pad-fields input:focus-visible,
+.create-pad .pad-fields select:focus-visible,
+.create-pad input[type="datetime-local"]:focus-visible {
+  border-bottom-color: var(--sat);
+  box-shadow: 0 1px 0 0 var(--sat);
+  outline-offset: 4px;
+}
+
+.create-pad .pad-fields input[aria-invalid="true"],
+.create-pad .pad-fields select[aria-invalid="true"],
+.create-pad input[type="datetime-local"][aria-invalid="true"] {
+  border-bottom: 2px solid var(--error-fg);
+}
+
+/* The select draws its own chevron from two gradients, in the ink tokens, so it follows the theme and no system
+   look shows through. */
+.create-pad .pad-fields select {
+  appearance: none;
+  padding-right: 1.75rem;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ink2) 50%),
+    linear-gradient(135deg, var(--ink2) 50%, transparent 50%);
+  background-position:
+    calc(100% - 11px) 55%,
+    calc(100% - 6px) 55%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+.create-pad .pad-fields input::placeholder {
+  color: var(--sub);
+}
+
 .create-pad .hint {
+  color: var(--sub);
   font-size: 12.5px;
   line-height: 1.4;
 }
@@ -3300,12 +2926,28 @@ fieldset {
   border: 1px solid color-mix(in srgb, var(--error-fg) 40%, transparent);
 }
 
+/* The one warning on the beneficiary, in the notice colour with a dot and no frame: it says what the field is for
+   and what an address nobody controls costs, once. */
+.create-pad .field-caution {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.create-pad .field-caution::before {
+  width: 7px;
+  height: 7px;
+  margin-top: 0.45em;
+}
+
 .create-pad .pad-foot {
-  flex-direction: column;
+  display: grid;
+  justify-content: stretch;
   align-items: stretch;
-  justify-content: flex-start;
-  gap: 16px;
-  padding: 18px 22px;
+  gap: 14px;
+  padding: 16px 22px;
 }
 
 .create-pad fieldset .choices {
@@ -3316,12 +2958,12 @@ fieldset {
 
 .create-pad fieldset .choice {
   align-items: center;
-  min-height: 2.5rem;
-  padding: 0.35rem 1rem;
+  min-height: 2.25rem;
+  padding: 0.2rem 0.9rem;
   border-radius: 999px;
   box-shadow: inset 0 0 0 1px var(--control);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13.5px;
 }
 
 .create-pad fieldset .choice:has(input:checked) {
@@ -3331,37 +2973,72 @@ fieldset {
 .create-pad input[type="radio"],
 .create-pad input[type="checkbox"] {
   flex: none;
-  width: 1.2rem;
-  height: 1.2rem;
+  width: 1.1rem;
+  height: 1.1rem;
   margin: 0;
 }
 
+/* The statement is plain text beside its box; the box is the control. */
 .create-pad .ack {
   align-items: flex-start;
-  padding: 14px 16px;
-  border-radius: 16px;
-  box-shadow: inset 0 0 0 1px var(--control);
-  font-size: 14px;
+  min-height: 0;
+  padding: 0;
+  color: var(--ink2);
+  font-size: 13.5px;
   line-height: 1.5;
+  cursor: pointer;
 }
 
-.create-pad .ack:has(input:checked) {
-  box-shadow: inset 0 0 0 2px var(--sat);
+.create-pad .ack input {
+  margin-top: 0.2rem;
 }
 
+/* The foot's one row: notes and status on the left, the button on the right. On a phone the button comes first
+   and takes the width, and the notes follow it. */
 .create-pad .submit-area {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 20px;
 }
 
-.create-pad .submit-area .hint {
-  max-width: 36rem;
+.create-pad .submit-area > * {
+  margin: 0;
 }
 
 .create-pad .submit-area .b {
-  margin-bottom: 6px;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.create-pad .submit-notes {
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.create-pad .submit-notes > * {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .create-pad .submit-area {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .create-pad .submit-area .b {
+    grid-column: 1;
+    justify-self: stretch;
+    justify-content: center;
+  }
+
+  .create-pad .submit-notes {
+    grid-column: 1;
+    grid-row: 2;
+  }
 }
 
 .create-pad .sealed .sealed-share {
@@ -3388,9 +3065,10 @@ fieldset {
   outline-offset: -3px;
 }
 
-/* The promise is the hero's sentence: an underlined line in the heading's own type, not a boxed field. The
-   generic field rules would otherwise frame it. */
-.hero h1 input.typed-in {
+/* The promise is the hero's sentence: an underlined line in the heading's own type, not a boxed field. It is a
+   text area that script keeps as tall as its text, so a long promise wraps and is read whole; the generic field
+   rules would otherwise frame it and clip it to one line. */
+.hero h1 textarea.typed-in {
   display: block;
   width: 100%;
   height: auto;
@@ -3407,10 +3085,31 @@ fieldset {
   border-bottom: 2px solid var(--sat);
   border-radius: 0;
   box-shadow: none;
+  resize: none;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
-.hero h1 input.typed-in[aria-invalid="true"] {
+.hero h1 textarea.typed-in::placeholder {
+  color: var(--sub);
+  opacity: 1;
+}
+
+.hero h1 textarea.typed-in[aria-invalid="true"] {
   border-bottom-color: var(--error-fg);
+}
+
+/* The keyboard is shown by the orange ring and an underline twice as heavy. The ring is drawn with an outline,
+   which the global :focus-visible rule gives every control, so nothing above may switch it off. */
+.hero h1 textarea.typed-in:focus-visible {
+  outline: 2px solid var(--sat);
+  outline-offset: 8px;
+  border-radius: 6px;
+  box-shadow: 0 2px 0 0 var(--sat);
+}
+
+.hero h1 textarea.typed-in[aria-invalid="true"]:focus-visible {
+  box-shadow: 0 2px 0 0 var(--error-fg);
 }
 
 /* Promise page */
@@ -3625,6 +3324,13 @@ fieldset {
 .party-value .hash-text {
   font-family: var(--mono);
   font-size: 12px;
+}
+
+/* The party's note runs on from the address, as the design sets it; the controls are on the line below. */
+.party-value .hash-note {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--sub);
 }
 
 .party-value .hash-controls {

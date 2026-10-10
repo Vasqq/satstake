@@ -5,6 +5,9 @@ import { userMessageFor } from "../chain/errors";
 /** The wording of 05 section 2.2 for a wallet rejection (4001). */
 export const REJECTED_MESSAGE = "You cancelled the request in your wallet. Nothing was sent.";
 
+/** A refused connection has sent nothing, so it says what was cancelled and makes no claim about what was sent. */
+export const CONNECTION_REJECTED_MESSAGE = "You cancelled the connection in your wallet.";
+
 /** The wording of LLR-FE-062. */
 export const FAILED_MESSAGE = "Something went wrong. Nothing was changed.";
 
@@ -89,7 +92,18 @@ export function useConnectionFailure() {
  *
  * @trace LLR-FE-060 LLR-FE-061 LLR-FE-062
  */
-export function RequestNotice({ error, label, children }: { error: unknown; label: string; children?: ReactNode }) {
+export function RequestNotice({
+  error,
+  label,
+  children,
+  rejectedMessage = REJECTED_MESSAGE,
+}: {
+  error: unknown;
+  label: string;
+  children?: ReactNode;
+  /** What a rejection says, for a request whose cancelling has a different meaning from a transaction's. */
+  rejectedMessage?: string;
+}) {
   const [copy, setCopy] = useState<{ error: unknown; result: "copied" | "failed" } | null>(null);
   const shown = error !== null && error !== undefined;
   const rejected = shown && isUserRejection(error);
@@ -110,7 +124,7 @@ export function RequestNotice({ error, label, children }: { error: unknown; labe
     <div className="notice-area">
       <div role="status" aria-label={label}>
         {children}
-        {rejected && <p className="notice">{REJECTED_MESSAGE}</p>}
+        {rejected && <p className="notice">{rejectedMessage}</p>}
         {explained !== null && <p className="notice notice-failure">{explained}</p>}
         {failed && <p className="notice notice-failure">{FAILED_MESSAGE}</p>}
         {/* The result belongs to the error it was made for, so a newer error starts without it. */}

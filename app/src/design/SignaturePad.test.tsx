@@ -93,14 +93,15 @@ describe("LLR-FE-037 the demonstration signature is generated and is the only in
     expect(area.getAttribute("role")).toBe("img");
   });
 
-  it("says it is signing, then that it is signed", async () => {
+  it("says it is an example while it writes and once it has written, and never that it is signed", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "requestAnimationFrame", "cancelAnimationFrame", "performance"] });
     render(<SignaturePad head={null} foot={null} />);
-    expect(document.querySelector(".baseline span")?.textContent).toBe("SIGNING…");
+    expect(document.querySelector(".baseline span")?.textContent).toBe("EXAMPLE, SIGNING…");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
-    expect(document.querySelector(".baseline span")?.textContent).toBe("SIGNED");
+    expect(document.querySelector(".baseline span")?.textContent).toBe("EXAMPLE SIGNATURE");
+    expect(document.querySelector(".baseline")?.textContent).not.toMatch(/\bSIGNED\b/);
   });
 
   it("shows the seal in place of the baseline once it has bytes, and renders head and foot", () => {

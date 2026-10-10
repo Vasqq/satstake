@@ -139,6 +139,29 @@ describe("LLR-FE-044 the agreement leaves room for the actions a role has", () =
     expect(bare.container.querySelector(".sig .line")?.textContent).toBe("");
   });
 
+  it("writes each role's note after a plain value, joined to it so a wrap never starts a line with the dot", () => {
+    render(<AgreementDoc {...props} />);
+    const notes = [...document.querySelectorAll(".sig code")].map((c) => c.textContent);
+    expect(notes).toEqual([props.staker, `${props.referee}\u00a0· rules once`, `${props.beneficiary}\u00a0· receives if broken or silent`]);
+  });
+
+  it("hands the note to a value that wants to place it, and writes it only once", () => {
+    render(<AgreementDoc {...props} referee={(note) => <i data-testid="mine">{`mine says ${note}`}</i>} />);
+    expect(screen.getByTestId("mine").textContent).toBe("mine says rules once");
+    expect(document.querySelectorAll(".sig")[1]!.textContent).not.toMatch(/rules once.*rules once/);
+  });
+
+  it("marks the connected party with (you) beside the role's name", () => {
+    render(<AgreementDoc {...props} you="beneficiary" />);
+    const names = [...document.querySelectorAll(".sig b")].map((b) => b.textContent);
+    expect(names).toEqual(["Staker", "Referee", "Beneficiary (you)"]);
+  });
+
+  it("gives each Read as button a class of its own, so the plain-button style of the other views never reaches it", () => {
+    render(<AgreementDoc {...props} />);
+    for (const button of screen.getAllByRole("button")) expect(button.className, button.textContent ?? "").not.toBe("");
+  });
+
   it("labels itself an example only when told it is one", () => {
     const view = render(<AgreementDoc {...props} example />);
     expect(view.container.querySelector(".example")?.textContent).toMatch(/example/i);

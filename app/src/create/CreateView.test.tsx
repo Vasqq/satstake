@@ -854,9 +854,16 @@ describe("LLR-FE-030 the form says what it is for, and what each field is asked 
   it("describes the referee and the beneficiary in the words decided, linked to their fields", async () => {
     await openCreate();
     expect(describedText(field("Referee address"))).toContain("The person who decides. They must mark the promise kept before the deadline.");
-    expect(describedText(field("Beneficiary address"))).toContain(
-      "Receives your stake if the promise is broken or not confirmed in time.",
-    );
+    // The beneficiary's one sentence is the caution, which says what the hint would have said.
+    expect(describedText(field("Beneficiary address"))).toContain("This address receives your stake if the promise is broken or missed.");
+  });
+
+  it("says what the beneficiary receives once, and not in a hint and again in a caution", async () => {
+    await openCreate();
+    const shell = field("Beneficiary address").closest(".field") as HTMLElement;
+    expect(shell.querySelectorAll(".hint")).toHaveLength(0);
+    expect(shell.textContent?.match(/receives your stake/gi)).toHaveLength(1);
+    expect(describedText(field("Beneficiary address")).match(/receives your stake/gi)).toHaveLength(1);
   });
 
   it("gives the submit control the class of the pad's primary button, in the pad's foot", async () => {
@@ -1081,14 +1088,14 @@ describe("LLR-FE-033 creation is preceded by an approval of exactly the amount, 
     await ready();
     click(submit());
     await waitFor(() => expect(progress().textContent).toContain("Step 1 of 2"));
-    expect(submit().nextElementSibling?.textContent).toBe("");
+    expect(submit().nextElementSibling?.firstElementChild?.textContent).toBe("");
     release();
     await sealedPanel();
   });
 
   it("says before the first prompt that the wallet may ask twice, under the submit control and linked to it", async () => {
     await openCreate();
-    expect(submit().nextElementSibling?.textContent).toBe(PROMPT_HINT);
+    expect(submit().nextElementSibling?.firstElementChild?.textContent).toBe(PROMPT_HINT);
     expect(describedText(submit())).toContain(PROMPT_HINT);
   });
 

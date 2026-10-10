@@ -6609,3 +6609,127 @@ Incident: the interrupted first run left mutation 2003 in `clockState.ts`; it wa
 ### Screenshots
 
 `npm run screenshots` (the script exited with an error after writing the pledge routes; the pledge page images were produced). Promise #1 on testnet read at 1440 light and 390 dark against the design: agreement layout, seven lines, "Read as", signature lines with the real addresses and "signed", clock with the paid-out stage and one deadline mark. After that, two small CSS changes (smaller copy and explorer controls on signature lines, more room under the deadline) were made and not rescreenshotted.
+
+## Signed port, fix round
+
+Paths relative to the repository; commands from `app/`. Requirements: LLR-FE-037, 040, 045, 061, 070, 071, 072, 073 as in 05 v1.27 to v1.29 (look and words are Liam's; units, behaviour, accessibility and honesty bind). The 19 items came from a design review and a requirements review of `1d450b9`.
+
+### Red
+
+Tests changed or written before any code. `npx vitest run src/format.test.ts src/create/sealed.test.ts src/design src/styles.test.ts src/userStrings.test.ts`: 38 failed, 181 passed (219). `npx vitest run src/wallet src/views src/create/CreateFlow.test.tsx src/App.test.tsx`: 26 failed, 562 passed (588). Each failure is the predicted one, trimmed:
+
+```
+format.test        expected '1,000 sats, 0.00001 cirBTC' to be '1,000 sats (0.00001 cirBTC)'      (item 13, 9 tests)
+format.test        expected '0 sats, 0 cirBTC' to be '0 sats'                                   (item 12)
+sealed.test        expected '1,000 sats' to be '1,000 sats of cirBTC'                           (item 17)
+CreateFlow.test    expected 'Seal it with 1,000 sats' to be 'Seal it with 1,000 sats of cirBTC'   (item 17)
+CreateFlow.test    ring: 'PROMISE № 7 · 1,000 SATS · SEALED ON' to be '… 1,000 SATS OF CIRBTC · …'  (item 17)
+CreateFlow.test    Unable to find an element with the text: Stake held                                (item 18)
+CreateFlow.test    expected 'INPUT' to be 'TEXTAREA'                                                    (item 4)
+CreateFlow.test    expected null not to be null  (.submit-notes)                                  (item 6)
+SignaturePad.test  expected 'SIGNING…' to be 'EXAMPLE, SIGNING…'; expected 'SIGNED' to be 'EXAMPLE SIGNATURE'   (item 5)
+Hero.test          expected 'INPUT' to be 'TEXTAREA'; keyDown Enter not prevented; height not set; resize not measured; paste break kept; placeholder ''   (items 4, 8)
+AgreementDoc.test  expected [ 'Staker', 'Referee', 'Beneficiary' ] to equal [ …, 'Beneficiary (you)' ]; Read as and scenario buttons have className ''   (items 1, 9)
+PledgeAgreement    Cannot read properties of null (reading 'textContent') (.hash-line); expected 'SPAN' to be 'B'   (item 9)
+Clock.test         expected 'rgb(255, 255, 255)' to be 'var(--on-state)'; expected 'var(--sat)' to be 'var(--sat-text)'   (item 3)
+styles.test        light: sub on wash 4.39 < 4.5; --on-state undefined (6 tests); dimmed lines light 2.23, dark 2.95 < 4.5   (item 3)
+styles.test        expected 0 to be greater than 0 (.typed-in:focus-visible rule)                       (item 16)
+styles.test        .b.ghost: body contains var(--control)                                                (item 2)
+styles.test        unused classes [ 'button-secondary', …(20) ]; two global reduced-motion blocks             (item 14)
+userStrings.test   straight apostrophe in AboutView.tsx and WalletBar.tsx                              (item 15)
+WalletBar.test     Unable to find an element with the text: You cancelled the connection in your wallet.   (item 15)
+failure.test       expected undefined to be 'You cancelled the connection in your …'                  (item 15)
+PledgeActions.test expected '… goes to the person named to get it.' to be '… goes to the beneficiary.'      (item 15)
+PromiseRotator     expected null to be 'kept' / 'broken' (data-tone), 5 tests                                   (item 12)
+App.test          expected false to be true (main.landing)                                          (item 7)
+```
+
+Not observed red before code: the CSS-only parts of items 2, 6, 7, 10 and 11 (layout of the pad, the header and the underline of "Write your own"), which are checked by screenshots below; the styles tests above are red for the parts a test can carry. Tests added after the first green run, to kill surviving mutants: the border added to the measured height, Enter while an input method composes, and a refused connection after a refused switch.
+
+### Green
+
+All from `app/`, each run alone. `npm test`: 51 files passed, 2 skipped (live), 1375 tests passed, 9 skipped. `npm run lint` and `npm run typecheck`: clean. `npm run build:testnet` and `npm run build:mainnet`: built. From the root, `node --test test/tools/*.test.mjs`: 475 pass. `node tools/trace-check.mjs`: `OK. 106/113 LLRs referenced, 31/55 journeys passing`.
+
+Tests moved to the new behaviour rather than weakened (06 section 10): the cirBTC form in `format.test.ts`, `MineView.test.tsx`, `PledgeAgreement.test.tsx`, `PledgeDetails.test.tsx`; "Locked until" in `CreateFlow.test.tsx`; the rejection wording of a refused connection in `WalletBar.test.tsx`; the verdict hint in `PledgeActions.test.tsx`; the beneficiary hint in `CreateView.test.tsx` (now one sentence, asserted once); `submit().nextElementSibling` in two `CreateView` tests (the hint is now the first child of the notes block that follows the button). Net new tests: format 1, sealed 0 (changed), SignaturePad 0 (changed), Hero 6, AgreementDoc 4, Clock 3, PledgeAgreement 3, PledgeActions 0 (changed), PromiseRotator 1, CreateFlow 2, CreateView 1, failure 1, WalletBar 1, App 1, userStrings 3, styles 50 (token contrast, focus rule, control borders, unused classes, one reduced-motion rule).
+
+Code: `design/Hero.tsx` (text area, grow, no break, placeholder), `design/SignaturePad.tsx`, `design/AgreementDoc.tsx` (`you`, function values, joined note, classes), `design/Clock.tsx`, `views/HashValue.tsx` (`note`), `views/pledge/PledgeParty.tsx`, `views/PledgeView.tsx`, `views/home/PromiseRotator.tsx` (tone), `format.ts`, `create/sealed.ts`, `create/CreateView.tsx` (sealed text, one beneficiary sentence, notes block), `wallet/failure.tsx` and `wallet/WalletBar.tsx` (connection wording), `App.tsx` (`main.landing`), `views/AboutView.tsx`, `views/pledge/PledgeActions.tsx`, and `styles.css`.
+
+### Mutations 2050 to 2078 (logic only; one edit each, copies in `cache/mutants/`, restored and checked with `cmp` after every one)
+
+Command: `node cache/mutate.mjs cache/mutants.json` from the repository root, which writes the mutant, runs `vitest run` on the named test files, restores the original and runs `cmp`. All 29 restores reported ok. All 29 killed.
+
+| # | Mutant | Result |
+|---|---|---|
+| 2050 | Hero: Enter is not prevented | killed, 1 |
+| 2051 | Hero: a pasted break is kept | killed, 1 |
+| 2052 | Hero: border left out of the measured height | survived at first (jsdom reports 0 for both heights); test added with both mocked; killed, 1 |
+| 2053 | Hero: no measuring on resize | killed, 1 |
+| 2054 | Hero: empty placeholder | killed, 1 |
+| 2055 | Hero: Enter swallowed while composing | survived at first; composing test added; killed, 1 |
+| 2056 | stakeWords: token not named | killed, 1 |
+| 2057 | formatAmount: zero keeps its bracket | killed, 1 |
+| 2058 | formatAmount: comma instead of bracket | killed, 8 |
+| 2059 | AgreementDoc: dot joined by a breaking space | killed, 1 |
+| 2060 | AgreementDoc: (you) on every other party | killed, 8 |
+| 2061 | AgreementDoc: function values never called | killed, 7 |
+| 2062 | HashValue: note never shown | killed, 1 |
+| 2063 | WalletBar: a switch never recorded | killed, 9 |
+| 2064 | WalletBar: every refusal worded as a transaction's | killed, 6 |
+| 2065 | WalletBar: a connect never recorded | survived at first (the default state is connect); refused connection after a refused switch added; killed, 1 |
+| 2066 | RequestNotice: ignores the wording it is given | killed, 1 |
+| 2067 | App: every page marked landing | killed, 1 |
+| 2068 | PromiseRotator: tones swapped | killed, 5 |
+| 2069 | SignaturePad: says SIGNED | killed, 1 |
+| 2070 | Clock: bubble text fixed white | killed, 1 |
+| 2071 | Clock: payout mark in the plain orange | killed, 1 |
+| 2072 | Sealed panel: the old claim | killed, 2 |
+| 2073 | Create: notes block renamed | killed, 1 |
+| 2074 | Create: the beneficiary hint back beside the caution | killed, 1 |
+| 2075 | PledgeActions: the old verdict hint | killed, 1 |
+| 2076 | PledgeView: (you) never shown | killed, 3 |
+| 2077 | PledgeParty: note not passed | killed, 1 |
+| 2078 | PromiseRotator: a tone on an open promise's countdown | killed, 1 |
+
+The three that survived at first were run again after their tests were added, and the table shows the final result.
+
+### Equivalent mutant M3 (item 19), recorded and not killed
+
+`refused ||` dropped from the guard in the Broken confirmation's `onConfirm` (`views/pledge/PledgeActions.tsx`): `if (refused || lateVerdict())` to `if (lateVerdict())`. `refused` is `gated || busy`. A test would have to hold the confirmation open while a request is in flight or while the write gate is off, and neither state exists. While the gate is off, the line `if (confirmOpen && (!verdictOffered || gated)) setConfirmOpen(false)` closes the confirmation in the same render, so its button is unmounted before any click can reach `onConfirm`. While a request is in flight, the only way to start one with the step open is the Kept button, whose handler closes the step in the same batch as the pending state, again before another click. Nothing in the page can produce the state the guard refuses, so the guard is defensive and its removal is observably the same. It stays, as the second line of defence if a later change reorders those two closes.
+
+### Contrast, measured from the tokens (LLR-FE-072)
+
+The test `LLR-FE-072 text and control borders meet WCAG 2.1 AA in both themes` reads the tokens from `styles.css` and fails below 4.5 to 1 for text and 3 to 1 for control borders, so these are enforced and not only reported. After this round, light then dark:
+
+| Pair | Light | Dark |
+|---|---|---|
+| `--sub` on `--wash` (was 4.39 light) | 4.73 | 5.24 |
+| `--sub` on `--paper` | 5.04 | 5.97 |
+| `--sub` on `--sheet` | 5.35 | 5.63 |
+| unlit agreement lines, `--ink2` at 77% on the sheet (was 45%: 2.23 light, 2.95 dark) | 4.70 | 6.24 |
+| `--sat-text` on `--sheet` / `--wash` | 6.06 / 5.35 | 8.31 / 7.74 |
+| `--on-state` on `--kept` (white light, near black dark; was white on both, 1.97 dark) | 5.49 | 9.73 |
+| `--on-state` on `--broken` | 5.35 | 7.52 |
+| `--on-state` on `--sub` (the "No answer" bubble) | 5.35 | 5.97 |
+| `--control` on `--sheet` (field underlines, deadline radios) | 4.97 | 5.63 |
+
+Light `--sub` moves from `#667085` to `#616b80`, one token, darker than the design's `#6b7488` as before. The smallest share for the unlit lines is 76% in light and 63% in dark; 77% is used so both pass with room. The dimmed lines now read less different from the lit ones than in the design, which is the cost of AA there.
+
+Hairlines: pills, chips, Read as, the ghost button and the state chip are back on `--rule` (about 1.3 to 1 against the sheet), as Liam's design has them. WCAG 1.4.11 asks 3 to 1 for a component's boundary only where the boundary is what identifies it; these are text buttons whose label is their identity, and the inputs, the select and the deadline radios keep `--control`.
+
+### Screenshots
+
+`npm run screenshots` (42 images in `cache/screenshots/`) and `cache/shots.mjs` (a long promise typed into the create page and the landing, the agreement with a role chosen, the clock) at 390 and 1440, light and dark, read against `design/satstake-signed-frontend.html` and the review images. Item by item:
+
+1. Read as and the scenario control: hairline pills, one white pill in a wash. Seen at 1440 light and dark and 390 light.
+2. Pills, chips, ghost buttons on the hairline; fields underlined with `--control`. Seen.
+3. Contrast: by the test above. Not visible by eye in a screenshot except the dimmed lines, which are seen and legible in both themes.
+4. A 132-character promise at 390 and 1440, light and dark, on the create page and on the landing: the text area is 7 lines tall and `scrollHeight` equals `clientHeight` in all eight runs, so nothing is clipped. At 1440 the type is the hero's 118 px, so a long promise takes most of the screen; see the report.
+5. The baseline reads EXAMPLE, SIGNING… and then EXAMPLE SIGNATURE. Seen at 1440 and 390.
+6. Pad head and foot: underline fields in mono, select with its own chevron, labels as `.label`, the beneficiary sentence once, the foot as one row at 1440 and stacked at 390. Seen.
+7. Landing at 390: the headline top is at y=150 (the design's is about 150); the nav is on the logo row, the live line on the next. At 390 on `#/create`, with no wallet installed, the sentence about wallets takes the row under the live line.
+8. `#/create`: the placeholder is the first example, muted, with the focus ring and heavier underline on it. Seen at 390 and 1440, light and dark.
+9. Promise page at 1440 and 390: "0x875a…2a4A · rules once" on one line with the controls below it; "(you)" is tested, since the capture has no wallet.
+10. Header at 1440: logo, nav, live line and the wallet sentence on one row. Seen.
+11. "Write your own": the dashed line sits under the words and spans them only. Seen at 390 and 1440.
+12. Check it yourself: serif state word in the kept tone ("Paid back", green), serif italic quote. Seen at 1440 light.
+13. "10 sats (0.0000001 cirBTC)" in clause 01, the clock and the stat tiles. Seen on promise #1 and on the landing.

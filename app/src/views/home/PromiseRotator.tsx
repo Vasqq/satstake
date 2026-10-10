@@ -4,6 +4,7 @@ import { ChainClock } from "../../chain/clock";
 import type { Pledge, PledgeState, Reads } from "../../chain/reads";
 import { useTick } from "../../chain/useTick";
 import type { SelectedNetwork } from "../../config/networks";
+import { liveStage } from "../../design/clockState";
 import { formatAmount, formatLocalTime, shorten } from "../../format";
 import { NOT_SYNCED, formatClock, formatRemaining } from "../pledge/countdown";
 import { ROLE_LABELS } from "../roles";
@@ -389,7 +390,10 @@ function EndedClock({ slide }: { slide: Slide }) {
   const phrase = settled ? (toStaker ? "The stake went back to " : "The stake went to ") : toStaker ? "The stake goes back to " : "The stake goes to ";
   return (
     <>
-      <p className="clock home-rot-clock is-ended">{ENDED_WORDS[state].big}</p>
+      {/* The word carries the outcome; the tone repeats it in colour, the way the promise page's clock does. */}
+      <p className="clock home-rot-clock is-ended" data-tone={liveStage(state).tone === "g" ? "kept" : "broken"}>
+        {ENDED_WORDS[state].big}
+      </p>
       <p className="home-rot-sub mono">
         {state === "Expired" && "Silence counts as broken. "}
         {phrase}

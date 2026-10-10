@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { type Abi, BaseError, ContractFunctionRevertedError, UserRejectedRequestError, encodeErrorResult } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { satStakeAbi } from "../abi";
-import { FAILED_MESSAGE, REJECTED_MESSAGE, RequestNotice, isUserRejection, rawErrorText } from "./failure";
+import { CONNECTION_REJECTED_MESSAGE, FAILED_MESSAGE, REJECTED_MESSAGE, RequestNotice, isUserRejection, rawErrorText } from "./failure";
 
 afterEach(() => {
   cleanup();
@@ -69,6 +69,12 @@ describe("LLR-FE-061 a rejection shows the neutral message in section 2.2 and no
     render(<RequestNotice error={coded(4001)} label="Notices" />);
     expect(REJECTED_MESSAGE).toBe("You cancelled the request in your wallet. Nothing was sent.");
     expect(screen.getByRole("status", { name: "Notices" }).textContent).toBe(REJECTED_MESSAGE);
+  });
+
+  it("says a refused connection was cancelled and claims nothing about what was sent, since none was", () => {
+    render(<RequestNotice error={coded(4001)} label="Notices" rejectedMessage={CONNECTION_REJECTED_MESSAGE} />);
+    expect(CONNECTION_REJECTED_MESSAGE).toBe("You cancelled the connection in your wallet.");
+    expect(screen.getByRole("status", { name: "Notices" }).textContent).toBe(CONNECTION_REJECTED_MESSAGE);
   });
 
   it("has no alert role and no class that names an error or a failure", () => {

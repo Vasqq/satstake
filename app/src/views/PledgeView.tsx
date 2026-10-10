@@ -158,9 +158,10 @@ export function PledgeView({ reads, client, network, health, id, afterStatus }: 
             meta={`${network.name} · source verified on Sourcify`}
             amountLabel={amount}
             deadlineText={formatLocalTime(data.deadline)}
-            staker={<PledgeParty party="staker" address={data.staker} network={network} you={role === "staker"} />}
-            referee={<PledgeParty party="referee" address={data.referee} network={network} you={role === "referee"} />}
-            beneficiary={<PledgeParty party="beneficiary" address={data.beneficiary} network={network} you={role === "beneficiary"} />}
+            you={role}
+            staker={(note) => <PledgeParty party="staker" address={data.staker} network={network} note={note} />}
+            referee={(note) => <PledgeParty party="referee" address={data.referee} network={network} note={note} />}
+            beneficiary={(note) => <PledgeParty party="beneficiary" address={data.beneficiary} network={network} note={note} />}
             signatures={{ staker: STAKER_MARK, referee: refereeMark(live.state) }}
             clauseActions={clauseActions}
             footer={actions.progress}

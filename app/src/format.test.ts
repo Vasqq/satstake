@@ -46,13 +46,17 @@ describe("LLR-FE-040 amounts as the pledge page writes them", () => {
   });
 
   it.each([
-    [1_000n, "1,000 sats, 0.00001 cirBTC"],
-    [10_000n, "10,000 sats, 0.0001 cirBTC"],
-    [1n, "1 sat, 0.00000001 cirBTC"],
-    [2n, "2 sats, 0.00000002 cirBTC"],
-    [150_000_000n, "150,000,000 sats, 1.5 cirBTC"],
+    [1_000n, "1,000 sats (0.00001 cirBTC)"],
+    [10_000n, "10,000 sats (0.0001 cirBTC)"],
+    [1n, "1 sat (0.00000001 cirBTC)"],
+    [2n, "2 sats (0.00000002 cirBTC)"],
+    [150_000_000n, "150,000,000 sats (1.5 cirBTC)"],
   ])("writes %s units of cirBTC in sats first and then in cirBTC as %s", (amount, text) => {
     expect(formatAmount(network, cirbtc.address, amount)).toBe(text);
+  });
+
+  it("writes a zero cirBTC total as 0 sats and nothing more, since a bracket of zeros says nothing", () => {
+    expect(formatAmount(network, cirbtc.address, 0n)).toBe("0 sats");
   });
 
   it("gives cirBTC no dollar sign, because no price feed turns it into dollars", () => {
@@ -62,7 +66,7 @@ describe("LLR-FE-040 amounts as the pledge page writes them", () => {
   it("matches the token address whatever the case of the letters", () => {
     expect(formatAmount(network, usdc.address.toLowerCase() as `0x${string}`, 2_000_000n)).toBe("$2 in USDC");
     expect(formatAmount(network, cirbtc.address.toLowerCase() as `0x${string}`, 10_000n)).toBe(
-      "10,000 sats, 0.0001 cirBTC",
+      "10,000 sats (0.0001 cirBTC)",
     );
   });
 
@@ -72,7 +76,7 @@ describe("LLR-FE-040 amounts as the pledge page writes them", () => {
   });
 
   it("does not pad the fraction of a cirBTC amount", () => {
-    expect(formatAmount(network, cirbtc.address, 150_000_000n)).toBe("150,000,000 sats, 1.5 cirBTC");
+    expect(formatAmount(network, cirbtc.address, 150_000_000n)).toBe("150,000,000 sats (1.5 cirBTC)");
   });
 
   it("shows no sats for a token that is not cirBTC", () => {
@@ -99,7 +103,7 @@ describe("LLR-FE-040 amounts as the pledge page writes them", () => {
       ],
     };
     expect(formatAmount(custom, usdc.address, 123_456n)).toBe("$1,234.56 in USDC");
-    expect(formatAmount(custom, cirbtc.address, 15n)).toMatch(/, 0\.0015 cirBTC$/);
+    expect(formatAmount(custom, cirbtc.address, 15n)).toMatch(/ \(0\.0015 cirBTC\)$/);
   });
 
   it("leaves a configured token that is neither USDC nor cirBTC as units and symbol, with no dollar sign", () => {

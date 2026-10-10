@@ -91,7 +91,7 @@ function demoView(scenario: Scenario, t: number): View {
     marks: [
       { at: DEADLINE, label: "deadline", colour: "var(--broken)" },
       ...(scenario !== "silent" ? [{ at: VERDICT_DAY, label: "verdict", colour: "var(--ink)" }] : []),
-      { at: st.pay, label: "payout", colour: "var(--sat)" },
+      { at: st.pay, label: "payout", colour: "var(--sat-text)" },
     ],
   };
 }
@@ -221,7 +221,7 @@ export function Clock(props: ClockProps) {
               <ExampleBadge />
               <div className="scen" role="group" aria-label="What the referee does">
                 {SCENARIOS.map(([k, label]) => (
-                  <button key={k} type="button" aria-pressed={scenario === k} onClick={() => setScenario(k)}>
+                  <button key={k} type="button" className="scenbtn" aria-pressed={scenario === k} onClick={() => setScenario(k)}>
                     {label}
                   </button>
                 ))}
@@ -273,7 +273,7 @@ export function Clock(props: ClockProps) {
               {view.bubble && (
                 <g className="bubble">
                   <rect x={330 - 48} y="72" width="96" height="28" rx="14" style={{ fill: view.bubble.colour }} />
-                  <text x="330" y="91" style={{ fill: "#fff" }}>{view.bubble.text}</text>
+                  <text x="330" y="91" style={{ fill: "var(--on-state)" }}>{view.bubble.text}</text>
                 </g>
               )}
               <g className="stake" transform={`translate(${view.stake[0]},${view.stake[1]})`}>

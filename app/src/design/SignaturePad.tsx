@@ -167,7 +167,8 @@ export function SignaturePad({ head, foot, sealBytes, sealLabel = "", collapsing
       >
         {!hasSeal && !collapsing && (
           <div className="baseline">
-            <span>{signed ? "SIGNED" : "SIGNING…"}</span>
+            {/* The ink is the pad's own demonstration and the visitor has signed nothing, so it never says SIGNED. */}
+            <span>{signed ? "EXAMPLE SIGNATURE" : "EXAMPLE, SIGNING…"}</span>
           </div>
         )}
         <canvas ref={canvas} aria-hidden="true" />

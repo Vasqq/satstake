@@ -1,6 +1,6 @@
 import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatLocalTime } from "../../format";
+import { formatLocalTime, shorten } from "../../format";
 import { BENEFICIARY, REFEREE, STAKER, cirbtc, openPledge, signature, usdc } from "../../test/pledgeHarness";
 import { network, shortOf, teardownWallets } from "../../test/walletHarness";
 
@@ -41,7 +41,7 @@ describe("LLR-FE-040 the pledge page is the agreement, with this promise's value
   it("writes a cirBTC stake in sats with the cirBTC amount, and explains the unit under that line only", async () => {
     await openPledge({ token: cirbtc.address, amount: 10_000n });
     await loaded();
-    expect(lines()[0]!.textContent).toContain("10,000 sats, 0.0001 cirBTC");
+    expect(lines()[0]!.textContent).toContain("10,000 sats (0.0001 cirBTC)");
     expect(lines()[0]!.textContent).toContain("A sat is the smallest unit of Bitcoin.");
     expect(lines().filter((li) => li.textContent!.includes("smallest unit"))).toHaveLength(1);
   });
@@ -171,5 +171,40 @@ describe("LLR-FE-021 the promise page reads fully without a wallet", () => {
     expect(document.querySelectorAll(".sig")).toHaveLength(3);
     expect(main().queryByRole("button", { name: /^(Kept|Broken|Send payout)$/ })).toBeNull();
     expect(main().getByText("Connect a wallet to act.")).toBeTruthy();
+  });
+});
+
+describe("LLR-FE-040 a signature line reads as the design's: the note follows the address on its line, and (you) follows the role", () => {
+  it("puts the referee's and the beneficiary's note on the line of the address, before its copy controls", async () => {
+    await openPledge({ who: "none" });
+    await loaded();
+    for (const [label, party, note] of [
+      ["Referee", REFEREE, "rules once"],
+      ["Beneficiary", BENEFICIARY, "receives if broken or silent"],
+    ] as const) {
+      const row = signature(label);
+      const inline = row.querySelector(".hash-line") as HTMLElement;
+      expect(inline.textContent, label).toBe(`${shorten(party)}\u00a0· ${note}`);
+      // The dot is bound to the address, so a line that wraps never begins with it.
+      expect(inline.querySelector(".hash-text")?.nextSibling?.textContent).toBe(`\u00a0· ${note}`);
+      const controls = row.querySelector(".hash-controls") as HTMLElement;
+      expect(inline.compareDocumentPosition(controls) & Node.DOCUMENT_POSITION_FOLLOWING, label).toBeTruthy();
+      expect(row.textContent!.split(note), label).toHaveLength(2);
+    }
+  });
+
+  it("gives the staker no note", async () => {
+    await openPledge({ who: "none" });
+    await loaded();
+    expect(signature("Staker").querySelector(".hash-line")?.textContent).toBe(shorten(STAKER));
+  });
+
+  it("writes (you) in the role's name, and not after the address", async () => {
+    await openPledge({ who: "referee" });
+    await loaded();
+    const mark = within(signature("Referee")).getByText("(you)");
+    expect(mark.parentElement?.tagName).toBe("B");
+    expect(mark.parentElement?.textContent).toBe("Referee (you)");
+    expect(signature("Referee").querySelector(".hash-value")?.textContent).not.toContain("(you)");
   });
 });

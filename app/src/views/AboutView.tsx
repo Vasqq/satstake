@@ -45,7 +45,7 @@ export function AboutView() {
         <h2 id="about-cannot">What SatStake cannot do</h2>
         <p>
           {
-            "SatStake itself has no owner, admin, fee, pause, or upgrade function. After a promise is created, no one can cancel it, change its amount, move its deadline, or change who receives the stake. The token issuer's powers above still apply."
+            "SatStake itself has no owner, admin, fee, pause, or upgrade function. After a promise is created, no one can cancel it, change its amount, move its deadline, or change who receives the stake. The token issuer’s powers above still apply."
           }
         </p>
       </section>

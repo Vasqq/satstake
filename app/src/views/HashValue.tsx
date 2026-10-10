@@ -11,6 +11,8 @@ export interface HashValueProps {
   viewNoun: string;
   /** Show the whole value in a block that wraps, for a place where a visitor compares it with a published one. */
   full?: boolean;
+  /** A few words that follow the value on its own line, before the controls, such as what the party does. */
+  note?: string;
 }
 
 /**
@@ -20,7 +22,7 @@ export interface HashValueProps {
  *
  * @trace LLR-FE-040
  */
-export function HashValue({ kind, value, explorerUrl, copyNoun, viewNoun, full = false }: HashValueProps) {
+export function HashValue({ kind, value, explorerUrl, copyNoun, viewNoun, full = false, note }: HashValueProps) {
   const [result, setResult] = useState<"copied" | "failed" | null>(null);
 
   async function copy() {
@@ -35,9 +37,13 @@ export function HashValue({ kind, value, explorerUrl, copyNoun, viewNoun, full =
   const isTransaction = kind === "transaction";
   return (
     <span className="hash-value">
-      <code className={full ? "hash-text hash-full" : "hash-text"} title={value}>
-        {full ? value : shorten(value)}
-      </code>
+      <span className="hash-line">
+        <code className={full ? "hash-text hash-full" : "hash-text"} title={value}>
+          {full ? value : shorten(value)}
+        </code>
+        {/* The dot is bound to the value by a no-break space, so a line that wraps never begins with it. */}
+        {note !== undefined && note !== "" && <span className="hash-note">{`\u00a0· ${note}`}</span>}
+      </span>
       <span className="hash-controls">
         <button type="button" aria-label={`Copy ${copyNoun}`} onClick={() => void copy()}>
           Copy

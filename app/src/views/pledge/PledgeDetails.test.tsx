@@ -123,7 +123,7 @@ describe("LLR-FE-040 the pledge page shows the pledge", () => {
     teardownWallets();
     await openPledge({ token: cirbtc.address, amount: 1n });
     await promiseTitle();
-    expect(stakeAmount().textContent).toMatch(/^1 sat, 0\.00000001/);
+    expect(stakeAmount().textContent).toMatch(/^1 sat \(0\.00000001 cirBTC\)/);
   });
 
   it("shows the deadline in the visitor's local time", async () => {

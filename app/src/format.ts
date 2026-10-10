@@ -36,7 +36,8 @@ export function formatAmount(network: Pick<NetworkConfig, "tokens">, token: stri
   const match = network.tokens.find((t) => t.address.toLowerCase() === token.toLowerCase());
   if (match === undefined) return `${amount.toString()} units of ${shorten(token)}`; // LLR-FE-040
   if (match.symbol === "USDC") return `$${groupedUnits(amount, match.decimals, 2)} in USDC`; // LLR-FE-045
-  if (match.symbol === "cirBTC") return `${formatSats(amount)}, ${groupedUnits(amount, match.decimals)} cirBTC`; // LLR-FE-045
+  // The bracket carries the same amount in the token's own unit, so a zero has nothing to add to "0 sats".
+  if (match.symbol === "cirBTC") return amount === 0n ? formatSats(amount) : `${formatSats(amount)} (${groupedUnits(amount, match.decimals)} cirBTC)`; // LLR-FE-045
   return `${formatUnits(amount, match.decimals)} ${match.symbol}`; // LLR-FE-040
 }
 

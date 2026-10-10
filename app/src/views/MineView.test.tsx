@@ -197,7 +197,7 @@ describe("LLR-FE-050 the list", () => {
     expect(second!.textContent).toContain("$5 in USDC");
     expect(third!.textContent).toContain("You judge it");
     expect(third!.textContent).toContain(STATE_NAMES.Active);
-    expect(third!.textContent).toContain("10,000 sats, 0.0001 cirBTC");
+    expect(third!.textContent).toContain("10,000 sats (0.0001 cirBTC)");
     expect(third!.textContent).toMatch(/Deadline \w{3} \d{1,2}, 2026, \d{1,2}:\d{2} [AP]M/);
   });
 

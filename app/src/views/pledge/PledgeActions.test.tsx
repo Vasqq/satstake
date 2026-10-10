@@ -88,8 +88,8 @@ describe("LLR-FE-042 the pledge page offers exactly the actions of the matrix", 
     const group = await screen.findByRole("group", { name: "Was this promise kept?" });
     expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(["Kept", "Broken"]);
     const note = main().getByText(/^Your verdict is final\. Record it before the deadline/);
-    expect(note.textContent).toMatch(/the person named to get it/);
-    expect(note.textContent).not.toMatch(/beneficiary|referee|staker/i);
+    expect(note.textContent).toBe("Your verdict is final. Record it before the deadline, or the stake goes to the beneficiary.");
+    expect(note.textContent).not.toMatch(/person named/);
   });
 
   it("gives the staker of an Active pledge a hint and no button", async () => {
