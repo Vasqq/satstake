@@ -5,7 +5,10 @@ export type ActionPlan =
   | { kind: "none" }
   | { kind: "connect" | "hint" | "waiting"; text: string }
   | { kind: "verdict" }
-  | { kind: "settle"; label: string; goesTo: "staker" | "beneficiary" };
+  | { kind: "settle"; goesTo: "staker" | "beneficiary" };
+
+/** One label for every role: who sends the payout does not change what it does, and the note beside it says where the stake goes. @trace LLR-FE-042 */
+export const SETTLE_LABEL = "Send payout";
 
 /** @trace LLR-FE-042 */
 export const SETTLE_NOTES: Readonly<Record<"staker" | "beneficiary", string>> = {
@@ -44,14 +47,7 @@ export function planActions(input: {
     return { kind: "none" };
   }
 
-  if (state === "Kept") {
-    // LLR-FE-042
-    return role === "staker"
-      ? { kind: "settle", label: "Withdraw my stake", goesTo: "staker" }
-      : { kind: "settle", label: "Send stake to staker", goesTo: "staker" };
-  }
+  if (state === "Kept") return { kind: "settle", goesTo: "staker" }; // LLR-FE-042
   // Expired and Broken both pay the beneficiary.
-  return role === "beneficiary"
-    ? { kind: "settle", label: "Claim stake", goesTo: "beneficiary" } // LLR-FE-042
-    : { kind: "settle", label: "Send stake to beneficiary", goesTo: "beneficiary" }; // LLR-FE-042
+  return { kind: "settle", goesTo: "beneficiary" }; // LLR-FE-042
 }

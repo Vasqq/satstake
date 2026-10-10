@@ -56,7 +56,7 @@ describe("LLR-FE-013 the shell shows the view for each route", () => {
   it("shows one view per documented route", async () => {
     const cases: [string, string][] = [
       ["#/", "I promise to"],
-      ["#/create", "New promise"],
+      ["#/create", "I promise to"],
       ["#/mine", "My promises"],
       ["#/about", "About SatStake"],
       ["#/p/1", "Promise #1"],
@@ -558,9 +558,10 @@ describe("LLR-FE-072 each page sets the title and moves focus to its heading", (
     act(() => {
       window.location.hash = "#/create";
     });
-    const create = await screen.findByRole("heading", { name: "New promise" });
+    await screen.findByRole("heading", { name: /^I promise to/ });
     expect(document.title).toBe("New promise | SatStake");
-    expect(document.activeElement).toBe(create);
+    // The page exists to be written in, so focus goes to the promise and not to the heading above it.
+    expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Your promise" }));
   });
 
   it("moves the focus to the next pledge's heading when only the pledge changes", async () => {

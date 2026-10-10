@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { PledgeState } from "../../chain/reads";
 import type { Role } from "../roles";
-import { type ActionPlan, SETTLE_NOTES, planActions } from "./actions";
+import { type ActionPlan, SETTLE_LABEL, SETTLE_NOTES, planActions } from "./actions";
 
 type Wallet = "none" | "pending" | "connected";
 const plan = (state: PledgeState, role: Role | "other" | null, over: { wallet?: Wallet; deadlineReached?: boolean | null } = {}) =>
   planActions({ state, role: role === "other" ? null : role, wallet: over.wallet ?? "connected", deadlineReached: "deadlineReached" in over ? (over.deadlineReached as boolean | null) : false });
-const settle = (label: string, goesTo: "staker" | "beneficiary"): ActionPlan => ({ kind: "settle", label, goesTo });
+const settle = (goesTo: "staker" | "beneficiary"): ActionPlan => ({ kind: "settle", goesTo });
 
 describe("LLR-FE-042 LLR-VV-006 the action matrix of 05 section 2.1", () => {
   it("offers a referee of an Active pledge Kept and Broken before the deadline", () => {
@@ -25,27 +25,23 @@ describe("LLR-FE-042 LLR-VV-006 the action matrix of 05 section 2.1", () => {
     expect(plan("Active", "other")).toEqual({ kind: "none" });
   });
 
-  it("offers settlement to the beneficiary of an Expired or Broken pledge as Claim stake", () => {
-    expect(plan("Expired", "beneficiary")).toEqual(settle("Claim stake", "beneficiary"));
-    expect(plan("Broken", "beneficiary")).toEqual(settle("Claim stake", "beneficiary"));
-  });
-
-  it("offers everyone else Send stake to beneficiary on an Expired or Broken pledge", () => {
+  it("offers every role a payout to the beneficiary on an Expired or Broken pledge", () => {
     for (const state of ["Expired", "Broken"] as const) {
-      for (const role of ["staker", "referee", "other"] as const) {
-        expect(plan(state, role)).toEqual(settle("Send stake to beneficiary", "beneficiary"));
+      for (const role of ["staker", "referee", "beneficiary", "other"] as const) {
+        expect(plan(state, role)).toEqual(settle("beneficiary"));
       }
     }
   });
 
-  it("offers a staker of a Kept pledge Withdraw my stake", () => {
-    expect(plan("Kept", "staker")).toEqual(settle("Withdraw my stake", "staker"));
+  it("offers every role a payout to the staker on a Kept pledge", () => {
+    for (const role of ["staker", "referee", "beneficiary", "other"] as const) {
+      expect(plan("Kept", role)).toEqual(settle("staker"));
+    }
   });
 
-  it("offers every other account on a Kept pledge Send stake to staker", () => {
-    for (const role of ["referee", "beneficiary", "other"] as const) {
-      expect(plan("Kept", role)).toEqual(settle("Send stake to staker", "staker"));
-    }
+  it("gives the payout control one label, whoever sends it and wherever it goes", () => {
+    expect(SETTLE_LABEL).toBe("Send payout");
+    expect(Object.keys(plan("Kept", "staker")).sort()).toEqual(["goesTo", "kind"]);
   });
 
   it("offers nothing on a settled pledge to anyone", () => {
@@ -84,7 +80,7 @@ describe("LLR-FE-042 LLR-VV-006 the action matrix of 05 section 2.1", () => {
   });
 
   it("does not let the deadline hide settlement", () => {
-    expect(plan("Expired", "staker", { deadlineReached: true })).toEqual(settle("Send stake to beneficiary", "beneficiary"));
+    expect(plan("Expired", "staker", { deadlineReached: true })).toEqual(settle("beneficiary"));
   });
 
   it("says where the stake goes, in the brief's words", () => {

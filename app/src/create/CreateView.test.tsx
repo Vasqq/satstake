@@ -17,6 +17,7 @@ import {
   localInput,
   openCreate,
   ready,
+  sealedPanel,
   submit,
   tickAcknowledgement,
   type,
@@ -100,7 +101,7 @@ const tokenRevert = (reason: string) =>
 describe("LLR-FE-030 the create form lays out its fields and shows each failure beside its own field", () => {
   it("has a labelled control for every field, in a form with a name", async () => {
     await openCreate();
-    expect(screen.getByRole("heading", { level: 1, name: "New promise" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: /^I promise to/ })).toBeTruthy();
     expect(screen.getByRole("form", { name: "New promise" })).toBeTruthy();
     for (const label of ["Promise", "Token", "Amount", "Referee address", "Beneficiary address"]) {
       expect(field(label), label).toBeTruthy();
@@ -450,8 +451,9 @@ describe("LLR-FE-030 activating the disabled submit shows every failure and move
     const { wallet } = await openCreate({ walletChain: FOREIGN_CHAIN });
     fill();
     await waitFor(() => expect(describedText(submit())).toContain("another network"));
+    const before = document.activeElement;
     click(submit());
-    expect(document.activeElement).toBe(document.body);
+    expect(document.activeElement).toBe(before);
     expect(prompts(wallet)).toBe(0);
   });
 });
@@ -834,7 +836,7 @@ describe("LLR-FE-034 the form warns beside the beneficiary field that an address
 describe("LLR-FE-030 the form says what it is for, and what each field is asked for", () => {
   it("opens with one sentence under the heading", async () => {
     await openCreate();
-    const heading = screen.getByRole("heading", { level: 1, name: "New promise" });
+    const heading = screen.getByRole("heading", { level: 1, name: /^I promise to/ });
     expect(heading.nextElementSibling?.textContent).toBe("Lock a stake against a promise. Your referee decides whether you kept it.");
   });
 
@@ -857,9 +859,10 @@ describe("LLR-FE-030 the form says what it is for, and what each field is asked 
     );
   });
 
-  it("gives the submit control the class of the primary action", async () => {
+  it("gives the submit control the class of the pad's primary button, in the pad's foot", async () => {
     await openCreate();
-    expect(submit().className).toContain("button-primary");
+    expect(submit().className).toContain("ink");
+    expect(submit().closest(".pad-foot")).not.toBeNull();
   });
 });
 
@@ -941,27 +944,6 @@ describe("LLR-FE-035 the beneficiary's warning also gives way to a failure of it
     fireEvent.blur(field("Beneficiary address"));
     expect(errorFor("Beneficiary address")).toContain("cannot be a party");
     expect(warningElement("Beneficiary address").textContent).toBe("");
-  });
-});
-
-describe("LLR-FE-037 the copy-link control says what it is for, and its confirmation does not move it", () => {
-  it("says what to do with the link above a button named for it, then the confirmation", async () => {
-    await openCreate();
-    fill();
-    await ready();
-    click(submit());
-    await screen.findByRole("heading", { level: 1, name: "Promise #42" });
-    // The page now opens with its banner and keeps the status line in the card, so the block is found by its
-    // own frame; what this test holds is the order inside it.
-    const button = screen.getByRole("button", { name: "Copy the link to this promise" });
-    const block = button.closest(".copy-link") as HTMLElement;
-    expect(block).not.toBeNull();
-    const text = within(block).getByText("Your promise is created. Send this link to your referee and your beneficiary.");
-    const confirmation = within(block).getByRole("status", { name: "Link copy status" });
-    const follows = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-    expect(follows(text, button)).toBe(true);
-    expect(follows(button, confirmation)).toBe(true);
-    expect(confirmation.className).toContain("copy-status");
   });
 });
 
@@ -1101,7 +1083,7 @@ describe("LLR-FE-033 creation is preceded by an approval of exactly the amount, 
     await waitFor(() => expect(progress().textContent).toContain("Step 1 of 2"));
     expect(submit().nextElementSibling?.textContent).toBe("");
     release();
-    await waitFor(() => expect(window.location.hash).toBe("#/p/42"));
+    await sealedPanel();
   });
 
   it("says before the first prompt that the wallet may ask twice, under the submit control and linked to it", async () => {
@@ -1222,7 +1204,7 @@ describe("LLR-FE-033 a creation that fails after a confirmed approval keeps the 
 });
 
 describe("LLR-FE-033 the receipt wait follows a transaction the wallet replaces", () => {
-  it("goes to the pledge of the replacement's event when the wallet's own hash never mines", async () => {
+  it("shows the pledge of the replacement's event when the wallet's own hash never mines", async () => {
     const { world } = await openCreate({
       allowance: 5_000_000n,
       prepare: ({ world: w }) => {
@@ -1233,7 +1215,7 @@ describe("LLR-FE-033 the receipt wait follows a transaction the wallet replaces"
     fill();
     await ready();
     click(submit());
-    await waitFor(() => expect(window.location.hash).toBe("#/p/61"), { timeout: 4000 });
+    expect(within(await sealedPanel()).getByText("#61")).toBeTruthy();
     expect(world.count("createPledge")).toBe(1);
   });
 });
@@ -1482,7 +1464,7 @@ describe("LLR-FE-036 while a transaction from the form is pending, submit is dis
     click(submit());
     expect(prompts(wallet)).toBe(2);
     open();
-    await waitFor(() => expect(window.location.hash).toBe("#/p/42"));
+    await sealedPanel();
     expect(world.count("approve")).toBe(1);
     expect(world.count("createPledge")).toBe(1);
     expect(prompts(wallet)).toBe(2);
@@ -1497,7 +1479,7 @@ describe("LLR-FE-036 while a transaction from the form is pending, submit is dis
     await ready();
     const frozen = () => ({
       text: ["Promise", "Amount", "Referee address", "Beneficiary address", "Custom date and time"].map(
-        (label) => (screen.getByLabelText(label) as HTMLInputElement | HTMLTextAreaElement).readOnly,
+        (label) => (field(label) as HTMLInputElement | HTMLTextAreaElement).readOnly,
       ),
       select: (field("Token") as HTMLSelectElement).disabled,
       choices: screen.getAllByRole("radio").map((r) => (r as HTMLInputElement).disabled),
@@ -1508,7 +1490,7 @@ describe("LLR-FE-036 while a transaction from the form is pending, submit is dis
     await waitFor(() => expect(prompts(wallet)).toBe(1));
     expect(frozen()).toEqual({ text: [true, true, true, true, true], select: true, choices: [true, true, true, true, true], box: true });
     release();
-    await waitFor(() => expect(window.location.hash).toBe("#/p/42"));
+    await sealedPanel();
   });
 
   it("makes the fields editable again when the request fails", async () => {
@@ -1544,68 +1526,6 @@ describe("LLR-FE-036 while a transaction from the form is pending, submit is dis
     click(submit());
     await waitFor(() => expect(within(notices()).getByText(REJECTED_MESSAGE)).toBeTruthy());
     expect(isDisabled(submit())).toBe(false);
-  });
-});
-
-describe("LLR-FE-037 after creation the page goes to the pledge, decoded from the receipt, and offers a copy-link control", () => {
-  function stubClipboard() {
-    const writeText = vi.fn(() => Promise.resolve());
-    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
-    return writeText;
-  }
-
-  it("goes to the pledge page of the identifier in the receipt's event", async () => {
-    await openCreate({ prepare: ({ world }) => void (world.nextPledgeId = 77n) });
-    fill();
-    await ready();
-    click(submit());
-    await waitFor(() => expect(window.location.hash).toBe("#/p/77"));
-    expect(await screen.findByRole("heading", { level: 1, name: "Promise #77" })).toBeTruthy();
-  });
-
-  it("offers a control that copies the address of the pledge page, and says whether it worked", async () => {
-    const writeText = stubClipboard();
-    await openCreate();
-    fill();
-    await ready();
-    click(submit());
-    await screen.findByRole("heading", { level: 1, name: "Promise #42" });
-    click(await screen.findByRole("button", { name: "Copy the link to this promise" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}${window.location.pathname}#/p/42`);
-    await screen.findByText("Link copied.");
-  });
-
-  it("says when the link could not be copied", async () => {
-    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("denied")) } });
-    await openCreate();
-    fill();
-    await ready();
-    click(submit());
-    click(await screen.findByRole("button", { name: "Copy the link to this promise" }));
-    await screen.findByText("Could not copy the link.");
-  });
-
-  it("moves focus to the new page's heading, since the button pressed is gone", async () => {
-    await openCreate();
-    fill();
-    await ready();
-    click(submit());
-    const heading = await screen.findByRole("heading", { level: 1, name: "Promise #42" });
-    await waitFor(() => expect(document.activeElement).toBe(heading));
-  });
-
-  it("offers the copy-link control for that pledge only, and not on a pledge page visited another way", async () => {
-    await openCreate();
-    fill();
-    await ready();
-    click(submit());
-    await screen.findByRole("button", { name: "Copy the link to this promise" });
-    act(() => {
-      window.location.hash = "#/p/1";
-    });
-    await screen.findByRole("heading", { level: 1, name: "Promise #1" });
-    expect(screen.queryByRole("button", { name: "Copy the link to this promise" })).toBeNull();
   });
 });
 

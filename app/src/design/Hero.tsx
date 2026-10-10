@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type InputHTMLAttributes, type ReactNode, useEffect, useRef, useState } from "react";
 import { PageHeading } from "../views/PageHeading";
 import { prefersReducedMotion } from "./motion";
 
@@ -50,6 +50,12 @@ export interface HeroProps {
   maxLength?: number;
   /** The sentence under the heading. */
   sub: ReactNode;
+  /** The document title while the hero is the page. */
+  title?: string;
+  /** Takes focus into the field when the hero mounts already in writing mode, for a page that exists to be written in. */
+  autoFocus?: boolean;
+  /** Attributes for the field, such as the description that links it to its count and failure. Never its value, class or length. */
+  inputProps?: Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "className" | "maxLength" | "type">;
   /** Mounted under the sentence: the pad, and whatever the create flow shows around it. */
   children?: ReactNode;
 }
@@ -60,12 +66,12 @@ export interface HeroProps {
  *
  * @trace LLR-FE-070
  */
-export function Hero({ custom, onCustomChange, maxLength = 200, sub, children }: HeroProps) {
+export function Hero({ custom, onCustomChange, maxLength = 200, sub, title = "SatStake", autoFocus = false, inputProps, children }: HeroProps) {
   const typed = useTyper(custom === null);
   const input = useRef<HTMLInputElement>(null);
   const writing = custom !== null;
   // Set when the visitor chose to write, so the field takes focus once it exists and not when a parent restores one.
-  const focusNext = useRef(false);
+  const focusNext = useRef(autoFocus);
   useEffect(() => {
     if (!writing || !focusNext.current) return;
     focusNext.current = false;
@@ -78,10 +84,11 @@ export function Hero({ custom, onCustomChange, maxLength = 200, sub, children }:
   };
   return (
     <section className="hero" aria-label="Make a promise">
-      <PageHeading title="SatStake" className="hero-h1">
+      <PageHeading title={title} className="hero-h1">
         I promise to
         {writing ? (
           <input
+            {...inputProps}
             className="typed typed-in"
             ref={input}
             value={custom}

@@ -15,6 +15,8 @@ export type ClockProps =
       /** Chain time, or null until it is known. */
       now: bigint | null;
       state: PledgeState;
+      /** Chain time has passed the deadline but the state read still says Active, so the outcome is not yet known. */
+      checking?: boolean;
       /** The stake as a reader would say it. */
       amountLabel: string;
       /** The parties as they should be shown, shortened or not. Left out, the diagram names no address. */
@@ -95,10 +97,17 @@ function demoView(scenario: Scenario, t: number): View {
 }
 
 function liveView(p: Extract<ClockProps, { mode: "live" }>): View {
-  const stage = liveStage(p.state);
+  const stage = liveStage(p.state, p.checking);
   const t = liveTime(p.createdAt, p.deadline, p.now) ?? 0;
-  let dayLabel = NOT_SYNCED;
-  if (p.now !== null) dayLabel = p.deadline > p.now ? `Deadline in ${formatRemaining(p.deadline - p.now)}` : formatRemaining(0n);
+  // A countdown is shown only while a deadline still decides something. After a verdict or a payout it would
+  // count towards nothing, and "2 days left" beside Kept reads as something still pending. An Expired state
+  // already says the deadline passed, whatever the clock has read so far.
+  let dayLabel = "";
+  if (p.state === "Expired") dayLabel = formatRemaining(0n);
+  else if (p.state === "Active") {
+    dayLabel = NOT_SYNCED;
+    if (p.now !== null) dayLabel = p.deadline > p.now ? `Deadline in ${formatRemaining(p.deadline - p.now)}` : formatRemaining(0n);
+  }
   const settled = stage.stake !== "vault";
   const colour = stage.bubble === "Kept" ? "var(--kept)" : stage.bubble === "Broken" ? "var(--broken)" : "var(--sub)";
   return {
@@ -107,7 +116,7 @@ function liveView(p: Extract<ClockProps, { mode: "live" }>): View {
     tone: stage.tone,
     text: stage.text,
     chainKeys: stage.chain,
-    current: stage.heading,
+    current: stage.chain[stage.chain.length - 1] as string,
     dayLabel,
     stake: stage.stake === "vault" ? SPOTS.vault : stage.stake === "staker" ? SPOTS.stk : SPOTS.ben,
     flow: settled ? 1 : 0,
@@ -273,15 +282,19 @@ export function Clock(props: ClockProps) {
               </g>
             </svg>
           </div>
-          <div className="state" aria-live="polite">
-            <div className="day">{view.dayLabel}</div>
-            <h3 className={view.tone}>{view.heading}</h3>
-            <p>{view.text}</p>
-            {!demo && <p className="stake-line">{props.amountLabel}</p>}
-            <div className="chain">
-              {view.chainKeys.map((k) => (
-                <span key={k} className={k === view.current ? "on" : ""}>{k}</span>
-              ))}
+          <div className="state">
+            {/* The line changes every second in live mode and as the knob moves in the example, so it stays out of the announced region. */}
+            {view.dayLabel !== "" && <div className="day">{view.dayLabel}</div>}
+            {/* In live mode the page's own status line does the announcing. */}
+            <div aria-live={demo ? "polite" : undefined}>
+              <h3 className={view.tone}>{view.heading}</h3>
+              <p>{view.text}</p>
+              {!demo && <p className="stake-line">{props.amountLabel}</p>}
+              <div className="chain">
+                {view.chainKeys.map((k) => (
+                  <span key={k} className={k === view.current ? "on" : ""}>{k}</span>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -318,7 +331,7 @@ export function Clock(props: ClockProps) {
                   onPointerCancel: up,
                   onKeyDown: key,
                 }
-              : { role: "img", "aria-label": "Timeline: " + view.dayLabel })}
+              : { role: "img", "aria-label": view.dayLabel === "" ? "Timeline" : "Timeline: " + view.dayLabel })}
           >
             <div className="rail" />
             <div className="fill" style={{ width: pct(t) }} />

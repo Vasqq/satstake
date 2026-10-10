@@ -8,6 +8,7 @@ import {
   type FlowIO,
   type ReceiptLike,
   type Step,
+  createdFromReceipt,
   pledgeIdFromReceipt,
   receiptOf,
   runCreate,
@@ -207,7 +208,7 @@ describe("LLR-FE-033 and 062 the allowance is read again after the approval rece
     const short = world({ allowanceAfterApproval: AMOUNT - 1n });
     await expect(runCreate(short.io, preset, () => {})).rejects.toThrow(STILL_SHORT);
     const exact = world({ allowanceAfterApproval: AMOUNT });
-    await expect(runCreate(exact.io, preset, () => {})).resolves.toBe(42n);
+    await expect(runCreate(exact.io, preset, () => {})).resolves.toMatchObject({ id: 42n });
   });
 
   it("does not read it again when no approval was needed", async () => {
@@ -294,7 +295,7 @@ describe("LLR-FE-031 a preset deadline is computed from chain time read just bef
 describe("LLR-FE-037 the pledge identifier is decoded from the PledgeCreated event of the creation receipt", () => {
   it("returns the identifier the receipt's event carries", async () => {
     const { io } = world({ allowance: AMOUNT, receipts: { [CREATE_HASH]: success(7n) } });
-    expect(await runCreate(io, preset, () => {})).toBe(7n);
+    expect((await runCreate(io, preset, () => {})).id).toBe(7n);
     const big = 2n ** 200n + 5n;
     expect(pledgeIdFromReceipt(success(big), CONTRACT)).toBe(big);
   });
@@ -326,6 +327,52 @@ describe("LLR-FE-037 the pledge identifier is decoded from the PledgeCreated eve
   it("fails the creation when its receipt lacks the event, rather than guessing an identifier", async () => {
     const { io } = world({ allowance: AMOUNT, receipts: { [CREATE_HASH]: { status: "success", logs: [] } } });
     await expect(runCreate(io, preset, () => {})).rejects.toThrow(/PledgeCreated/);
+  });
+});
+
+describe("LLR-FE-037 the creation is read from the PledgeCreated event and handed back with its transaction hash", () => {
+  const log = (fields: Partial<Parameters<typeof pledgeCreatedLog>[0]> = {}) =>
+    pledgeCreatedLog({
+      address: CONTRACT,
+      id: 42n,
+      staker: STAKER,
+      token: TOKEN,
+      amount: AMOUNT,
+      referee: REFEREE,
+      beneficiary: BENEFICIARY,
+      deadline: 1_790_104_800n,
+      ...fields,
+    });
+
+  it("reads every field of the event, not the identifier alone", () => {
+    expect(createdFromReceipt({ status: "success", logs: [log()] }, CONTRACT)).toEqual({
+      id: 42n,
+      staker: STAKER,
+      token: TOKEN,
+      amount: AMOUNT,
+      referee: REFEREE,
+      beneficiary: BENEFICIARY,
+      deadline: 1_790_104_800n,
+    });
+  });
+
+  it("ignores the event from any other address and fails when the contract emitted none", () => {
+    const decoy = log({ address: getAddress("0x" + "de".repeat(20)), id: 999n, deadline: 5n });
+    expect(createdFromReceipt({ status: "success", logs: [decoy, log()] }, CONTRACT).deadline).toBe(1_790_104_800n);
+    expect(() => createdFromReceipt({ status: "success", logs: [decoy] }, CONTRACT)).toThrow(/PledgeCreated/);
+  });
+
+  it("hands back the hash of the creation transaction and not the approval's, with the event's values", async () => {
+    const { io } = world({ receipts: { [CREATE_HASH]: { status: "success", logs: [log({ deadline: 777n })] } } });
+    const done = await runCreate(io, preset, () => {});
+    expect(done.hash).toBe(CREATE_HASH);
+    expect(done.hash).not.toBe(APPROVE_HASH);
+    expect(done).toMatchObject({ id: 42n, deadline: 777n, staker: STAKER, referee: REFEREE, beneficiary: BENEFICIARY, amount: AMOUNT });
+  });
+
+  it("hands back the hash when no approval was needed", async () => {
+    const { io } = world({ allowance: AMOUNT });
+    expect((await runCreate(io, preset, () => {})).hash).toBe(CREATE_HASH);
   });
 });
 

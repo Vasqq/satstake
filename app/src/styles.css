@@ -3239,3 +3239,444 @@ fieldset {
     scroll-behavior: auto !important;
   }
 }
+
+/* Create flow in the hero */
+/* The create pad: the form inside the hero's signature pad. Colours come from the tokens in styles.css. */
+
+.create-pad {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.create-pad .promise-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.create-pad .promise-meta .hint p {
+  display: inline;
+  margin-right: 12px;
+  font-size: 13px;
+}
+
+.create-pad .pad-head {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.create-pad .pad-form-head {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+}
+
+.create-pad .pad-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 20px;
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .create-pad .pad-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.create-pad .field {
+  gap: 4px;
+  min-width: 0;
+}
+
+.create-pad .hint {
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.create-pad .field-error:not(:empty) {
+  font-size: 13px;
+  border: 1px solid color-mix(in srgb, var(--error-fg) 40%, transparent);
+}
+
+.create-pad .pad-foot {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 16px;
+  padding: 18px 22px;
+}
+
+.create-pad fieldset .choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.create-pad fieldset .choice {
+  align-items: center;
+  min-height: 2.5rem;
+  padding: 0.35rem 1rem;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--control);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.create-pad fieldset .choice:has(input:checked) {
+  box-shadow: inset 0 0 0 2px var(--sat);
+}
+
+.create-pad input[type="radio"],
+.create-pad input[type="checkbox"] {
+  flex: none;
+  width: 1.2rem;
+  height: 1.2rem;
+  margin: 0;
+}
+
+.create-pad .ack {
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 1px var(--control);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.create-pad .ack:has(input:checked) {
+  box-shadow: inset 0 0 0 2px var(--sat);
+}
+
+.create-pad .submit-area {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.create-pad .submit-area .hint {
+  max-width: 36rem;
+}
+
+.create-pad .submit-area .b {
+  margin-bottom: 6px;
+}
+
+.create-pad .sealed .sealed-share {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+}
+
+.create-pad .sealed .sealed-share code {
+  font-family: var(--mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.create-pad .sealed .copy-link {
+  margin: 0;
+}
+
+.create-pad .sealed .sealed-share .btns {
+  align-items: flex-start;
+}
+
+.create-pad .sealed:focus-visible {
+  outline-offset: -3px;
+}
+
+/* The promise is the hero's sentence: an underlined line in the heading's own type, not a boxed field. The
+   generic field rules would otherwise frame it. */
+.hero h1 input.typed-in {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 1.1em;
+  padding: 0;
+  font: inherit;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: inherit;
+  line-height: 1.05;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid var(--sat);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.hero h1 input.typed-in[aria-invalid="true"] {
+  border-bottom-color: var(--error-fg);
+}
+
+/* Promise page */
+/* The promise page: the Signed design's agreement with one promise's values in it, the controls under the
+   lines they belong to, and the clock below. Tokens, .doc, .sig, .b and the clock come from styles.css; this
+   file only adds what the page needs on top. Rules are scoped to .pledge-page so they win over older shared
+   rules without depending on load order. */
+
+.pledge-page {
+  padding-bottom: 80px;
+}
+
+/* The promise is the headline, in the serif the design gives its own sentence. It wraps anywhere, so a
+   280-byte promise with no spaces stays inside the column, and keeps the writer's line breaks. */
+.pledge-page h1.pledge-heading {
+  margin: 48px 0 0;
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0;
+  text-wrap: wrap;
+}
+
+.pledge-heading .pledge-label {
+  display: block;
+  letter-spacing: 0.06em;
+}
+
+.pledge-page .ptitle {
+  display: block;
+  max-width: 18em;
+  margin: 8px 0 0;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: clamp(36px, 6.4vw, 88px);
+  font-weight: 400;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* What the page means for whoever is looking: a note on the sheet, with the orange as its one accent. */
+.pledge-page .pledge-banner {
+  margin-top: 32px;
+  padding: 18px 24px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--sheet);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  color: var(--ink2);
+  font-size: 16px;
+}
+
+.pledge-banner::before {
+  background: var(--sat);
+  margin-top: 0.6em;
+}
+
+.pledge-banner > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.pledge-banner p {
+  margin: 0;
+}
+
+.pledge-banner p + .copy-link {
+  margin-top: 12px;
+}
+
+.pledge-banner code {
+  font-family: var(--mono);
+  font-size: 14px;
+}
+
+.pledge-banner em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.pledge-banner a {
+  color: var(--sat-text);
+  font-weight: 600;
+}
+
+.pledge-banner .copy-link {
+  margin-block: 0;
+}
+
+.pledge-state-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 20px;
+}
+
+.pledge-state-row:empty {
+  margin-top: 0;
+}
+
+/* While a banner explains the page, the status sentence is kept for assistive technology only; the
+   .visually-hidden class on the same element does that. */
+.pledge-status {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.pledge-status p {
+  margin: 0;
+  color: var(--ink2);
+  font-size: 15px;
+}
+
+.pledge-state-row .role-badge {
+  white-space: nowrap;
+}
+
+.pledge-agreement {
+  margin-top: 40px;
+}
+
+.pledge-agreement .readas {
+  margin-bottom: 16px;
+}
+
+/* Controls sit in the line they belong to, in the sans of the controls and not the serif of the document. */
+.verdict-controls,
+.payout-controls {
+  margin-top: 14px;
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink2);
+}
+
+.verdict-prompt {
+  margin: 0 0 10px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.doc .hint,
+.doc .pledge-hint {
+  margin: 10px 0 0;
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--ink2);
+}
+
+.doc .pledge-hint {
+  margin-top: 14px;
+}
+
+.doc .hint p {
+  margin: 0;
+}
+
+.unit-note {
+  margin: 8px 0 0;
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--sub);
+}
+
+/* The step between Broken and the wallet. The border is the control colour, not the faint hairline, so the
+   boundary is visible to everyone who needs it. */
+.broken-confirm {
+  margin-top: 14px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: var(--wash);
+  box-shadow: inset 0 0 0 1px var(--control);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.broken-confirm p {
+  margin: 0;
+}
+
+.broken-confirm .broken-confirm-title {
+  margin-bottom: 4px;
+  color: var(--error-fg);
+  font-weight: 700;
+}
+
+.broken-confirm .action-buttons {
+  margin-top: 14px;
+}
+
+/* A party's line: the address, its two controls, and a mark when it is the connected account. */
+.party-value {
+  display: grid;
+  gap: 4px;
+  font-family: var(--sans);
+  cursor: default;
+}
+
+.party-value .hash-value {
+  display: grid;
+  gap: 2px;
+}
+
+.party-value .hash-text {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.party-value .hash-controls {
+  gap: 0 12px;
+  font-size: 13px;
+}
+
+.party-value .hash-controls button,
+.party-value .hash-controls a {
+  min-height: 0;
+  padding: 3px 11px;
+  font-size: 12px;
+}
+
+.party-value .hash-status {
+  min-width: 0;
+  min-height: 1.2em;
+  font-size: 12px;
+}
+
+.party-value .hash-status:empty {
+  display: none;
+}
+
+.you-mark {
+  color: var(--sat-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pledge-progress {
+  margin-top: 20px;
+}
+
+.pledge-result {
+  color: var(--ink);
+}
+
+.pledge-clock {
+  margin-top: 56px;
+}
+
+.pledge-deadline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  margin: 0 0 20px;
+}
+
+.pledge-deadline time {
+  font-family: var(--serif);
+  font-size: clamp(20px, 2.2vw, 26px);
+  color: var(--ink);
+}

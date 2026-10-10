@@ -91,6 +91,49 @@ describe("LLR-FE-070 the visitor can write their own ending", () => {
     expect(screen.getByRole("textbox", { name: "Your promise" }).getAttribute("maxlength")).toBe("42");
   });
 
+  it("sets the page title it is given, and takes focus into the field on mount only when asked", () => {
+    const { unmount } = render(
+      <Hero custom="" onCustomChange={() => {}} sub="s" title="New promise | SatStake">
+        {null}
+      </Hero>,
+    );
+    expect(document.title).toBe("New promise | SatStake");
+    expect(document.activeElement).not.toBe(screen.getByRole("textbox", { name: "Your promise" }));
+    unmount();
+    render(
+      <Hero custom="" onCustomChange={() => {}} sub="s" autoFocus>
+        {null}
+      </Hero>,
+    );
+    expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Your promise" }));
+  });
+
+  it("passes the owner's attributes to the field, but never its value, class or length", () => {
+    const onBlur = vi.fn();
+    render(
+      <Hero
+        custom="abc"
+        onCustomChange={() => {}}
+        maxLength={42}
+        sub="s"
+        inputProps={{ id: "mine", "aria-describedby": "a b", "aria-invalid": true, readOnly: true, onBlur, form: "f" }}
+      >
+        {null}
+      </Hero>,
+    );
+    const input = screen.getByRole("textbox", { name: "Your promise" }) as HTMLInputElement;
+    expect(input.id).toBe("mine");
+    expect(input.getAttribute("aria-describedby")).toBe("a b");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(input.readOnly).toBe(true);
+    expect(input.getAttribute("form")).toBe("f");
+    expect(input.value).toBe("abc");
+    expect(input.className).toBe("typed typed-in");
+    expect(input.getAttribute("maxlength")).toBe("42");
+    fireEvent.blur(input);
+    expect(onBlur).toHaveBeenCalledTimes(1);
+  });
+
   it("offers no write-your-own button once the visitor is writing", () => {
     render(<Host />);
     fireEvent.click(screen.getByRole("button", { name: /Write your own/ }));

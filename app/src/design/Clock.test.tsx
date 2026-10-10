@@ -120,4 +120,52 @@ describe("LLR-FE-040 the live clock shows the pledge as it is and invents nothin
     await act(async () => {});
     expect((document.querySelector(".knob") as HTMLElement).style.left).toBe("56%");
   });
+
+  it("announces nothing by itself in live mode, since the page keeps its own status line", () => {
+    render(<Clock mode="live" {...base} now={1_500n} state="Active" />);
+    expect(document.querySelector("[aria-live]")).toBeNull();
+  });
+
+  it("keeps the time-left line outside the announced region in the example, so scrubbing does not read it out twice", () => {
+    render(<Clock mode="demo" />);
+    const day = document.querySelector(".day") as HTMLElement;
+    expect(day.closest("[aria-live]")).toBeNull();
+    expect(document.querySelector(".state [aria-live=polite] h3")).not.toBeNull();
+  });
+
+  it("counts down only while a deadline still decides something, and says nothing about time after a verdict or a payout", () => {
+    for (const state of ["Kept", "Broken", "SettledToStaker", "SettledToBeneficiary"] as const) {
+      const view = render(<Clock mode="live" {...base} now={1_500n} state={state} />);
+      expect(document.querySelector(".day"), state).toBeNull();
+      view.unmount();
+    }
+    const open = render(<Clock mode="live" {...base} now={1_500n} state="Active" />);
+    expect(document.querySelector(".day")?.textContent).toBe("Deadline in 8 minutes 20 seconds");
+    open.unmount();
+  });
+
+  it("reads Expired as passed whatever chain time says, even before it is known", () => {
+    const early = render(<Clock mode="live" {...base} now={1_500n} state="Expired" />);
+    expect(document.querySelector(".day")?.textContent).toBe("Deadline passed");
+    early.unmount();
+    render(<Clock mode="live" {...base} now={null} state="Expired" />);
+    expect(document.querySelector(".day")?.textContent).toBe("Deadline passed");
+  });
+
+  it("says it is checking, not that there was no answer, when asked to by the page", () => {
+    render(<Clock mode="live" {...base} now={2_100n} state="Active" checking />);
+    expect(screen.getByRole("heading", { name: "Checking" })).toBeTruthy();
+    expect(document.querySelector(".state")?.textContent).toContain("Checking the network for the outcome");
+    expect(document.querySelector(".state")?.textContent).not.toMatch(/No answer|Silence counts/);
+    expect(document.querySelector(".bubble")).toBeNull();
+  });
+
+  it("says checking only for an Active state, never over a verdict or a payout that is already known", () => {
+    for (const state of ["Expired", "Kept", "Broken", "SettledToStaker", "SettledToBeneficiary"] as const) {
+      const view = render(<Clock mode="live" {...base} now={2_100n} state={state} checking />);
+      expect(screen.queryByRole("heading", { name: "Checking" }), state).toBeNull();
+      view.unmount();
+    }
+  });
 });
+

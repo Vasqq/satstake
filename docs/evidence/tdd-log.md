@@ -6493,3 +6493,119 @@ Light, WCAG ratios: ink on paper 15.0, second ink on sheet 8.9, muted text on pa
 ### Screenshots
 
 `npm run screenshots` (browser fetched once into `app/node_modules` with `PLAYWRIGHT_BROWSERS_PATH=0`) now covers 390, 768 and 1440 px in light and dark. The landing page was compared with the design at 1440 light and 390 dark and light: type, paper palette, the pad, the agreement with "Read as", the clock, the strikes and the trust section match. At 390 px the clock's three timeline labels crowd as they do in the design file.
+
+## Signed port, phase B1: the create flow in the landing hero
+
+Paths relative to the repository. Requirements: LLR-FE-037 (05 v1.28), LLR-FE-030 to 036 and 060 to 062 unchanged in behaviour, LLR-FE-070.
+
+### Red
+
+Written before any implementation, from the requirement text and the brief. Commands from `app/`.
+
+New suites: `src/create/sealed.test.ts` (12), `src/create/CreateFlow.test.tsx` (27), the LLR-FE-037 block of `src/create/flow.test.ts` (4), two tests in `src/design/Hero.test.tsx`. Existing suites re-queried for the new markup, none weakened: `src/test/createHarness.tsx` (the promise is the hero's input, the control is `Seal it`), `CreateView.test.tsx`, `App.test.tsx`, `WalletBar.test.tsx`. The old post-creation tests (navigate to `#/p/42`, copy-link banner on the pledge page, focus on the pledge heading) were replaced by the LLR-FE-037 tests in `CreateFlow.test.tsx`, because 05 v1.28 says the view stays.
+
+`npx vitest run src/create/flow.test.ts src/create/sealed.test.ts src/design/Hero.test.tsx src/create/CreateFlow.test.tsx`:
+
+```
+FAIL  src/create/CreateFlow.test.tsx  Error: Failed to resolve import "./sealed"
+FAIL  src/create/sealed.test.ts       Error: Failed to resolve import "./sealed"
+flow.test.ts   (46 tests | 6 failed)
+  x reads every field of the event, not the identifier alone
+  x hands back the hash of the creation transaction and not the approval's ...
+  x returns the identifier the receipt's event carries     (expected undefined to be 7n)
+Hero.test.tsx  (9 tests | 2 failed)
+  x sets the page title it is given, and takes focus into the field on mount only when asked
+  x passes the owner's attributes to the field, but never its value, class or length
+```
+
+Not observed before code: `sealed.test.ts` and `CreateFlow.test.tsx` failed on the missing module only. After writing `sealed.ts` (pure helpers) and before touching `CreateView.tsx`:
+
+```
+src/create/CreateFlow.test.tsx   Tests  27 failed (27)
+  Unable to find an accessible element with the role "button" and name `/^Seal it/`
+src/create/CreateView.test.tsx, App.test.tsx, WalletBar.test.tsx   Tests  135 failed | 182 passed (317)
+```
+
+That is the predicted reason: the old view has no `Seal it` control, no sealed panel, and the hero is not the promise field.
+
+### Green
+
+Code: `app/src/create/CreateView.tsx` (the hero and pad; `CreateView` is keyed so "Make another promise" starts again), `sealed.ts`, `LandingCreate.tsx`, `flow.ts` (`createdFromReceipt`, `runCreate` returns the event and the creation hash), additive props on `design/Hero.tsx` (`title`, `autoFocus`, `inputProps`), `app/src/create.css`, `HomeView.tsx` mounts `LandingCreate`, `App.tsx` passes `variant="page"`.
+
+Tests changed for the new behaviour rather than weakened: `HomeView.test.tsx` (the hero call to action is the pad itself; the seal button is `aria-disabled`; the word-boundary form of the "sats" scan, since "SatStake" contains it), `CreateView.test.tsx` (focus stays where it was when submit is refused, because the promise now holds focus on the page).
+
+Run from `app/` with nothing else running: `npx vitest run src/create src/views/HomeView.test.tsx src/App.test.tsx src/wallet src/noSigning.test.tsx src/design src/userStrings.test.ts`: all pass except two `clockState` tests in B2's files. `npm run typecheck`, `npm run build:testnet`, `npm run build:mainnet` clean; `npm run lint` clean for these files (the one error is `app/cache/mut.mjs`, not part of this group). `node tools/trace-check.mjs`: OK, 106 of 113.
+
+Known: `src/styles.test.ts` "reads the one style sheet" fails while `src/create.css` (and B2's `promise.css`) exist; it passes once the lead merges them into `styles.css`. A full `npm test` under load made some tests with real timers run past their time; the collapse test now waits up to 20 s for the demonstration and 60 s overall.
+
+### Mutations 1950 to 1957 (copies of the good files in `cache/b1/`, restored and compared with `cmp`)
+
+| # | Mutant | Result |
+|---|---|---|
+| 1950 | `sealBytesOf` accepts a hash of any length at or above 64 digits | killed, 1 |
+| 1951 | `runCreate` returns a fixed hash | killed, 5 |
+| 1952 | submit stays enabled after the creation | survived at first (nothing pressed during the collapse). Added the press during the collapse to the collapse test; killed, 1 |
+| 1953 | seal shown at once, without the collapse | killed, 1 |
+| 1954 | fields editable after creation | killed, 1 |
+| 1955 | "Locked until" shifted by one second | survived: the display is to the minute. Shifted by an hour; killed, 1 |
+| 1956 | activating a disabled submit never opens the promise field on the landing | killed, 1 |
+| 1957 | seal button names the USDC amount for every token | killed, 2 |
+
+### Screenshots
+
+`npm run screenshots`; `create` and `home` at 390 and 1440, light and dark, compared with the design's hero: the sentence in the heading's type with an orange underline, the pad with the writing signature, the fields in the head, deadline pills, statement and button in the foot. The first run showed the promise field as a boxed input because the generic field rule beat `.typed-in`; fixed in `create.css`. Not captured: the sealed state, which needs a creation (covered by the tests).
+
+## Signed port, phase B2: the promise page
+
+Paths relative to the repository. The page is the design's agreement with one promise's real values, the controls under the lines they belong to, and the live clock below (05 v1.27, v1.28).
+
+### Red
+
+Tests were changed or written before the code. Command from `app/`: `npx vitest run src/views/pledge src/design/Clock.test.tsx`. Result against the old page: 91 failed, 148 passed (239).
+
+| File | Failing before code |
+|---|---|
+| `src/design/Clock.test.tsx` | 5: live clock announces nothing itself, `.day` outside the announced region in the example, countdown only while Active or Expired, Expired reads passed with no clock, `checking` heading |
+| `src/views/pledge/PledgeActions.test.tsx` | 31: Send payout label for every role, controls under their agreement line, inline Broken confirmation (all `LLR-FE-044` tests), settle flows queried by the new label |
+| `src/views/pledge/PledgeAgreement.test.tsx` (new) | 16, all of them: title, meta, seven lines with real values, Read as, signature lines, copy without choosing a role, referee line by state, no-wallet reading |
+| `src/views/pledge/PledgeDetails.test.tsx` | 35: signature lines for the parties, stake in line one, clock section names and stages, countdown words in the clock, `(you)` on the signature line |
+| `src/views/pledge/actions.test.ts` | 4: plan has no label, one label constant |
+
+Reasons were the predicted ones, trimmed: `TestingLibraryElementError: Unable to find role="button" and name "Send payout"` (8), `Unable to find an element with the text: Staker, which matches selector '.sig b'` (5, same for Referee and Beneficiary), `Unable to find an accessible element with the role "group" and name "Read as"` (2), `Unable to find an element with the text: Deadline in 2 days 4 hours`, `TypeError: element.showModal is not a function` (the old dialog meeting the removed polyfill), `AssertionError: expected { kind: 'settle', …(2) } to deeply equal { kind: 'settle', …(1) }`. No compile error elsewhere.
+
+Not observed red before code: `src/views/pledge/signatures.test.ts` (8 tests) was written beside `signatures.ts`. Its red was reproduced afterwards by moving `signatures.ts` aside: `Failed to resolve import "./signatures"`; with the file back, 8 passed. The `says checking only for an Active state` Clock test was added after mutation 2003 survived (below), so its red is that mutation.
+
+Tests removed because the thing they pinned is gone (06 section 10): `timeline.test.ts` (the three-step timeline is replaced by the clock's stage chips, whose honesty cases moved to `PledgeDetails.test.tsx`), the digit-face countdown tests (the large d/h/m/s face is replaced by the clock's own words; `formatClock` stays for the landing's rotator), the modal-dialog tests (replaced by the inline confirmation tests). Not weakened: every old assertion about the countdown's words, live-region exclusion, sync note, Expired reading as passed, banner text, role marks, verdict click-time refusal, gate closing and focus return has an equivalent new query.
+
+### Green
+
+Added: `PledgeAgreement.test.tsx` 16, `signatures.test.ts` 8, 6 Clock tests, new groups in `PledgeActions.test.tsx` (controls by line, Send payout label for every role, ten inline-confirmation tests). From `app/` with the group's files and the files that mount the app: `npx vitest run src/views src/design src/App.test.tsx src/build.test.ts src/styles.test.ts src/liveApp.test.tsx src/noSigning.test.tsx`: 543 passed, 2 skipped, 1 failed. The failure is `styles.test.ts` "reads the one style sheet, and finds no other": it sees `promise.css` (and B1's `create.css`) beside `styles.css`, and goes green when the lead merges them. `npm run lint` and `npm run typecheck` clean; `build:testnet` and `build:mainnet` succeed; `node tools/trace-check.mjs`: OK, 106/113 LLRs referenced.
+
+Shared components changed, additively: `design/Clock.tsx` and `design/clockState.ts` (a `checking` prop; the time-left line shown only while Active or Expired and kept outside the announced region; no `aria-live` in live mode, since the page's status line announces; the current stage taken from the chain's last entry). Removed files: `PledgeFacts.tsx`, `timeline.ts`, `timeline.test.ts`, `BrokenDialog.tsx`, `test/dialogPolyfill.ts`.
+
+### Mutations 2000 to 2015 (logic only; one edit each, copies in `app/cache/mutants/` while running, restored and checked with `cmp`)
+
+| # | Mutant | Result |
+|---|---|---|
+| 2000 | paid-back promise no longer shows Kept on the referee line | killed, 2 |
+| 2001 | payout to beneficiary claims silence | killed, 2 |
+| 2002 | countdown shown beside a verdict | killed, 2 |
+| 2003 | `checking` overrides any state | survived at first, no test for a known state with `checking`. Added; killed, 1 |
+| 2004 | Kept pays the beneficiary | killed, 4 |
+| 2005 | copy click also chooses a Read as role | killed, 2 |
+| 2006 | Broken sends without the confirmation step | killed, 14 |
+| 2007 | Kept leaves the confirmation open | killed, 2 |
+| 2008 | every hint under the payout line | killed, 1 |
+| 2009 | clock never says checking | killed, 1 |
+| 2010 | Escape does not cancel | killed, 1 |
+| 2011 | Expired shows no passed line | killed, 6 |
+| 2012 | referee line ignores state | killed, 4 |
+| 2013 | `(you)` on the wrong party | killed, 2 |
+| 2014 | agreement shows creation time as the deadline | killed, 1 |
+| 2015 | unit note on the wrong token | killed, 3 |
+
+Incident: the interrupted first run left mutation 2003 in `clockState.ts`; it was found by `cmp` against the saved original, restored, and the suite rerun green. A second invocation piped through `head` ended early; all files were compared with their originals afterwards.
+
+### Screenshots
+
+`npm run screenshots` (the script exited with an error after writing the pledge routes; the pledge page images were produced). Promise #1 on testnet read at 1440 light and 390 dark against the design: agreement layout, seven lines, "Read as", signature lines with the real addresses and "signed", clock with the paid-out stage and one deadline mark. After that, two small CSS changes (smaller copy and explorer controls on signature lines, more room under the deadline) were made and not rescreenshotted.

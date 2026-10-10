@@ -92,10 +92,10 @@ export const notices = () => screen.getByRole("status", { name: "Transaction not
 export const button = (name: string) => screen.getByRole("button", { name });
 export const maybeButton = (name: string) => screen.queryByRole("button", { name });
 
-/** The value beside a label of the pledge's fact list. */
-export function fact(label: string): HTMLElement {
-  const term = within(screen.getByRole("main")).getByText(label, { selector: "dt" });
-  return term.nextElementSibling as HTMLElement;
+/** A party's signature line in the agreement, found by its label: Staker, Referee or Beneficiary. */
+export function signature(label: "Staker" | "Referee" | "Beneficiary"): HTMLElement {
+  const term = within(screen.getByRole("main")).getByText(label, { selector: ".sig b" });
+  return term.closest(".sig") as HTMLElement;
 }
 
 /** A revert as a wallet reports it from gas estimation: code 3 and the encoded contract error in `data`. */

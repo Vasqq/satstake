@@ -1,12 +1,10 @@
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import type { Reads } from "../chain/reads";
 import type { SelectedNetwork } from "../config/networks";
 import { AgreementDoc } from "../design/AgreementDoc";
 import { Clock } from "../design/Clock";
-import { Hero } from "../design/Hero";
-import { SignaturePad } from "../design/SignaturePad";
 import { SectionHead, Strikes, Trust } from "../design/Sections";
-import { ExampleBadge } from "../design/ExampleBadge";
+import { LandingCreate } from "../create/LandingCreate";
 import { formatAmount } from "../format";
 import { HashValue } from "./HashValue";
 import { PromiseRotator } from "./home/PromiseRotator";
@@ -56,42 +54,9 @@ const EXAMPLE = {
  * @trace LLR-FE-070
  */
 export function HomeView({ reads, network }: { reads: Reads; network: SelectedNetwork }) {
-  const [custom, setCustom] = useState<string | null>(null);
   return (
     <div className="home">
-      <Hero
-        custom={custom}
-        onCustomChange={setCustom}
-        sub="Or my stake goes to someone I chose. A friend decides whether I kept it, and code makes sure the money goes where they say."
-      >
-        <SignaturePad
-          head={
-            <>
-              <span className="label">
-                <ExampleBadge>Preview</ExampleBadge>
-              </span>
-              <span className="note">Your promise, your referee and your stake are set when you make one.</span>
-            </>
-          }
-          foot={
-            <div className="pad-foot">
-              <span className="note">The signature writes itself. Nothing is drawn by hand.</span>
-              <div className="btns">
-                <a className="b ghost" href={`#/p/${network.examplePledgeId.toString()}`}>
-                  See a live promise
-                </a>
-                <a className="b sat" href="#/create">
-                  Make a promise
-                </a>
-                <button type="button" className="b ink" disabled>
-                  Seal it
-                </button>
-              </div>
-            </div>
-          }
-        />
-        <p className="home-need">You need a browser wallet on Arc with a little USDC for network fees. Reading needs none.</p>
-      </Hero>
+      <LandingCreate reads={reads} network={network} />
 
       <section className="s" id="agreement" aria-labelledby="home-agreement">
         <SectionHead label="The agreement" title={<span id="home-agreement">Seven lines. <em>No fine print.</em></span>}>

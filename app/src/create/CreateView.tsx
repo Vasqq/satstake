@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { type Address, type PublicClient, erc20Abi, formatUnits, getAddress, isAddress } from "viem";
 import { useConfig, useConnection } from "wagmi";
 import { writeContract } from "wagmi/actions";
@@ -9,13 +9,26 @@ import { useTick } from "../chain/useTick";
 import type { Reads } from "../chain/reads";
 import type { Health } from "../chain/useHealth";
 import type { SelectedNetwork, TokenConfig } from "../config/networks";
-import { PageHeading } from "../views/PageHeading";
+import { Hero } from "../design/Hero";
+import { SignaturePad } from "../design/SignaturePad";
+import { HashValue } from "../views/HashValue";
 import { RequestNotice, useConnectionFailure } from "../wallet/failure";
 import { useWriteGate } from "../wallet/gate";
-import { formatLocalTime, formatSats } from "../format";
+import { formatLocalTime, formatSats, shorten } from "../format";
 import { parseAmount } from "./amount";
+import { CopyLink } from "./CopyLink";
 import { type DeadlineChoice, PRESETS, deadlineBounds, localToTimestamp } from "./deadline";
-import { CreationUnconfirmedError, DeadlineCheckError, type CreateInput, type FlowIO, type Step, receiptOf, runCreate } from "./flow";
+import {
+  type Creation,
+  CreationUnconfirmedError,
+  DeadlineCheckError,
+  type CreateInput,
+  type FlowIO,
+  type Step,
+  receiptOf,
+  runCreate,
+} from "./flow";
+import { sealBytesOf, sealLabelOf, shareLink, stakeWords } from "./sealed";
 import { type BalanceState, MAX_PROMISE_BYTES, type Field, type FormValues, checkForm, customDeadlineMessage, promiseBytes } from "./validate";
 
 /** The statement of LLR-FE-034. */
@@ -23,6 +36,12 @@ const ACKNOWLEDGEMENT =
   "I understand that the referee alone decides whether I kept this promise. If the referee marks it broken, or has not marked it kept by the deadline, my stake goes to the beneficiary and cannot be recovered.";
 
 const INTRO = "Lock a stake against a promise. Your referee decides whether you kept it.";
+const LANDING_SUB =
+  "Or my stake goes to someone I chose. A friend decides whether I kept it, and code makes sure the money goes where they say.";
+
+// The field takes more than the contract does, so a pasted text that is too long is said to be too long beside the
+// field, as LLR-FE-030 asks, and is not cut short without a word.
+const PROMISE_FIELD_LIMIT = 1000;
 
 const HINTS = {
   promise: "Anyone can read this, and it cannot be changed later.",
@@ -201,20 +220,36 @@ export interface CreateViewProps {
   network: SelectedNetwork;
   /** The shell's checks, so the page does not run a second set. */
   health: Health;
-  /** Called with the new pledge's identifier just before the page goes to it. */
-  onCreated: (id: bigint) => void;
+  /**
+   * `page` is the hero on a page of its own, with focus in the promise. `landing` is the same hero under the
+   * landing's sentence, where the promise starts as rotating examples until the visitor writes.
+   */
+  variant: "page" | "landing";
+  /** Called with the new pledge's identifier once the creation has landed. */
+  onCreated?: (id: bigint) => void;
 }
 
 /**
- * The create form and the approval and creation it sends. Every write goes through `useWriteGate`, names the
- * configured chain so the wallet's chain is read again when the request is sent, and is one the wallet
- * shows as a transaction: nothing here asks for a signature of a message.
+ * The hero and the pad that make a promise: the sentence is the promise, the pad's head holds the stake and the
+ * parties, its foot the deadline, the statement and the steps. The creation ends here, on a seal drawn from its
+ * transaction hash and the link to share (LLR-FE-037). Making another promise starts the pad again.
+ */
+export function CreateView(props: CreateViewProps) {
+  const [round, setRound] = useState(0);
+  return <CreatePad key={round} {...props} another={() => setRound((n) => n + 1)} />;
+}
+
+/**
+ * Every write goes through `useWriteGate`, names the configured chain so the wallet's chain is read again when
+ * the request is sent, and is one the wallet shows as a transaction: nothing here asks for a signature of a
+ * message. The pad takes no drawing: the signature on it is an animation and nothing of it is stored or sent.
  *
  * @trace LLR-FE-006 LLR-FE-023 LLR-FE-030 LLR-FE-031 LLR-FE-032 LLR-FE-033 LLR-FE-034 LLR-FE-035 LLR-FE-036 LLR-FE-037
  * @trace LLR-FE-060 LLR-FE-061 LLR-FE-062 LLR-FE-072 LLR-FE-074
  */
-export function CreateView({ client, reads, network, health, onCreated }: CreateViewProps) {
+function CreatePad({ client, reads, network, health, variant, onCreated, another }: CreateViewProps & { another: () => void }) {
   const ids = useId();
+  const formId = `${ids}-form`;
   const config = useConfig();
   const queryClient = useQueryClient();
   const connection = useConnection();
@@ -225,8 +260,9 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
   // and blocks a second one, until the page is left or reloaded (LLR-FE-062).
   const [unconfirmed, setUnconfirmed] = useState<CreationUnconfirmedError | null>(null);
 
-  const [values, setValues] = useState<FormValues>({
-    promise: "",
+  // The visitor's own ending of the sentence; null while the examples rotate, which is no promise at all.
+  const [custom, setCustom] = useState<string | null>(variant === "page" ? "" : null);
+  const [rest, setRest] = useState<Omit<FormValues, "promise">>({
     token: network.tokens[0]!.address,
     amount: "",
     referee: "",
@@ -234,14 +270,21 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
     deadline: INITIAL_DEADLINE,
     acknowledged: false,
   });
+  const values: FormValues = { ...rest, promise: custom ?? "" };
   const [touched, setTouched] = useState<ReadonlySet<Field>>(new Set());
   const [busy, setBusy] = useState(false);
+  // The creation, once it has landed; the ink then collapses into the ring, and only after that is the seal shown.
+  const [created, setCreated] = useState<Creation | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const panel = useRef<HTMLElement>(null);
   // The failure of a custom deadline found when submit was activated or before the creation, which the person
   // mends by choosing another time, so it goes when the deadline changes or a new attempt starts.
   const [recheck, setRecheck] = useState<string | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   // Set at once in the handler, since two presses can arrive before the page renders in between.
   const inFlight = useRef(false);
+  // Fields are read-only from the moment a request is pending (LLR-FE-036) and stay so once the promise exists.
+  const locked = busy || created !== null;
 
   const token = network.tokens.find((t) => t.address.toLowerCase() === values.token.toLowerCase());
 
@@ -296,20 +339,21 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
     touched.has(field) || check.atOnce.includes(field) ? errors[field] : undefined; // LLR-FE-030
   const touch = (field: Field) => setTouched((previous) => (previous.has(field) ? previous : new Set(previous).add(field)));
   /** `leaves` is for a control whose change is the person finishing with it: a choice or a tick, not a keystroke. */
-  const set = <K extends keyof FormValues>(field: K, value: FormValues[K], leaves = false) => {
+  const set = <K extends Exclude<keyof FormValues, "promise">>(field: K, value: FormValues[K], leaves = false) => {
     if (field === "deadline") setRecheck(null);
-    setValues((previous) => ({ ...previous, [field]: value }));
+    setRest((previous) => ({ ...previous, [field]: value }));
     if (leaves) touch(field);
   };
 
   const parsed = token === undefined ? null : parseAmount(values.amount, token.decimals);
   const deadlineInput = deadlineOf(values.deadline);
   const ready = check.valid && parsed?.ok === true && deadlineInput !== null;
-  const canSubmit = gate.enabled && ready && !busy && unconfirmed === null; // LLR-FE-023 LLR-FE-036 LLR-FE-062
+  const canSubmit = gate.enabled && ready && !busy && unconfirmed === null && created === null; // LLR-FE-023 LLR-FE-036 LLR-FE-062
 
+  const promiseId = `${ids}-promise`;
   // The control that takes focus for each field: the first choice of the deadline, or its date when that is custom.
   const focusIds: Record<Field, string> = {
-    promise: `${ids}-promise`,
+    promise: promiseId,
     token: `${ids}-token`,
     amount: `${ids}-amount`,
     referee: `${ids}-referee`,
@@ -318,18 +362,34 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
     acknowledged: `${ids}-acknowledged`,
   };
 
+  // The promise is a field only once the visitor has chosen to write, so focus waits for it to exist.
+  const focusPromise = useRef(false);
+  useEffect(() => {
+    if (custom === null || !focusPromise.current) return;
+    focusPromise.current = false;
+    document.getElementById(promiseId)?.focus();
+  }, [custom, promiseId]);
+
+  // Focus goes to the panel that replaces the button which was pressed, once the seal is shown.
+  useEffect(() => {
+    if (collapsed) panel.current?.focus(); // LLR-FE-072
+  }, [collapsed]);
+
   /** What activating a disabled submit does: every field counts as left, and focus goes to the first at fault. */
   function revealFaults() {
     setTouched(new Set(FIELD_ORDER));
     const first = FIELD_ORDER.find((field) => errors[field] !== undefined); // LLR-FE-030
-    if (first !== undefined) document.getElementById(focusIds[first])?.focus();
+    if (first === "promise" && custom === null) {
+      focusPromise.current = true;
+      setCustom("");
+    } else if (first !== undefined) document.getElementById(focusIds[first])?.focus();
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (inFlight.current) return; // LLR-FE-036
     if (!canSubmit || staker === undefined || token === undefined || parsed?.ok !== true || deadlineInput === null) {
-      if (!busy) revealFaults();
+      if (!busy && created === null) revealFaults();
       return;
     }
     inFlight.current = true;
@@ -374,13 +434,13 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
       clockNow: () => clock.now(),
     };
     try {
-      const id = await runCreate(io, { amount, deadline: deadlineInput }, (steps) => {
+      const done = await runCreate(io, { amount, deadline: deadlineInput }, (steps) => {
         latest = steps;
         setProgress({ steps, amountText, kept: false });
       });
-      setProgress(null);
-      onCreated(id);
-      window.location.assign(`#/p/${id.toString()}`); // LLR-FE-037
+      // The view stays where the creation was made (LLR-FE-037): the ink collapses, then the seal is shown.
+      setCreated(done); // LLR-FE-037
+      onCreated?.(done.id);
     } catch (error) {
       // A deadline that no longer passes is said beside the deadline, and nothing went wrong with a request.
       if (error instanceof DeadlineCheckError) setRecheck(customDeadlineMessage(error.check) ?? null);
@@ -431,221 +491,311 @@ export function CreateView({ client, reads, network, health, onCreated }: Create
     { key: "custom", label: "Custom", checked: choice.kind === "custom", select: () => set("deadline", { kind: "custom", local: "" }) },
   ];
 
-  return (
-    <>
-      <PageHeading title="New promise | SatStake" className="display">
-        New <span className="hot">promise</span>
-      </PageHeading>
-      <p className="lead">{INTRO}</p>
-      <form className="create-form" aria-label="New promise" noValidate onSubmit={(event) => void submit(event)}>
-        <FieldShell
-          id={`${ids}-promise`}
-          label="Promise"
-          error={shown("promise")}
-          hints={[HINTS.promise, `${promiseBytes(values.promise)} of ${MAX_PROMISE_BYTES} bytes`]}
-          control={(props) => (
-            <textarea
-              {...props}
-              rows={3}
-              readOnly={busy}
-              value={values.promise}
-              onChange={(event) => set("promise", event.target.value)}
-              onBlur={() => touch("promise")}
-            />
-          )}
-        />
-        <FieldShell
-          id={`${ids}-token`}
-          label="Token"
-          error={shown("token")}
-          control={(props) => (
-            <select {...props} disabled={busy} value={values.token} onChange={(event) => set("token", event.target.value as Address, true)} onBlur={() => touch("token")}>
-              {network.tokens.map((t) => (
-                <option key={t.address} value={t.address}>
-                  {t.symbol}
-                </option>
-              ))}
-            </select>
-          )}
-        />
-        <FieldShell
-          id={`${ids}-amount`}
-          label="Amount"
-          error={shown("amount")}
-          hints={[balanceHint, amountHint].filter((hint): hint is string => hint !== undefined)}
-          control={(props) => (
-            <input
-              {...props}
-              type="text"
-              readOnly={busy}
-              inputMode="decimal"
-              autoComplete="off"
-              value={values.amount}
-              onChange={(event) => set("amount", event.target.value)}
-              onBlur={() => touch("amount")}
-            />
-          )}
-        />
-        <FieldShell
-          id={`${ids}-referee`}
-          label="Referee address"
-          error={shown("referee")}
-          hints={[HINTS.referee]}
-          warning={shown("referee") === undefined && refereeHasCode ? WARNINGS.referee : ""}
-          control={(props) => (
-            <input
-              {...props}
-              type="text"
-              readOnly={busy}
-              autoComplete="off"
-              spellCheck={false}
-              value={values.referee}
-              onChange={(event) => set("referee", event.target.value)}
-              onBlur={() => touch("referee")}
-            />
-          )}
-        />
-        <FieldShell
-          id={`${ids}-beneficiary`}
-          label="Beneficiary address"
-          error={shown("beneficiary")}
-          hints={[HINTS.beneficiary]}
-          caution={BENEFICIARY_CAUTION} // LLR-FE-034
-          warning={shown("beneficiary") === undefined && beneficiaryHasCode ? WARNINGS.beneficiary : ""}
-          control={(props) => (
-            <input
-              {...props}
-              type="text"
-              readOnly={busy}
-              autoComplete="off"
-              spellCheck={false}
-              value={values.beneficiary}
-              onChange={(event) => set("beneficiary", event.target.value)}
-              onBlur={() => touch("beneficiary")}
-            />
-          )}
-        />
+  // The button names what will be sealed, once there is an amount to name.
+  const sealLabel =
+    token !== undefined && parsed?.ok === true && parsed.value > 0n ? `Seal it with ${stakeWords(network, token.address, parsed.value)}` : "Seal it";
 
-        {/* The deadline is left when focus goes out of the whole group, and not when it moves from Custom to its date. */}
-        <fieldset
-          aria-describedby={`${ids}-deadline-end ${ids}-deadline-error`}
-          onBlur={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) touch("deadline");
-          }}
-        >
-          <legend className="label">Deadline</legend>
-          <div className="choices">
-            {choices.map((option) => (
-              <label className="choice" key={option.key}>
-                <input
-                  id={`${ids}-deadline-${option.key}`}
-                  type="radio"
-                  name={`${ids}-deadline`}
-                  disabled={busy}
-                  checked={option.checked}
-                  onChange={option.select}
-                />
-                {option.label}
-              </label>
-            ))}
-          </div>
-          <p id={`${ids}-deadline-end`} className="hint">
-            {presetEnds}
-          </p>
-          {choice.kind === "custom" && (
-            <div className="field">
-              <label htmlFor={`${ids}-custom`} className="label">
-                Custom date and time
-              </label>
+  const sealed = created !== null && collapsed;
+  const head =
+    created === null || !collapsed ? (
+      <div className="pad-form-head">
+        <span className="label">New promise</span>
+        <div className="pad-fields">
+          <FieldShell
+            id={`${ids}-token`}
+            label="Token"
+            error={shown("token")}
+            control={(props) => (
+              <select {...props} disabled={locked} value={values.token} onChange={(event) => set("token", event.target.value as Address, true)} onBlur={() => touch("token")}>
+                {network.tokens.map((t) => (
+                  <option key={t.address} value={t.address}>
+                    {t.symbol}
+                  </option>
+                ))}
+              </select>
+            )}
+          />
+          <FieldShell
+            id={`${ids}-amount`}
+            label="Amount"
+            error={shown("amount")}
+            hints={[balanceHint, amountHint].filter((hint): hint is string => hint !== undefined)}
+            control={(props) => (
               <input
-                id={`${ids}-custom`}
-                type="datetime-local"
-                aria-describedby={`${ids}-custom-hint ${ids}-deadline-error`}
-                aria-invalid={deadlineFailure ? true : undefined}
-                readOnly={busy}
-                min={bounds?.min}
-                max={bounds?.max}
-                value={choice.local}
-                onChange={(event) => set("deadline", { kind: "custom", local: event.target.value })}
+                {...props}
+                type="text"
+                readOnly={locked}
+                inputMode="decimal"
+                autoComplete="off"
+                value={values.amount}
+                onChange={(event) => set("amount", event.target.value)}
+                onBlur={() => touch("amount")}
               />
-              <p id={`${ids}-custom-hint`} className="hint">
-                In your local time.
-              </p>
-            </div>
-          )}
-          <p id={`${ids}-deadline-error`} className="field-error" aria-live="polite">
-            {deadlineFailure ?? ""}
-          </p>
-        </fieldset>
-
-        <div className="field">
-          <label className="choice ack">
-            <input
-              id={`${ids}-acknowledged`}
-              type="checkbox"
-              disabled={busy}
-              checked={values.acknowledged}
-              aria-describedby={`${ids}-acknowledged-error`}
-              aria-invalid={shown("acknowledged") ? true : undefined}
-              onChange={(event) => set("acknowledged", event.target.checked, true)}
-              onBlur={() => touch("acknowledged")}
-            />
-            {ACKNOWLEDGEMENT}
-          </label>
-          <p id={`${ids}-acknowledged-error`} className="field-error" aria-live="polite">
-            {shown("acknowledged") ?? ""}
-          </p>
+            )}
+          />
+          <FieldShell
+            id={`${ids}-referee`}
+            label="Referee address"
+            error={shown("referee")}
+            hints={[HINTS.referee]}
+            warning={shown("referee") === undefined && refereeHasCode ? WARNINGS.referee : ""}
+            control={(props) => (
+              <input
+                {...props}
+                type="text"
+                readOnly={locked}
+                autoComplete="off"
+                spellCheck={false}
+                value={values.referee}
+                onChange={(event) => set("referee", event.target.value)}
+                onBlur={() => touch("referee")}
+              />
+            )}
+          />
+          <FieldShell
+            id={`${ids}-beneficiary`}
+            label="Beneficiary address"
+            error={shown("beneficiary")}
+            hints={[HINTS.beneficiary]}
+            caution={BENEFICIARY_CAUTION} // LLR-FE-034
+            warning={shown("beneficiary") === undefined && beneficiaryHasCode ? WARNINGS.beneficiary : ""}
+            control={(props) => (
+              <input
+                {...props}
+                type="text"
+                readOnly={locked}
+                autoComplete="off"
+                spellCheck={false}
+                value={values.beneficiary}
+                onChange={(event) => set("beneficiary", event.target.value)}
+                onBlur={() => touch("beneficiary")}
+              />
+            )}
+          />
         </div>
+      </div>
+    ) : (
+      <>
+        <span className="label">{`Promise #${created.id.toString()} · sealed`}</span>
+        <div className="who">
+          <span>
+            Staker <b className="mono">{shorten(created.staker)}</b>
+          </span>
+          <span>
+            Referee <b className="mono">{shorten(created.referee)}</b>
+          </span>
+          <span>
+            Beneficiary <b className="mono">{shorten(created.beneficiary)}</b>
+          </span>
+        </div>
+      </>
+    );
 
-        <div className="submit-area">
-          {/* aria-disabled and not the disabled attribute, so the control stays reachable by keyboard and its reasons can be heard. */}
-          <button type="submit" className="cta button-primary" aria-disabled={!canSubmit} aria-describedby={`${ids}-prompts ${ids}-submit-help`}>
-            Create promise
-            <span className="arr" aria-hidden="true">
-              →
-            </span>
+  const foot = sealed ? (
+    <section ref={panel} className="sealed" aria-label="Sealed promise" tabIndex={-1}>
+      <div>
+        <span className="label">Sealed in transaction</span>
+        <HashValue
+          kind="transaction"
+          value={created.hash}
+          explorerUrl={network.explorerUrl}
+          copyNoun="the transaction hash"
+          viewNoun="the creation transaction"
+        />
+      </div>
+      <div>
+        <span className="label">Promise number</span>
+        <b>{`#${created.id.toString()}`}</b>
+      </div>
+      <div>
+        <span className="label">Locked until</span>
+        <b>{`Referee rules, or ${formatLocalTime(created.deadline)}`}</b>
+      </div>
+      <div className="sealed-share">
+        <span className="label">Send this link to your referee and your beneficiary</span>
+        <code>{shareLink(created.id)}</code>
+        <div className="btns">
+          <CopyLink id={created.id} bare />
+          <a className="b ghost" href={`#/p/${created.id.toString()}`}>
+            Open the promise
+          </a>
+          <button type="button" className="b ghost" onClick={another}>
+            Make another promise
           </button>
-          <p id={`${ids}-prompts`} className="hint">
-            {progress === null ? PROMPT_COUNT_HINT : ""}
-          </p>
-          <div id={`${ids}-submit-help`} className="hint">
-            {gate.reasons.map((reason) => (
-              <p key={reason}>{reason}</p>
-            ))}
-            {health.tokens === null && <p>Checking the tokens.</p>}
-            {incomplete.length > 0 && <p>Still to complete: {incomplete.join(", ")}.</p>}
-          </div>
-          <div role="status" aria-label="Promise progress" className="progress">
-            {progress !== null && (
-              <>
-                <ul>
-                  {progress.steps.map((step) => (
-                    <li key={step.id}>
-                      {stepLabel(step, progress)}. {STAGE_TEXT[step.stage]}
-                    </li>
-                  ))}
-                </ul>
-                {progress.kept && (
-                  <p>Your approval of {progress.amountText} is confirmed and stays in place, so trying again asks your wallet once.</p>
-                )}
-              </>
-            )}
-          </div>
-          <RequestNotice error={failure.error} label="Create notices">
-            {unconfirmed !== null && (
-              <>
-                <p className="notice notice-failure">{UNCONFIRMED_MESSAGE}</p>
-                <p>
-                  Transaction: <code>{unconfirmed.hash}</code>
-                </p>
-                <p>
-                  <a href="#/mine">My promises</a>
-                </p>
-              </>
-            )}
-          </RequestNotice>
         </div>
+      </div>
+    </section>
+  ) : (
+    <div className="pad-foot">
+      {/* The deadline is left when focus goes out of the whole group, and not when it moves from Custom to its date. */}
+      <fieldset
+        aria-describedby={`${ids}-deadline-end ${ids}-deadline-error`}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) touch("deadline");
+        }}
+      >
+        <legend className="label">Deadline</legend>
+        <div className="choices">
+          {choices.map((option) => (
+            <label className="choice" key={option.key}>
+              <input
+                id={`${ids}-deadline-${option.key}`}
+                type="radio"
+                name={`${ids}-deadline`}
+                disabled={locked}
+                checked={option.checked}
+                onChange={option.select}
+              />
+              {option.label}
+            </label>
+          ))}
+        </div>
+        <p id={`${ids}-deadline-end`} className="hint">
+          {presetEnds}
+        </p>
+        {choice.kind === "custom" && (
+          <div className="field">
+            <label htmlFor={`${ids}-custom`} className="label">
+              Custom date and time
+            </label>
+            <input
+              id={`${ids}-custom`}
+              type="datetime-local"
+              aria-describedby={`${ids}-custom-hint ${ids}-deadline-error`}
+              aria-invalid={deadlineFailure ? true : undefined}
+              readOnly={locked}
+              min={bounds?.min}
+              max={bounds?.max}
+              value={choice.local}
+              onChange={(event) => set("deadline", { kind: "custom", local: event.target.value })}
+            />
+            <p id={`${ids}-custom-hint`} className="hint">
+              In your local time.
+            </p>
+          </div>
+        )}
+        <p id={`${ids}-deadline-error`} className="field-error" aria-live="polite">
+          {deadlineFailure ?? ""}
+        </p>
+      </fieldset>
+
+      <div className="field">
+        <label className="choice ack">
+          <input
+            id={`${ids}-acknowledged`}
+            type="checkbox"
+            disabled={locked}
+            checked={values.acknowledged}
+            aria-describedby={`${ids}-acknowledged-error`}
+            aria-invalid={shown("acknowledged") ? true : undefined}
+            onChange={(event) => set("acknowledged", event.target.checked, true)}
+            onBlur={() => touch("acknowledged")}
+          />
+          {ACKNOWLEDGEMENT}
+        </label>
+        <p id={`${ids}-acknowledged-error`} className="field-error" aria-live="polite">
+          {shown("acknowledged") ?? ""}
+        </p>
+      </div>
+
+      <div className="submit-area">
+        {/* aria-disabled and not the disabled attribute, so the control stays reachable by keyboard and its reasons can be heard. */}
+        <button type="submit" className="b ink" aria-disabled={!canSubmit} aria-describedby={`${ids}-prompts ${ids}-submit-help`}>
+          {sealLabel}
+        </button>
+        <p id={`${ids}-prompts`} className="hint">
+          {progress === null ? PROMPT_COUNT_HINT : ""}
+        </p>
+        <div id={`${ids}-submit-help`} className="hint">
+          {gate.reasons.map((reason) => (
+            <p key={reason}>{reason}</p>
+          ))}
+          {health.tokens === null && <p>Checking the tokens.</p>}
+          {incomplete.length > 0 && <p>Still to complete: {incomplete.join(", ")}.</p>}
+        </div>
+        <div role="status" aria-label="Promise progress" className="progress">
+          {progress !== null && (
+            <>
+              <ul>
+                {progress.steps.map((step) => (
+                  <li key={step.id}>
+                    {stepLabel(step, progress)}. {STAGE_TEXT[step.stage]}
+                  </li>
+                ))}
+              </ul>
+              {progress.kept && (
+                <p>Your approval of {progress.amountText} is confirmed and stays in place, so trying again asks your wallet once.</p>
+              )}
+            </>
+          )}
+        </div>
+        <RequestNotice error={failure.error} label="Create notices">
+          {unconfirmed !== null && (
+            <>
+              <p className="notice notice-failure">{UNCONFIRMED_MESSAGE}</p>
+              <p>
+                Transaction: <code>{unconfirmed.hash}</code>
+              </p>
+              <p>
+                <a href="#/mine">My promises</a>
+              </p>
+            </>
+          )}
+        </RequestNotice>
+      </div>
+    </div>
+  );
+
+  const hash = created === null ? null : sealBytesOf(created.hash);
+  return (
+    <Hero
+      custom={custom}
+      onCustomChange={setCustom}
+      maxLength={PROMISE_FIELD_LIMIT}
+      title={variant === "page" ? "New promise | SatStake" : "SatStake"}
+      autoFocus={variant === "page"}
+      sub={variant === "page" ? INTRO : LANDING_SUB}
+      inputProps={{
+        id: promiseId,
+        "aria-describedby": `${promiseId}-hint ${promiseId}-error`,
+        "aria-invalid": shown("promise") ? true : undefined,
+        readOnly: locked,
+        onBlur: () => touch("promise"),
+      }}
+    >
+      <form id={formId} className="create-pad" aria-label="New promise" noValidate onSubmit={(event) => void submit(event)}>
+        {created === null && (
+          <div className="field promise-meta">
+            <div id={`${promiseId}-hint`} className="hint">
+              <p>{HINTS.promise}</p>
+              <p>{`${promiseBytes(values.promise)} of ${MAX_PROMISE_BYTES} bytes`}</p>
+            </div>
+            <p id={`${promiseId}-error`} className="field-error" aria-live="polite">
+              {shown("promise") ?? ""}
+            </p>
+          </div>
+        )}
+        <SignaturePad
+          head={head}
+          foot={foot}
+          sealBytes={sealed ? hash : null}
+          sealLabel={
+            created === null
+              ? ""
+              : sealLabelOf({
+                  id: created.id,
+                  stake: stakeWords(network, created.token, created.amount),
+                  networkName: network.name,
+                  hash: created.hash,
+                })
+          }
+          collapsing={created !== null && !collapsed}
+          onCollapsed={() => setCollapsed(true)}
+        />
       </form>
-    </>
+      {variant === "landing" && (
+        <p className="home-need">You need a browser wallet on Arc with a little USDC for network fees. Reading needs none.</p>
+      )}
+    </Hero>
   );
 }

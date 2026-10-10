@@ -259,7 +259,7 @@ describe("LLR-FE-020 the connected account is shown in shortened form and follow
 describe("LLR-FE-021 every read-only view renders fully without a connected wallet", () => {
   const views: [string, string][] = [
     ["#/", "I promise to"],
-    ["#/create", "New promise"],
+    ["#/create", "I promise to"],
     ["#/mine", "My promises"],
     ["#/about", "About SatStake"],
     ["#/p/1", "Promise #1"],

@@ -20,6 +20,8 @@ export interface OpenOptions {
   /** Allowance of USDC the contract holds from the account at the start. */
   allowance?: bigint;
   walletChain?: number;
+  /** The route to open: the create page by default, or the landing, where the same pad is live. */
+  hash?: string;
   /** Leave the wallet unconnected, so the page opens as a visitor with a wallet installed. */
   disconnected?: boolean;
   /** Add to the world before the page opens. */
@@ -28,7 +30,7 @@ export interface OpenOptions {
 
 /** The create page, open against a fake chain and a wallet, with a funded account. */
 export async function openCreate(options: OpenOptions = {}) {
-  const { balance = 100_000_000n, allowance = 0n, walletChain = network.chainId, disconnected = false } = options;
+  const { balance = 100_000_000n, allowance = 0n, walletChain = network.chainId, disconnected = false, hash = "#/create" } = options;
   const wallet = new FakeWallet({ chainId: walletChain, accounts: [ACCOUNT], authorized: !disconnected });
   wallet.knownChains.add(network.chainId);
   const chain = freshChain();
@@ -37,16 +39,30 @@ export async function openCreate(options: OpenOptions = {}) {
   chain.setAllowance(usdc.address, ACCOUNT, network.contract, allowance);
   const world = new FakeWorld(chain, wallet);
   options.prepare?.({ chain, wallet, world });
-  const mounted = mountApp({ hash: "#/create", wallets: [{ wallet, name: "Alpha Wallet", rdns: "test.alpha" }], chain });
+  const mounted = mountApp({ hash, wallets: [{ wallet, name: "Alpha Wallet", rdns: "test.alpha" }], chain });
   if (!disconnected) await findConnected(ACCOUNT);
   return { ...mounted, chain, wallet, world };
 }
 
-export const field = (label: string) => screen.getByLabelText(label);
+/**
+ * The promise is the hero's sentence. On the landing the visitor first chooses to write their own, as a person
+ * would; on the create page the field is there already.
+ */
+function promiseInput(): HTMLElement {
+  const existing = screen.queryByRole("textbox", { name: "Your promise" });
+  if (existing) return existing;
+  fireEvent.click(screen.getByRole("button", { name: /Write your own/ }));
+  return screen.getByRole("textbox", { name: "Your promise" });
+}
+
+export const field = (label: string) => (label === "Promise" ? promiseInput() : screen.getByLabelText(label));
 export const type = (label: string, value: string) => fireEvent.change(field(label), { target: { value } });
-export const submit = () => screen.getByRole("button", { name: "Create promise" });
+export const submit = () => screen.getByRole("button", { name: /^Seal it/ });
 export const isDisabled = (button: HTMLElement) =>
   (button as HTMLButtonElement).disabled || button.getAttribute("aria-disabled") === "true";
+
+/** The panel that takes the place of the form's foot once the creation has landed and the ink has become a seal. */
+export const sealedPanel = () => screen.findByRole("region", { name: "Sealed promise" }, { timeout: 4000 });
 
 export function chooseDeadline(label: string) {
   fireEvent.click(screen.getByRole("radio", { name: label }));

@@ -102,8 +102,22 @@ const STAGES: Readonly<Record<PledgeState, LiveStage>> = {
   },
 };
 
+/**
+ * What the page says in the moment chain time has passed the deadline and the next poll has not yet shown whether
+ * a verdict was mined just before it. Neither Open nor No answer is true, so it says it is looking.
+ */
+const CHECKING: LiveStage = {
+  heading: "Checking",
+  tone: "",
+  text: "The deadline has passed. Checking the network for the outcome.",
+  stake: "vault",
+  bubble: null,
+  chain: ["Open"],
+};
+
 /** @trace LLR-FE-040 */
-export function liveStage(state: PledgeState): LiveStage {
+export function liveStage(state: PledgeState, checking = false): LiveStage {
+  if (checking && state === "Active") return CHECKING; // LLR-FE-040
   return STAGES[state];
 }
 

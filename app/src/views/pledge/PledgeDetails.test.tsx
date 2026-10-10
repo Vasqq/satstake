@@ -1,7 +1,7 @@
 import { screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatLocalTime } from "../../format";
-import { ROLE_LABELS, ROLE_STATEMENTS } from "../roles";
+import { ROLE_STATEMENTS } from "../roles";
 import { STATE_NAMES } from "../stateLabels";
 import {
   BENEFICIARY,
@@ -9,11 +9,11 @@ import {
   STAKER,
   advance,
   cirbtc,
-  fact,
   openPledge,
   statusLine,
   statusRegion,
   usdc,
+  signature,
   warningArea,
 } from "../../test/pledgeHarness";
 import { ACCOUNT, network, shortOf, teardownWallets } from "../../test/walletHarness";
@@ -28,10 +28,13 @@ afterEach(() => {
 const main = () => within(screen.getByRole("main"));
 /** The promise inside the heading. It is the page's loaded marker, so a test waits on it before reading the rest. */
 const promiseTitle = () => main().findByText(/^“/, { selector: ".ptitle" });
-const stakeAmount = () => document.querySelector(".stake-amount") as HTMLElement;
+/** The stake as the agreement's first line gives it. */
+const stakeAmount = () => document.querySelector(".doc ol li strong") as HTMLElement;
 const deadlineText = () => (document.querySelector(".pledge-deadline time") as HTMLElement).textContent;
-/** The accessible words of the countdown, without their "Time left: " lead, and the visible note while the clock is unsynced. */
-const timeLeft = () => document.querySelector(".clock-words")!.textContent!.replace(/^Time left: /, "");
+/** The clock's own words for the time left, without their lead, and its note while chain time is unknown. */
+const dayLine = () => document.querySelector(".clock-card .day") as HTMLElement | null;
+const timeLeft = () => dayLine()!.textContent!.replace(/^Deadline in /, "");
+const clockHeading = () => document.querySelector(".clock-card .state h3")!.textContent;
 const banner = () => screen.getByRole("note");
 
 describe("LLR-FE-040 the pledge page shows the pledge", () => {
@@ -81,12 +84,12 @@ describe("LLR-FE-040 the pledge page shows the pledge", () => {
     expect((await promiseTitle()).textContent).toBe("“Run”");
   });
 
-  it("labels the three parties differently, one column each", async () => {
+  it("gives the three parties a signature line each, labelled differently", async () => {
     await openPledge();
     await promiseTitle();
-    const labels = [...document.querySelectorAll("dt")].map((dt) => dt.textContent);
-    expect(labels).toHaveLength(3);
-    expect(new Set(labels).size).toBe(3);
+    const labels = [...document.querySelectorAll(".sig b")].map((b) => b.textContent);
+    expect(labels).toEqual(["Staker", "Referee", "Beneficiary"]);
+    expect(document.querySelectorAll(".sig")).toHaveLength(3);
   });
 
   it("shows the stake with its token's symbol", async () => {
@@ -94,7 +97,7 @@ describe("LLR-FE-040 the pledge page shows the pledge", () => {
     await promiseTitle();
     expect(stakeAmount().textContent).toContain("USDC");
     expect(stakeAmount().textContent).toContain("5");
-    expect(document.querySelector(".stake small")).toBeNull();
+    expect(main().queryByText(/smallest unit of Bitcoin/)).toBeNull();
   });
 
   it("shows a cirBTC stake with its value in sats as well, and says what a sat is", async () => {
@@ -103,13 +106,13 @@ describe("LLR-FE-040 the pledge page shows the pledge", () => {
     expect(stakeAmount().textContent).toMatch(/^10,000 sats\b/);
     expect(stakeAmount().textContent).toContain("cirBTC");
     expect(stakeAmount().textContent).not.toContain("$");
-    expect(document.querySelector(".stake small")?.textContent).toMatch(/sat/);
+    expect(main().getByText(/A sat is the smallest unit of Bitcoin/)).toBeTruthy();
   });
 
-  it("says in words what the number is, for a reader who hears it without the layout", async () => {
+  it("says in words what the number is, in the agreement's first line", async () => {
     await openPledge({ token: usdc.address, amount: 5_000_000n });
     await promiseTitle();
-    expect(document.querySelector(".stake")?.textContent).toMatch(/^Stake: /);
+    expect(document.querySelector(".doc ol li")?.textContent).toMatch(/locks \$5 in USDC in the contract/);
   });
 
   it("copes with the largest and the smallest amounts in both tokens", async () => {
@@ -136,11 +139,11 @@ describe("LLR-FE-040 the pledge page shows the pledge", () => {
     await openPledge();
     await promiseTitle();
     for (const [label, noun, address] of [
-      [ROLE_LABELS.staker, "staker", STAKER],
-      [ROLE_LABELS.referee, "referee", REFEREE],
-      [ROLE_LABELS.beneficiary, "beneficiary", BENEFICIARY],
+      ["Staker", "staker", STAKER],
+      ["Referee", "referee", REFEREE],
+      ["Beneficiary", "beneficiary", BENEFICIARY],
     ] as const) {
-      const row = within(fact(label));
+      const row = within(signature(label));
       expect(row.getByText(shortOf(address)).getAttribute("title")).toBe(address);
       expect(row.getByRole("button", { name: `Copy the ${noun}'s address` })).toBeTruthy();
       const link = row.getByRole("link", { name: `View on explorer, the ${noun}` });
@@ -204,8 +207,7 @@ describe("LLR-FE-040 the pledge page shows the pledge", () => {
     for (const [state, shown] of [[0, true], [1, true], [2, false], [3, false], [4, false], [5, false]] as const) {
       await openPledge({ state, secondsLeft: state === 1 ? -10n : 500_000n });
       await promiseTitle();
-      expect(document.querySelector(".clock-words") !== null).toBe(shown);
-      expect(document.querySelector(".clock") !== null).toBe(shown);
+      expect(dayLine() !== null).toBe(shown);
       teardownWallets();
     }
   });
@@ -214,28 +216,43 @@ describe("LLR-FE-040 the pledge page shows the pledge", () => {
     await openPledge({ state: 1, secondsLeft: 500_000n });
     await promiseTitle();
     expect(timeLeft()).toBe("Deadline passed");
-    expect(document.querySelector(".clock")?.textContent).toBe("00d00h00m00s");
   });
 });
 
-describe("LLR-FE-040 the three-step timeline", () => {
-  const steps = () => [...document.querySelectorAll(".timeline li")];
+describe("LLR-FE-040 the clock section names the state and the stages the promise went through", () => {
+  const stages = () => [...document.querySelectorAll(".clock-card .chain span")].map((span) => span.textContent);
+  const current = () => [...document.querySelectorAll(".clock-card .chain span.on")].map((span) => span.textContent);
 
-  it("lists Made, Judged and Paid out with the current step marked while open", async () => {
-    await openPledge();
-    await promiseTitle();
-    expect(steps().map((li) => li.textContent)).toEqual(["Made", "Judged", "Paid out"]);
-    expect(steps().map((li) => li.getAttribute("aria-current"))).toEqual([null, "step", null]);
-    expect(steps().map((li) => li.classList.contains("done"))).toEqual([true, false, false]);
-  });
-
-  it("moves the current step to Paid out once there is a verdict or the deadline passed", async () => {
-    for (const state of [1, 2, 3]) {
+  it("names each derived state in the words of the design", async () => {
+    const expected = [
+      [0, "Open"],
+      [1, "No answer"],
+      [2, "Kept"],
+      [3, "Broken"],
+      [4, "Paid back"],
+      [5, "Paid out"],
+    ] as const;
+    for (const [state, name] of expected) {
       await openPledge({ state, secondsLeft: state === 1 ? -10n : 500_000n });
       await promiseTitle();
-      expect(steps().map((li) => li.getAttribute("aria-current"))).toEqual([null, null, "step"]);
-      // Expired had no verdict, so its second step is passed, not done.
-      expect(steps().map((li) => li.classList.contains("done"))).toEqual([true, state !== 1, false]);
+      expect(clockHeading(), `state ${state}`).toBe(name);
+      teardownWallets();
+    }
+  });
+
+  it("lists Open alone while open, with it marked as the current stage", async () => {
+    await openPledge();
+    await promiseTitle();
+    expect(stages()).toEqual(["Open"]);
+    expect(current()).toEqual(["Open"]);
+  });
+
+  it("goes on to the verdict, or to no answer, once there is one, and marks it as the current stage", async () => {
+    for (const [state, last] of [[1, "No answer"], [2, "Kept"], [3, "Broken"]] as const) {
+      await openPledge({ state, secondsLeft: state === 1 ? -10n : 500_000n });
+      await promiseTitle();
+      expect(stages(), `state ${state}`).toEqual(["Open", last]);
+      expect(current()).toEqual([last]);
       teardownWallets();
     }
   });
@@ -243,9 +260,53 @@ describe("LLR-FE-040 the three-step timeline", () => {
   it("marks the payout as where it ended, and does not claim a verdict after a payout to the beneficiary", async () => {
     await openPledge({ state: 5 });
     await promiseTitle();
-    expect(steps().map((li) => li.getAttribute("aria-current"))).toEqual([null, null, "step"]);
-    expect(steps()[1]!.classList.contains("done")).toBe(false);
-    expect(steps()[1]!.textContent).toMatch(/no answer/i);
+    expect(stages()).toEqual(["Open", "Paid out"]);
+    expect(current()).toEqual(["Paid out"]);
+    expect(document.querySelector(".clock-card .bubble")).toBeNull();
+    teardownWallets();
+    await openPledge({ state: 4 });
+    await promiseTitle();
+    expect(stages()).toEqual(["Open", "Kept", "Paid back"]);
+  });
+
+  it("marks only the deadline on the timeline, since the contract records no verdict or payout day", async () => {
+    await openPledge({ state: 2 });
+    await promiseTitle();
+    expect([...document.querySelectorAll(".clock-card .mk")].map((m) => m.textContent)).toEqual(["deadline"]);
+  });
+
+  it("says it is checking, and not that there was no answer, when chain time is past the deadline and the poll still says Active", async () => {
+    await openPledge({ secondsLeft: -5n });
+    await screen.findByText("Deadline passed", { selector: ".clock-card .day" });
+    expect(clockHeading()).toBe("Checking");
+    expect(document.querySelector(".clock-card .state")!.textContent).not.toMatch(/No answer|Silence counts/);
+    expect(document.querySelector(".clock-card .state")!.textContent).toContain("Checking the network for the outcome");
+  });
+
+  it("does not say it is checking while the deadline is ahead, or once the state has been read as Expired", async () => {
+    await openPledge({ secondsLeft: 500_000n });
+    await promiseTitle();
+    expect(clockHeading()).toBe("Open");
+    teardownWallets();
+    await openPledge({ state: 1, secondsLeft: -10n });
+    await promiseTitle();
+    expect(clockHeading()).toBe("No answer");
+  });
+
+  it("gives the stake and the three parties to the diagram, shortened, and names the money's place", async () => {
+    await openPledge({ amount: 2_500_000n });
+    await promiseTitle();
+    const card = within(document.querySelector(".clock-card") as HTMLElement);
+    expect(card.getByText("$2.50 in USDC")).toBeTruthy();
+    for (const address of [STAKER, REFEREE, BENEFICIARY]) expect(card.getByText(shortOf(address))).toBeTruthy();
+  });
+
+  it("is a still picture: no scenarios, no slider, no example label", async () => {
+    await openPledge();
+    await promiseTitle();
+    expect(screen.queryByRole("slider")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Says/ })).toBeNull();
+    expect(document.querySelector(".clock-card")!.textContent).not.toMatch(/example/i);
   });
 });
 
@@ -404,16 +465,20 @@ describe("LLR-FE-040 the banner says what this page means for whoever is looking
 });
 
 describe("LLR-FE-041 the connected account's role is marked", () => {
-  it.each(["staker", "referee", "beneficiary"] as const)("marks the %s with a badge in plain words and (you) on their column", async (who) => {
-    const label = ROLE_LABELS[who];
+  it.each([
+    ["staker", "Staker"],
+    ["referee", "Referee"],
+    ["beneficiary", "Beneficiary"],
+  ] as const)("marks the %s with a badge in plain words and (you) on their signature line", async (who, label) => {
     await openPledge({ who });
     await promiseTitle();
     expect(main().getByText(ROLE_STATEMENTS[who]).className).toContain("role-badge");
-    const term = (name: string) => main().getByText(name, { selector: "dt" });
-    expect(term(label).textContent).toBe(`${label} (you)`);
-    expect(fact(label).textContent).not.toContain("(you)");
+    expect(within(signature(label)).getByText("(you)")).toBeTruthy();
     expect(document.body.textContent!.match(/\(you\)/g)).toHaveLength(1);
-    expect(within(fact(label)).getByText(shortOf(ACCOUNT))).toBeTruthy();
+    expect(within(signature(label)).getByText(shortOf(ACCOUNT))).toBeTruthy();
+    for (const other of ["Staker", "Referee", "Beneficiary"] as const) {
+      if (other !== label) expect(signature(other).textContent).not.toContain("(you)");
+    }
   });
 
   it("marks nothing for an account with no part in the promise", async () => {
@@ -436,7 +501,7 @@ describe("LLR-FE-041 the connected account's role is marked", () => {
 describe("LLR-FE-012 the countdown follows chain time and ticks every second", () => {
   it("shows the time left as days and hours, in the visitor's reading", async () => {
     await openPledge({ secondsLeft: 2n * 86_400n + 4n * 3600n + 5n });
-    await main().findByText("Time left: 2 days 4 hours");
+    await main().findByText("Deadline in 2 days 4 hours");
   });
 
   it("counts down once a second from the chain's latest block, with no further reading needed", async () => {
@@ -496,25 +561,24 @@ describe("LLR-FE-012 the countdown follows chain time and ticks every second", (
   });
 });
 
-describe("LLR-FE-012 the countdown is a large clock with its time said in words", () => {
-  it("shows four units as digits, hidden from assistive technology, with the words beside them", async () => {
+describe("LLR-FE-012 the countdown is the clock section's own line, said in words", () => {
+  const LIVE = "[aria-live], [role=status], [role=alert], [role=timer]";
+
+  it("reads the two largest units, with its lead", async () => {
     await openPledge({ secondsLeft: 2n * 86_400n + 4n * 3600n + 12n * 60n + 9n });
-    await main().findByText("Time left: 2 days 4 hours");
-    const clock = document.querySelector(".clock") as HTMLElement;
-    expect(clock.getAttribute("aria-hidden")).toBe("true");
-    expect(clock.textContent).toBe("02d04h12m09s");
-    expect([...clock.children].map((c) => c.tagName)).toEqual(["SPAN", "SPAN", "SPAN", "SPAN"]);
+    await main().findByText("Deadline in 2 days 4 hours");
+    expect(dayLine()!.textContent).toBe("Deadline in 2 days 4 hours");
   });
 
   it("is not in a live region, so it is not announced every second", async () => {
     await openPledge({ secondsLeft: 500n });
-    await main().findByText(/^Time left: /);
-    const words = document.querySelector(".clock-words") as HTMLElement;
-    expect(words.closest("[aria-live], [role=status], [role=alert], [role=timer]")).toBeNull();
-    expect(document.querySelector(".clock")!.closest("[aria-live], [role=status], [role=alert], [role=timer]")).toBeNull();
+    await main().findByText(/^Deadline in /, { selector: ".day" });
+    expect(dayLine()!.closest(LIVE)).toBeNull();
+    expect(document.querySelector(".clock-card")!.closest(LIVE)).toBeNull();
+    expect(document.querySelector(".clock-card [aria-live]")).toBeNull();
   });
 
-  it("shows no digits, only a visible note, until the clock has synced", async () => {
+  it("says the time is being read, and nothing else, until the clock has synced", async () => {
     vi.useFakeTimers();
     await openPledge({
       fakeTimers: true,
@@ -523,20 +587,18 @@ describe("LLR-FE-012 the countdown is a large clock with its time said in words"
       },
     });
     await advance(100);
-    expect(document.querySelector(".clock")).toBeNull();
-    expect(document.querySelector(".clock-words")?.className).not.toContain("visually-hidden");
+    expect(dayLine()!.textContent).toBe("Reading the time from the network");
+    expect(dayLine()!.className).not.toContain("visually-hidden");
   });
 
-  it("shows all zeros once the deadline has passed", async () => {
+  it("reads Deadline passed once the deadline has passed", async () => {
     await openPledge({ secondsLeft: -5n });
-    await screen.findByText("Deadline passed");
-    expect(document.querySelector(".clock")?.textContent).toBe("00d00h00m00s");
+    await screen.findByText("Deadline passed", { selector: ".day" });
   });
 
-  it("treats exactly zero seconds left as passed, with the ended face", async () => {
+  it("treats exactly zero seconds left as passed", async () => {
     await openPledge({ secondsLeft: 0n });
-    await screen.findByText("Deadline passed");
-    expect(document.querySelector(".clock")?.className).toContain("ended");
+    await screen.findByText("Deadline passed", { selector: ".day" });
   });
 
   it("shows an Expired pledge as passed before the clock has synced, since the state alone says so", async () => {
@@ -550,13 +612,25 @@ describe("LLR-FE-012 the countdown is a large clock with its time said in words"
     });
     await advance(100);
     expect(timeLeft()).toBe("Deadline passed");
-    expect(document.querySelector(".clock")?.textContent).toBe("00d00h00m00s");
   });
 
-  it("keeps days uncapped, with as many digits as they need", async () => {
+  it("shows an Expired pledge as passed whatever the clock says", async () => {
+    await openPledge({ state: 1, secondsLeft: 500_000n });
+    await promiseTitle();
+    expect(timeLeft()).toBe("Deadline passed");
+  });
+
+  it("keeps days uncapped", async () => {
     await openPledge({ secondsLeft: 123n * 86_400n });
-    await main().findByText("Time left: 123 days 0 hours");
-    expect(document.querySelector(".clock")?.textContent).toBe("123d00h00m00s");
+    await main().findByText("Deadline in 123 days 0 hours");
+  });
+
+  it("puts the knob where chain time is between creation and the deadline", async () => {
+    await openPledge({ secondsLeft: 500_000n });
+    await promiseTitle();
+    const left = (document.querySelector(".clock-card .knob") as HTMLElement).style.left;
+    expect(parseFloat(left)).toBeGreaterThan(0);
+    expect(parseFloat(left)).toBeLessThan(70);
   });
 });
 
@@ -582,7 +656,7 @@ describe("LLR-FE-043 the warning under 10 minutes", () => {
   it("does not warn at exactly 10 minutes", async () => {
     await openPledge({ who: "referee", secondsLeft: 600n });
     await promiseTitle();
-    await main().findByText("Time left: 10 minutes 0 seconds");
+    await main().findByText("Deadline in 10 minutes 0 seconds");
     expect(warningText()).toBe("");
   });
 

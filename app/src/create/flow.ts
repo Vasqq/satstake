@@ -64,13 +64,24 @@ export class CreationUnconfirmedError extends Error {
   }
 }
 
+/** What the PledgeCreated event of a creation says, which is what the contract recorded and not what the form sent. */
+export interface CreatedPledge {
+  id: bigint;
+  staker: Address;
+  token: Address;
+  amount: bigint;
+  referee: Address;
+  beneficiary: Address;
+  deadline: bigint;
+}
+
 /**
- * The identifier is read from the PledgeCreated event of the receipt, from the contract's own address, and
- * never from a pledge count: another pledge may be created between the creation and the read.
+ * The pledge is read from the PledgeCreated event of the receipt, from the contract's own address, and never
+ * from a pledge count: another pledge may be created between the creation and the read.
  *
  * @trace LLR-FE-037
  */
-export function pledgeIdFromReceipt(receipt: ReceiptLike, contract: Address): bigint {
+export function createdFromReceipt(receipt: ReceiptLike, contract: Address): CreatedPledge {
   for (const log of receipt.logs) {
     if (log.address.toLowerCase() !== contract.toLowerCase()) continue; // LLR-FE-037
     try {
@@ -80,13 +91,23 @@ export function pledgeIdFromReceipt(receipt: ReceiptLike, contract: Address): bi
         topics: log.topics as [Hex, ...Hex[]],
         data: log.data,
       });
-      const id = (event.args as { id?: unknown } | undefined)?.id;
-      if (typeof id === "bigint") return id; // LLR-FE-037
+      const args = event.args as Partial<CreatedPledge> | undefined;
+      if (typeof args?.id === "bigint") return args as CreatedPledge; // LLR-FE-037
     } catch {
       // Any other event of the contract has a different signature, which is not an error here.
     }
   }
   throw new Error("The creation receipt holds no PledgeCreated event from the SatStake contract.");
+}
+
+/** @trace LLR-FE-037 */
+export function pledgeIdFromReceipt(receipt: ReceiptLike, contract: Address): bigint {
+  return createdFromReceipt(receipt, contract).id; // LLR-FE-037
+}
+
+/** A confirmed creation: what the event recorded, and the hash of the transaction that made it. */
+export interface Creation extends CreatedPledge {
+  hash: Hex;
 }
 
 /**
@@ -125,9 +146,9 @@ const progressOf = (approve: Stage | null, create: Stage | "waiting"): Step[] =>
  * Approval of exactly the amount when the allowance is short, then the creation. The allowance is read on
  * every run, so a retry after a refused or failed creation skips an approval that still stands.
  *
- * @trace LLR-FE-031 LLR-FE-033 LLR-FE-062
+ * @trace LLR-FE-031 LLR-FE-033 LLR-FE-037 LLR-FE-062
  */
-export async function runCreate(io: FlowIO, input: CreateInput, onProgress: (steps: Step[]) => void): Promise<bigint> {
+export async function runCreate(io: FlowIO, input: CreateInput, onProgress: (steps: Step[]) => void): Promise<Creation> {
   assertDeadlineInRange(io, input); // LLR-FE-031
   const approving = (await io.allowance()) < input.amount; // LLR-FE-033
   if (approving) {
@@ -159,12 +180,12 @@ export async function runCreate(io: FlowIO, input: CreateInput, onProgress: (ste
     throw new CreationUnconfirmedError(creation, cause); // LLR-FE-062
   }
   if (receipt.status !== "success") throw new Error("The creation transaction was mined and reverted.");
-  let id: bigint;
+  let created: CreatedPledge;
   try {
-    id = pledgeIdFromReceipt(receipt, io.contract);
+    created = createdFromReceipt(receipt, io.contract);
   } catch (cause) {
     throw new CreationUnconfirmedError(creation, cause); // LLR-FE-062
   }
   onProgress(progressOf(approving ? "done" : null, "done"));
-  return id;
+  return { ...created, hash: creation }; // LLR-FE-037
 }

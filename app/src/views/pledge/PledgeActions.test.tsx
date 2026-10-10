@@ -1,9 +1,8 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { numberToHex } from "viem";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { FAILED_MESSAGE, REJECTED_MESSAGE } from "../../wallet/failure";
 import { STATE_MEANINGS } from "../stateLabels";
-import { installDialogPolyfill } from "../../test/dialogPolyfill";
 import { rejection, walletError } from "../../test/fakeWallet";
 import {
   advance,
@@ -19,8 +18,6 @@ import {
 } from "../../test/pledgeHarness";
 import { ACCOUNT, FOREIGN_CHAIN, findConnected, network, teardownWallets } from "../../test/walletHarness";
 
-beforeAll(installDialogPolyfill);
-
 afterEach(() => {
   vi.useRealTimers();
   Reflect.deleteProperty(navigator, "clipboard");
@@ -30,12 +27,14 @@ afterEach(() => {
 const UNCONFIRMED =
   "Your transaction was sent, but its confirmation could not be read. This page shows the change as soon as the network does.";
 
-const ACTION_NAMES = /^(Kept|Broken|Claim stake|Withdraw my stake|Send stake to (staker|beneficiary))$/;
+const ACTION_NAMES = /^(Kept|Broken|Send payout)$/;
 
 const main = () => within(screen.getByRole("main"));
 const loaded = () => main().findByText(/^“/, { selector: ".ptitle" });
-const dialog = () => document.querySelector("dialog") as HTMLDialogElement;
-const dialogOpen = () => document.querySelector("dialog[open]") !== null;
+/** The inline confirmation that follows Broken. It is a group in the agreement and not a dialog, so nothing else is made inert. */
+const confirmation = () => screen.queryByRole("group", { name: "Mark this promise broken?" });
+const confirmOpen = () => confirmation() !== null;
+const inConfirmation = (name: string) => within(confirmation() as HTMLElement).getByRole("button", { name });
 /** Lets the effects of a change of connection run in real time. */
 const pause = () =>
   act(async () => {
@@ -109,24 +108,24 @@ describe("LLR-FE-042 the pledge page offers exactly the actions of the matrix", 
     expect(main().queryByRole("button", { name: ACTION_NAMES })).toBeNull();
   });
 
-  it("offers the beneficiary Claim stake on a Broken pledge, with where the stake goes", async () => {
+  it("offers the beneficiary Send payout on a Broken pledge, with where the stake goes", async () => {
     await openPledge({ who: "beneficiary", state: 3 });
     await loaded();
-    expect(button("Claim stake")).toBeTruthy();
+    expect(button("Send payout")).toBeTruthy();
     expect(main().getByText("Anyone can send this. The full stake goes only to the beneficiary.")).toBeTruthy();
   });
 
-  it("offers the staker Withdraw my stake on a Kept pledge, with where the stake goes", async () => {
+  it("offers the staker Send payout on a Kept pledge, with where the stake goes", async () => {
     await openPledge({ who: "staker", state: 2 });
     await loaded();
-    expect(button("Withdraw my stake")).toBeTruthy();
+    expect(button("Send payout")).toBeTruthy();
     expect(main().getByText("Anyone can send this. The full stake goes only to the staker.")).toBeTruthy();
   });
 
-  it("offers an unrelated account Send stake to beneficiary on an Expired pledge", async () => {
+  it("offers an unrelated account Send payout on an Expired pledge", async () => {
     await openPledge({ who: "other", state: 1, secondsLeft: -10n });
     await loaded();
-    expect(button("Send stake to beneficiary")).toBeTruthy();
+    expect(button("Send payout")).toBeTruthy();
   });
 
   it("offers nothing on a settled pledge to the connected parties", async () => {
@@ -146,13 +145,13 @@ describe("LLR-FE-042 the pledge page offers exactly the actions of the matrix", 
     expect(main().getByText(`Your wallet is on another network. Switch to ${network.name}.`)).toBeTruthy();
   });
 
-  it("sends nothing and opens no dialog when a gated control is activated", async () => {
+  it("sends nothing and opens no confirmation when a gated control is activated", async () => {
     const { wallet, world } = await openPledge({ who: "referee", walletChain: FOREIGN_CHAIN });
     await loaded();
     fireEvent.click(button("Kept"));
     fireEvent.click(button("Broken"));
     await pause();
-    expect(dialogOpen()).toBe(false);
+    expect(confirmOpen()).toBe(false);
     expect(wallet.count("eth_sendTransaction")).toBe(0);
     expect(sent(world)).toBe(0);
   });
@@ -164,7 +163,7 @@ describe("LLR-FE-042 the pledge page offers exactly the actions of the matrix", 
     fireEvent.click(button("Kept"));
     fireEvent.click(button("Broken"));
     await pause();
-    expect(dialogOpen()).toBe(false);
+    expect(confirmOpen()).toBe(false);
     expect(wallet.count("eth_sendTransaction")).toBe(0);
     expect(sent(world)).toBe(0);
   });
@@ -215,74 +214,139 @@ describe("LLR-FE-042 the pledge page offers exactly the actions of the matrix", 
     fireEvent.click(await screen.findByRole("button", { name: "Kept" }));
     await waitFor(() => expect(world.acts).toHaveLength(1));
     expect(world.acts[0]).toMatchObject({ functionName: "markKept", id: 1n });
-    expect(dialogOpen()).toBe(false);
+    expect(confirmOpen()).toBe(false);
   });
 
   it("sends settle for the pledge when a settle button is activated", async () => {
     const { world } = await openPledge({ who: "other", state: 3 });
     await loaded();
-    fireEvent.click(await screen.findByRole("button", { name: "Send stake to beneficiary" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Send payout" }));
     await waitFor(() => expect(world.acts).toHaveLength(1));
     expect(world.acts[0]).toMatchObject({ functionName: "settle", id: 1n });
   });
 });
 
+describe("LLR-FE-042 the controls sit in the agreement line they belong to", () => {
+  const lines = () => [...document.querySelectorAll(".doc ol > li")];
+
+  it("puts Kept and Broken, with the finality note, under the line that says only the referee may rule", async () => {
+    await openPledge({ who: "referee" });
+    await loaded();
+    const kept = await screen.findByRole("button", { name: "Kept" });
+    expect(kept.closest("li")).toBe(lines()[1]);
+    expect(button("Broken").closest("li")).toBe(lines()[1]);
+    expect(lines()[1]!.textContent).toMatch(/Your verdict is final/);
+  });
+
+  it("puts Send payout, with where the stake goes, under the line about sending the payout", async () => {
+    await openPledge({ who: "other", state: 3 });
+    await loaded();
+    const send = await screen.findByRole("button", { name: "Send payout" });
+    expect(send.closest("li")).toBe(lines()[4]);
+    expect(lines()[4]!.textContent).toContain("The full stake goes only to the beneficiary.");
+  });
+
+  it("puts the connect hint under the line it is about: ruling while open, the payout once it can be sent", async () => {
+    await openPledge({ who: "none", state: 0 });
+    await loaded();
+    expect(main().getByText("Connect a wallet to act.").closest("li")).toBe(lines()[1]);
+    teardownWallets();
+    await openPledge({ who: "none", state: 2 });
+    await loaded();
+    expect(main().getByText("Connect a wallet to settle.").closest("li")).toBe(lines()[4]);
+  });
+});
+
+describe("LLR-FE-042 Send payout is the one label for every role, and the surrounding text says where the stake goes", () => {
+  const cases = [
+    [1, "beneficiary", -10n],
+    [2, "staker", 500_000n],
+    [3, "beneficiary", 500_000n],
+  ] as const;
+
+  it("labels the payout control the same for the staker, the referee, the beneficiary and another account", async () => {
+    for (const [state, goesTo, secondsLeft] of cases) {
+      for (const who of ["staker", "referee", "beneficiary", "other"] as const) {
+        await openPledge({ who, state, secondsLeft });
+        await loaded();
+        const send = await screen.findByRole("button", { name: "Send payout" });
+        expect(main().getAllByRole("button", { name: ACTION_NAMES }).map((b) => b.textContent), `${who} ${state}`).toEqual(["Send payout"]);
+        expect(send.closest("li")!.textContent, `${who} ${state}`).toContain(`The full stake goes only to the ${goesTo}.`);
+        expect(main().queryByRole("button", { name: /Claim stake|Withdraw my stake|Send stake to/ })).toBeNull();
+        teardownWallets();
+      }
+    }
+  });
+});
+
 describe("LLR-FE-044 Broken asks for confirmation first", () => {
-  async function openDialog(options: Parameters<typeof openPledge>[0] = {}) {
+  async function openConfirmation(options: Parameters<typeof openPledge>[0] = {}) {
     const parts = await openPledge({ who: "referee", ...options });
     await loaded();
     fireEvent.click(await screen.findByRole("button", { name: "Broken" }));
     return parts;
   }
 
-  it("opens a modal dialog stating where the stake goes and that the verdict is final, and sends nothing", async () => {
-    const { world } = await openDialog();
-    expect(dialogOpen()).toBe(true);
-    expect(dialog().dataset.modal).toBe("true");
-    expect(within(dialog()).getByRole("heading", { name: "Mark this promise broken?" })).toBeTruthy();
-    expect(dialog().textContent).toMatch(/The stake of \$2\.50 in USDC will go to the beneficiary, 0x3333…3333\./);
-    expect(dialog().textContent).toContain("cannot be changed");
+  it("shows a confirmation in the agreement stating where the stake goes and that the verdict is final, and sends nothing", async () => {
+    const { world, wallet } = await openConfirmation();
+    expect(confirmOpen()).toBe(true);
+    const text = confirmation()!.textContent!;
+    expect(text).toMatch(/The stake of \$2\.50 in USDC will go to the beneficiary, 0x3333…3333\./);
+    expect(text).toContain("cannot be changed");
     expect(sent(world)).toBe(0);
+    expect(wallet.count("eth_sendTransaction")).toBe(0);
   });
 
-  it("is labelled by its heading and described by its body", async () => {
-    await openDialog();
-    const heading = within(dialog()).getByRole("heading");
-    expect(dialog().getAttribute("aria-labelledby")).toBe(heading.id);
-    const body = document.getElementById(dialog().getAttribute("aria-describedby") ?? "");
+  it("is a step in the page, not a modal dialog", async () => {
+    await openConfirmation();
+    expect(document.querySelector("dialog")).toBeNull();
+    expect(confirmation()!.closest(".doc")).not.toBeNull();
+    expect(button("Broken").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("is not there before Broken is activated", async () => {
+    await openPledge({ who: "referee" });
+    await loaded();
+    await screen.findByRole("button", { name: "Broken" });
+    expect(confirmOpen()).toBe(false);
+    expect(button("Broken").getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("is labelled by its question and described by its body", async () => {
+    await openConfirmation();
+    const group = confirmation()!;
+    const body = document.getElementById(group.getAttribute("aria-describedby") ?? "");
     expect(body?.textContent).toMatch(/0x3333…3333/);
     expect(body?.textContent).toContain("cannot be changed");
   });
 
   it("has Cancel then Mark it broken, with focus on Cancel", async () => {
-    await openDialog();
-    expect(within(dialog()).getAllByRole("button", { hidden: true }).map((b) => b.textContent)).toEqual(["Cancel", "Mark it broken"]);
-    expect(document.activeElement).toBe(within(dialog()).getByRole("button", { name: "Cancel", hidden: true }));
+    await openConfirmation();
+    expect(within(confirmation()!).getAllByRole("button").map((b) => b.textContent)).toEqual(["Cancel", "Mark it broken"]);
+    expect(document.activeElement).toBe(inConfirmation("Cancel"));
   });
 
   it("closes on Cancel, sends nothing, and returns focus to Broken", async () => {
-    const { world } = await openDialog();
-    fireEvent.click(within(dialog()).getByRole("button", { name: "Cancel", hidden: true }));
-    expect(dialogOpen()).toBe(false);
+    const { world } = await openConfirmation();
+    fireEvent.click(inConfirmation("Cancel"));
+    expect(confirmOpen()).toBe(false);
     expect(document.activeElement).toBe(button("Broken"));
     expect(sent(world)).toBe(0);
   });
 
-  it("treats Escape as Cancel", async () => {
-    const { world } = await openDialog();
-    const escape = new Event("cancel", { cancelable: true });
-    fireEvent(dialog(), escape);
-    // The browser closes a dialog on Escape unless the event is cancelled, and the page closes it itself.
-    expect(escape.defaultPrevented).toBe(true);
-    expect(dialogOpen()).toBe(false);
+  it("treats Escape inside the confirmation as Cancel", async () => {
+    const { world } = await openConfirmation();
+    fireEvent.keyDown(inConfirmation("Cancel"), { key: "Escape" });
+    expect(confirmOpen()).toBe(false);
     expect(document.activeElement).toBe(button("Broken"));
     expect(sent(world)).toBe(0);
   });
 
-  it("closes and sends markBroken when Mark it broken is activated", async () => {
-    const { world } = await openDialog();
-    fireEvent.click(within(dialog()).getByRole("button", { name: "Mark it broken", hidden: true }));
-    expect(dialogOpen()).toBe(false);
+  it("sends markBroken, and only then, when Mark it broken is activated", async () => {
+    const { world } = await openConfirmation();
+    expect(sent(world)).toBe(0);
+    fireEvent.click(inConfirmation("Mark it broken"));
+    expect(confirmOpen()).toBe(false);
     await waitFor(() => expect(world.acts).toHaveLength(1));
     expect(world.acts[0]).toMatchObject({ functionName: "markBroken", id: 1n });
   });
@@ -292,9 +356,9 @@ describe("LLR-FE-044 Broken asks for confirmation first", () => {
     const { world } = await openPledge({ who: "referee", secondsLeft: 3n, fakeTimers: true });
     await advance(0);
     fireEvent.click(button("Broken"));
-    expect(dialogOpen()).toBe(true);
+    expect(confirmOpen()).toBe(true);
     await advance(3000);
-    expect(dialogOpen()).toBe(false);
+    expect(confirmOpen()).toBe(false);
     expect(document.activeElement).toBe(statusLine());
     expect(statusLine().getAttribute("tabindex")).toBe("-1");
     expect(sent(world)).toBe(0);
@@ -305,19 +369,26 @@ describe("LLR-FE-044 Broken asks for confirmation first", () => {
     const { world, chain } = await openPledge({ who: "referee", fakeTimers: true });
     await advance(0);
     fireEvent.click(button("Broken"));
-    expect(dialogOpen()).toBe(true);
+    expect(confirmOpen()).toBe(true);
     chain.states.set(1n, 2);
     await advance(4000);
-    expect(dialogOpen()).toBe(false);
+    expect(confirmOpen()).toBe(false);
     expect(document.activeElement).toBe(statusLine());
     expect(sent(world)).toBe(0);
   });
 
-  it("is not opened by Kept", async () => {
-    await openPledge({ who: "referee" });
+  it("is not opened by Kept, and Kept closes one that is open", async () => {
+    const { world } = await openPledge({ who: "referee" });
     await loaded();
     fireEvent.click(await screen.findByRole("button", { name: "Kept" }));
-    expect(dialogOpen()).toBe(false);
+    expect(confirmOpen()).toBe(false);
+    await waitFor(() => expect(world.acts).toHaveLength(1));
+  });
+
+  it("closes an open confirmation when Kept is chosen instead", async () => {
+    await openConfirmation();
+    fireEvent.click(button("Kept"));
+    expect(confirmOpen()).toBe(false);
   });
 });
 
@@ -362,7 +433,7 @@ describe("LLR-FE-046 progress and result of a verdict or settle request", () => 
     fireEvent.click(keptButton);
     fireEvent.click(keptButton);
     fireEvent.click(button("Broken"));
-    expect(dialogOpen()).toBe(false);
+    expect(confirmOpen()).toBe(false);
     release();
     await within(progress()).findByText("You marked this promise kept.");
     expect(wallet.count("eth_sendTransaction")).toBe(1);
@@ -407,7 +478,7 @@ describe("LLR-FE-046 progress and result of a verdict or settle request", () => 
     await openPledge({ who: "referee" });
     await loaded();
     fireEvent.click(await screen.findByRole("button", { name: "Broken" }));
-    fireEvent.click(within(dialog()).getByRole("button", { name: "Mark it broken", hidden: true }));
+    fireEvent.click(inConfirmation("Mark it broken"));
     await within(progress()).findByText("You marked this promise broken.");
   });
 
@@ -424,12 +495,12 @@ describe("LLR-FE-046 progress and result of a verdict or settle request", () => 
   it("says where a confirmed settlement went, to the staker or to the beneficiary", async () => {
     await openPledge({ who: "staker", state: 2 });
     await loaded();
-    fireEvent.click(await screen.findByRole("button", { name: "Withdraw my stake" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Send payout" }));
     await within(progress()).findByText("Done. The stake was sent to the staker.");
     teardownWallets();
     await openPledge({ who: "beneficiary", state: 3 });
     await loaded();
-    fireEvent.click(await screen.findByRole("button", { name: "Claim stake" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Send payout" }));
     await within(progress()).findByText("Done. The stake was sent to the beneficiary.");
   });
 
@@ -585,10 +656,10 @@ describe("LLR-FE-046 progress and result of a verdict or settle request", () => 
     const { wallet, world } = await openPledge({ who: "other", state: 3 });
     await loaded();
     world.outcomes = ["reverted"];
-    fireEvent.click(await screen.findByRole("button", { name: "Send stake to beneficiary" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Send payout" }));
     await within(notices()).findByText(FAILED_MESSAGE);
     wallet.hold("eth_sendTransaction");
-    fireEvent.click(button("Send stake to beneficiary"));
+    fireEvent.click(button("Send payout"));
     await within(progress()).findByText("Confirm in your wallet.");
     expect(within(notices()).queryByText(FAILED_MESSAGE)).toBeNull();
   });
@@ -600,9 +671,9 @@ describe("LLR-FE-046 progress and result of a verdict or settle request", () => 
       prepare: ({ wallet }) => void wallet.hold("eth_sendTransaction"),
     });
     await loaded();
-    fireEvent.click(await screen.findByRole("button", { name: "Send stake to beneficiary" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Send payout" }));
     await within(progress()).findByText("Confirm in your wallet.");
-    expect(isDisabled(button("Send stake to beneficiary"))).toBe(true);
+    expect(isDisabled(button("Send payout"))).toBe(true);
   });
 });
 
@@ -621,29 +692,29 @@ describe("LLR-FE-046 the request names the configured chain", () => {
 
 type Prepare = NonNullable<Parameters<typeof openPledge>[0]>["prepare"];
 
-describe("LLR-FE-044 the Broken dialog follows the write gate", () => {
-  async function dialogOpenThenNetworkFails() {
+describe("LLR-FE-044 the Broken confirmation follows the write gate", () => {
+  async function confirmationOpenThenNetworkFails() {
     vi.useFakeTimers();
     const parts = await openPledge({ who: "referee", fakeTimers: true });
     await advance(0);
     fireEvent.click(button("Broken"));
-    expect(dialogOpen()).toBe(true);
+    expect(confirmOpen()).toBe(true);
     // The re-check of the network runs every 30 seconds and now finds another chain.
     parts.chain.chainId = 5042;
     await advance(31_000);
     return parts;
   }
 
-  it("closes the open dialog, and moves focus to the status line, when the gate turns off", async () => {
-    await dialogOpenThenNetworkFails();
+  it("closes the open confirmation, and moves focus to the status line, when the gate turns off", async () => {
+    await confirmationOpenThenNetworkFails();
     expect(main().getByText("This site is connected to the wrong network, so sending transactions is turned off.")).toBeTruthy();
-    expect(dialogOpen()).toBe(false);
+    expect(confirmOpen()).toBe(false);
     expect(document.activeElement).toBe(statusLine());
   });
 
-  it("sends nothing when Mark it broken is activated after the gate turned off", async () => {
-    const { world, wallet } = await dialogOpenThenNetworkFails();
-    fireEvent.click(within(dialog()).getByRole("button", { name: "Mark it broken", hidden: true }));
+  it("sends nothing when the confirmation, once the gate turned off, has no way to be used", async () => {
+    const { world, wallet } = await confirmationOpenThenNetworkFails();
+    expect(confirmOpen()).toBe(false);
     await advance(100);
     expect(sent(world)).toBe(0);
     expect(wallet.count("eth_sendTransaction")).toBe(0);
@@ -684,10 +755,10 @@ describe("LLR-FE-046 a confirmed request hides the controls until the polled sta
     vi.useFakeTimers();
     await openPledge({ who: "other", state: 3, fakeTimers: true, prepare: lagging(3) });
     await advance(0);
-    fireEvent.click(button("Send stake to beneficiary"));
+    fireEvent.click(button("Send payout"));
     await advance(2500);
     expect(within(progress()).getByText("Done. The stake was sent to the beneficiary.")).toBeTruthy();
-    expect(maybeButton("Send stake to beneficiary")).toBeNull();
+    expect(maybeButton("Send payout")).toBeNull();
   });
 
   it("brings the controls back for a request that did not confirm", async () => {
@@ -722,14 +793,14 @@ describe("LLR-FE-042 a verdict is refused at click time once chain time has reac
     expect(wallet.count("eth_sendTransaction")).toBe(0);
   });
 
-  it("sends nothing when Mark it broken is activated after the deadline passed since the dialog opened", async () => {
+  it("sends nothing when Mark it broken is activated after the deadline passed since the confirmation opened", async () => {
     const { world, wallet } = await openPledge({ who: "referee", secondsLeft: 60n });
     await loaded();
     const broken = await screen.findByRole("button", { name: "Broken" });
     await waitFor(() => expect(isDisabled(broken)).toBe(false));
     fireEvent.click(broken);
-    expect(dialogOpen()).toBe(true);
-    afterDeadline(() => fireEvent.click(within(dialog()).getByRole("button", { name: "Mark it broken", hidden: true })));
+    expect(confirmOpen()).toBe(true);
+    afterDeadline(() => fireEvent.click(inConfirmation("Mark it broken")));
     await pause();
     expect(sent(world)).toBe(0);
     expect(wallet.count("eth_sendTransaction")).toBe(0);
@@ -751,7 +822,7 @@ describe("LLR-FE-042 a verdict is refused at click time once chain time has reac
     const broken = await screen.findByRole("button", { name: "Broken" });
     await waitFor(() => expect(isDisabled(broken)).toBe(false));
     fireEvent.click(broken);
-    afterDeadline(() => fireEvent.click(within(dialog()).getByRole("button", { name: "Mark it broken", hidden: true })));
+    afterDeadline(() => fireEvent.click(inConfirmation("Mark it broken")));
     await waitFor(() => expect(document.activeElement).toBe(statusLine()));
   });
 
@@ -826,12 +897,12 @@ describe("LLR-FE-046 and 060 a settlement the token refuses is explained in the 
     const { wallet, world } = await openPledge({ who: "staker", state: 2 });
     await loaded();
     wallet.failNext("eth_sendTransaction", revertedWith("SafeERC20FailedOperation", [usdc.address]));
-    fireEvent.click(await screen.findByRole("button", { name: "Withdraw my stake" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Send payout" }));
     const message = await within(notices()).findByText("The token refused the transfer. Nothing changed. You can try again later.");
     expect(message.className).toContain("notice-failure");
     expect(sent(world)).toBe(0);
     // The settlement can be tried again later, so the control comes back.
-    await waitFor(() => expect(isDisabled(button("Withdraw my stake"))).toBe(false));
+    await waitFor(() => expect(isDisabled(button("Send payout"))).toBe(false));
   });
 
   it("says the token issuer blocked the transfer when the settlement was mined and reverted with a revert string", async () => {
@@ -849,7 +920,7 @@ describe("LLR-FE-046 and 060 a settlement the token refuses is explained in the 
       },
     });
     await loaded();
-    fireEvent.click(await screen.findByRole("button", { name: "Claim stake" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Send payout" }));
     const message = await within(notices()).findByText("The token issuer blocked this transfer. Nothing changed. You can try again later.");
     expect(message.className).toContain("notice-failure");
     expect(sent(world)).toBe(1);

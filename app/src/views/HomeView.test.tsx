@@ -141,7 +141,8 @@ describe("LLR-FE-070 what SatStake does, for a visitor without a wallet", () => 
     home();
     const toCreate = [...document.querySelectorAll("a")].filter((a) => a.getAttribute("href") === "#/create");
     expect(toCreate.some((a) => a.textContent === "Make a promise")).toBe(true);
-    expect(toCreate.length).toBeGreaterThanOrEqual(3); // header, hero, close
+    // The hero is the create pad itself now, so the links are the header's and the close's.
+    expect(toCreate.length).toBeGreaterThanOrEqual(2);
     expect(heading(/^Your word, in writing\.$/)).toBeTruthy();
   });
 
@@ -169,14 +170,14 @@ describe("LLR-FE-070 what SatStake does, for a visitor without a wallet", () => 
   it("shows no promise number, address or amount of its own outside those two examples", () => {
     home();
     const hero = document.querySelector(".hero") as HTMLElement;
-    expect(hero.textContent).not.toMatch(/Promise #\d|0x[0-9a-f]{4}…|sats/i);
+    expect(hero.textContent).not.toMatch(/Promise #\d|0x[0-9a-f]{4}…|\bsats\b/i);
   });
 
-  it("shows the pad with a signature that writes itself, and a seal button that cannot be pressed", () => {
+  it("shows the pad with a signature that writes itself, and a seal button that does nothing until the form is complete", () => {
     home();
     expect(document.querySelector(".pad canvas")).toBeTruthy();
-    const seal = screen.getByRole("button", { name: "Seal it" }) as HTMLButtonElement;
-    expect(seal.disabled).toBe(true);
+    const seal = screen.getByRole("button", { name: "Seal it" });
+    expect(seal.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("says plainly what it cannot do beside the claims it makes", () => {

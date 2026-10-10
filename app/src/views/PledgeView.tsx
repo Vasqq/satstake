@@ -9,12 +9,16 @@ import { usePledgeLive } from "../chain/usePledgeLive";
 import { useTick } from "../chain/useTick";
 import type { SelectedNetwork } from "../config/networks";
 import { CopyLink } from "../create/CopyLink";
+import { AgreementDoc } from "../design/AgreementDoc";
+import { Clock } from "../design/Clock";
+import { formatAmount, formatLocalTime, shorten } from "../format";
 import { useWriteGate } from "../wallet/gate";
 import { PageHeading } from "./PageHeading";
-import { PledgeActions } from "./pledge/PledgeActions";
+import { usePledgeActions } from "./pledge/PledgeActions";
 import { PledgeBanner } from "./pledge/PledgeBanner";
-import { PledgeFacts, PledgeStake } from "./pledge/PledgeFacts";
+import { PledgeParty } from "./pledge/PledgeParty";
 import { deadlineWarning } from "./pledge/warning";
+import { STAKER_MARK, refereeMark } from "./pledge/signatures";
 import { ROLE_STATEMENTS, roleOf } from "./roles";
 import { ACTIVE_PAST_DEADLINE_MEANING, STATE_MEANINGS } from "./stateLabels";
 import { PledgeNotFoundView } from "./Views";
@@ -55,31 +59,55 @@ export function PledgeView({ reads, client, network, health, id, afterStatus }: 
   const gate = useWriteGate(health.network, network);
   const statusLine = useRef<HTMLParagraphElement>(null);
 
-  if (pledge.error && isPledgeNotFound(pledge.error)) return <PledgeNotFoundView />;
-
   const data = pledge.data ?? null;
-  const failed = pledge.error !== null || live.error !== null;
   const chainNow = live.clock.now();
   const remaining = data !== null && chainNow !== null ? data.deadline - chainNow : null;
   const deadlineReached = data !== null && chainNow !== null ? reachedAt(data.deadline, chainNow) : null;
   const role = data === null ? null : roleOf(data, connection.address);
   const wallet = connection.status === "connected" ? "connected" : connection.status === "disconnected" ? "none" : "pending";
-
-  // Chain time can pass the deadline before the next poll flips the state, and the page must not claim a
-  // verdict is still awaited in that gap.
-  const pastDeadlineWhileActive = live.state === "Active" && deadlineReached === true;
-  const status =
-    live.state === null ? READING : pastDeadlineWhileActive ? ACTIVE_PAST_DEADLINE_MEANING : STATE_MEANINGS[live.state];
-  // The banner and the timeline already say the outcome. The status sentence stays in the page, because it is the
-  // announced text and the focus target after a request (LLR-FE-046), but is not shown a third time beside them.
-  const bannerShown = data !== null && live.state !== null;
   // Read again at the moment of a click: the tick can be a second behind chain time, and a verdict sent just past
   // the deadline would only be refused by the contract.
   const deadlineReachedNow = () => {
     const now = live.clock.now();
     return data === null || now === null ? null : reachedAt(data.deadline, now);
   };
+
+  const actions = usePledgeActions({
+    id,
+    network,
+    client,
+    gate,
+    pledge: data,
+    state: live.state,
+    role,
+    wallet,
+    deadlineReached,
+    deadlineReachedNow,
+    onConfirmed: live.refresh,
+    statusRef: statusLine,
+  });
+
+  if (pledge.error && isPledgeNotFound(pledge.error)) return <PledgeNotFoundView />;
+
+  const failed = pledge.error !== null || live.error !== null;
+
+  // Chain time can pass the deadline before the next poll flips the state, and the page must not claim a
+  // verdict is still awaited in that gap.
+  const pastDeadlineWhileActive = live.state === "Active" && deadlineReached === true;
+  const status =
+    live.state === null ? READING : pastDeadlineWhileActive ? ACTIVE_PAST_DEADLINE_MEANING : STATE_MEANINGS[live.state];
+  // The banner and the clock already say the outcome. The status sentence stays in the page, because it is the
+  // announced text and the focus target after a request (LLR-FE-046), but is not shown a third time beside them.
+  const bannerShown = data !== null && live.state !== null;
   const warning = live.state === null ? null : deadlineWarning({ state: live.state, remaining, role });
+
+  const amount = data === null ? "" : formatAmount(network, data.token, data.amount);
+  const isSats = data !== null && network.tokens.find((t) => t.address.toLowerCase() === data.token.toLowerCase())?.symbol === "cirBTC";
+  const clauseActions = {
+    ...actions.clauseActions,
+    // A sat is new to most visitors, so the unit is explained where the amount is first written.
+    0: isSats ? <p className="unit-note">A sat is the smallest unit of Bitcoin.</p> : undefined,
+  };
 
   return (
     <article className="pledge-page">
@@ -87,7 +115,7 @@ export function PledgeView({ reads, client, network, health, id, afterStatus }: 
           forward from there, so the banner that explains the page must follow it (LLR-FE-072). */}
       {/* The promise is part of the heading, so heading navigation reads what this page is about. */}
       <PageHeading className="pledge-heading" title={`Promise #${id.toString()} | SatStake`}>
-        <span className="label pledge-label">Promise #{id.toString()}</span>
+        <span className={data === null ? "label pledge-label" : "label pledge-label visually-hidden"}>Promise #{id.toString()}</span>
         {data !== null && (
           <>
             {" "}
@@ -107,37 +135,62 @@ export function PledgeView({ reads, client, network, health, id, afterStatus }: 
           copyLink={afterStatus === undefined ? <CopyLink id={id} bare /> : null}
         />
       )}
-      {data !== null && <PledgeStake pledge={data} network={network} />}
       {afterStatus}
-      <section className="card pledge-card" aria-label="Progress">
-        <div className="pledge-state-row">
-          {role !== null && <span className="role-badge">{ROLE_STATEMENTS[role]}</span>}
-          {/* The live region and the focus target are different elements, so a screen reader is not told the same text twice. */}
-          <div role="status" aria-label="Promise status" className={bannerShown ? "pledge-status visually-hidden" : "pledge-status"}>
-            <p tabIndex={-1} ref={statusLine}>
-              {status}
-            </p>
-          </div>
+      <div className="pledge-state-row">
+        {role !== null && <span className="role-badge">{ROLE_STATEMENTS[role]}</span>}
+        {/* The live region and the focus target are different elements, so a screen reader is not told the same text twice. */}
+        <div role="status" aria-label="Promise status" className={bannerShown ? "pledge-status visually-hidden" : "pledge-status"}>
+          <p tabIndex={-1} ref={statusLine}>
+            {status}
+          </p>
         </div>
-        {data !== null && <PledgeFacts pledge={data} state={live.state} network={network} role={role} remaining={remaining} />}
-      </section>
+      </div>
       <div role="status" aria-label="Deadline warning">
         {warning !== null && <p className="banner banner-notice pledge-warning">{warning}</p>}
       </div>
-      <PledgeActions
-        id={id}
-        network={network}
-        client={client}
-        gate={gate}
-        pledge={data}
-        state={live.state}
-        role={role}
-        wallet={wallet}
-        deadlineReached={deadlineReached}
-        deadlineReachedNow={deadlineReachedNow}
-        onConfirmed={live.refresh}
-        statusRef={statusLine}
-      />
+      {data !== null && live.state !== null && (
+        <section className="pledge-agreement" aria-labelledby="pledge-agreement-title">
+          <h2 id="pledge-agreement-title" className="visually-hidden">
+            The agreement
+          </h2>
+          <AgreementDoc
+            title={`Promise #${id.toString()}`}
+            meta={`${network.name} · source verified on Sourcify`}
+            amountLabel={amount}
+            deadlineText={formatLocalTime(data.deadline)}
+            staker={<PledgeParty party="staker" address={data.staker} network={network} you={role === "staker"} />}
+            referee={<PledgeParty party="referee" address={data.referee} network={network} you={role === "referee"} />}
+            beneficiary={<PledgeParty party="beneficiary" address={data.beneficiary} network={network} you={role === "beneficiary"} />}
+            signatures={{ staker: STAKER_MARK, referee: refereeMark(live.state) }}
+            clauseActions={clauseActions}
+            footer={actions.progress}
+          />
+        </section>
+      )}
+      {(data === null || live.state === null) && actions.progress}
+      {data !== null && live.state !== null && (
+        <section className="pledge-clock" aria-labelledby="pledge-clock-title">
+          <h2 id="pledge-clock-title" className="visually-hidden">
+            The clock
+          </h2>
+          <p className="pledge-deadline">
+            <span className="label">Deadline</span>
+            <time dateTime={new Date(Number(data.deadline) * 1000).toISOString()}>{formatLocalTime(data.deadline)}</time>
+          </p>
+          <Clock
+            mode="live"
+            createdAt={data.createdAt}
+            deadline={data.deadline}
+            now={chainNow}
+            state={live.state}
+            checking={pastDeadlineWhileActive}
+            amountLabel={amount}
+            staker={shorten(data.staker)}
+            referee={shorten(data.referee)}
+            beneficiary={shorten(data.beneficiary)}
+          />
+        </section>
+      )}
       {failed && (
         <p role="alert" className="banner banner-error">
           {RETRYING}
