@@ -1,12 +1,16 @@
-// Live UI dry run of the published testnet site, driven like a person in a real browser. Usage, from app/:
+// UI dry run of the Signed frontend against Arc testnet, driven like a person in a real browser. Usage, from app/:
+//   npm run build:testnet
+//   VITE_NETWORK=testnet ./node_modules/.bin/vite preview --port 4173 --strictPort --host 127.0.0.1   (kept running)
 //   SATSTAKE_ENV_FILE=<file holding TESTNET_PRIVATE_KEY> PLAYWRIGHT_BROWSERS_PATH=0 node scripts/ui-dry-run.mjs
 //
-// The page gets an injected EIP-1193 wallet that announces itself over EIP-6963 and forwards every request to
-// this process, which signs with a viem client for the role the session plays. The staker is the testnet
-// operator, whose key is read by parseEnvKey and never printed or written. Referee, beneficiary and an
-// unrelated settler are throwaway keys made in memory; each is funded with gas and swept back at the end,
-// including after a failure. Screenshots go to the gitignored cache/dry-run/ and the record to
-// docs/evidence/ui-dry-run-testnet.md.
+// The site is a local build served from this worktree. The script refuses any other host, so the published site
+// (which serves mainnet) cannot be driven by it. The page gets an injected EIP-1193 wallet that announces itself
+// over EIP-6963 and forwards every request to this process, which signs with a viem client for the role the
+// session plays. The staker is the testnet operator, whose key is read by parseEnvKey and never printed or
+// written. Referee, beneficiary and an unrelated settler are throwaway keys made in memory; each is funded with
+// gas and swept back at the end, including after a failure. Screenshots go to the gitignored cache/dry-run-signed/
+// and the record to docs/evidence/ui-dry-run-signed-testnet.md. PROBE=1 rejects every send, funds nothing, stops
+// at the first rejected "Seal it", and writes its record under cache/ instead.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -20,6 +24,7 @@ import {
   erc20Abi,
   formatUnits,
   getAddress,
+  hexToBytes,
   http,
   parseEventLogs,
   parseUnits,
@@ -29,9 +34,12 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { CHAIN_ID, EXPLORER, allowedSendTarget, assertChainId, explorerTx, fundingFor, parseEnvKey, sweepToOperator, withRetry } from "../../e2e/lib.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
-const SITE = "https://vasqq.github.io/satstake/";
+const SITE = process.env.SATSTAKE_SITE ?? "http://127.0.0.1:4173/";
+if (!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(SITE)) throw new Error(`refusing to run: ${SITE} is not a local preview server`);
+const PROBE = process.env.PROBE === "1";
 const RPC = "https://rpc.testnet.arc.io";
-const OUT = join(root, "cache/dry-run");
+const OUT = join(root, "cache/dry-run-signed");
+const EVIDENCE = PROBE ? join(root, "cache/ui-dry-run-signed-probe.md") : join(root, "docs/evidence/ui-dry-run-signed-testnet.md");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const readJson = (rel) => JSON.parse(readFileSync(join(root, rel), "utf8"));
 
@@ -44,10 +52,12 @@ const USDC = tokenAddress("USDC");
 const CIRBTC = tokenAddress("cirBTC");
 const STATE = ["Active", "Expired", "Kept", "Broken", "SettledToStaker", "SettledToBeneficiary"];
 
-const CIRBTC_SATS = 10n;
+const CIRBTC_SATS = 100n;
 const CIRBTC_AMOUNT = CIRBTC_SATS; // 8 decimals, so one sat is one unit
 const USDC_AMOUNT = parseUnits("0.1", 6);
 const HUMAN_CONFIRM_MS = 1500; // a person takes a moment to confirm in a wallet; also lets the prompt state be seen
+const DESKTOP = { width: 1440, height: 900 };
+const PHONE = { width: 390, height: 844 };
 
 if (!process.env.SATSTAKE_ENV_FILE) throw new Error("SATSTAKE_ENV_FILE is not set");
 const operator = privateKeyToAccount(parseEnvKey(readFileSync(process.env.SATSTAKE_ENV_FILE, "utf8")));
@@ -71,6 +81,7 @@ const redact = (text) =>
     .replace(/\/Users\/[^\s/'"]+/g, "<home>")
     .replace(/\/home\/[^\s/'"]+/g, "<home>");
 const firstLine = (e) => redact(String(e?.shortMessage ?? e?.message ?? e).split("\n")[0]).slice(0, 300);
+const utc = (d = new Date()) => d.toISOString().replace(/\.\d+Z$/, "Z");
 
 const journeys = [];
 const findings = [];
@@ -78,6 +89,7 @@ const txLog = [];
 const signingRequests = [];
 const methodCounts = new Map();
 const consoleErrors = new Map();
+const httpErrors = new Map();
 const sessions = [];
 let cur = null;
 let lastPage = null;
@@ -86,7 +98,7 @@ let shotSeq = 0;
 function journey(id, title) {
   let j = journeys.find((x) => x.id === id);
   if (!j) {
-    j = { id, title, status: "Pass", notes: [], txs: [], shots: [] };
+    j = { id, title, status: "Pass", notes: [], txs: [], shots: [], startedAt: utc(), endedAt: utc() };
     journeys.push(j);
   }
   return j;
@@ -106,6 +118,7 @@ async function run(id, title, fn) {
     findings.push({ journey: id, text: `${id} failed: ${msg}`, shot: file });
     console.log(`   FAIL ${msg}`);
   }
+  j.endedAt = utc();
 }
 const note = (text) => {
   cur.notes.push(text);
@@ -153,7 +166,7 @@ const WALLET_SCRIPT = `(() => {
   window.addEventListener("eip6963:requestProvider", announce);
   announce();
   window.__progress = [];
-  const sel = '[role="status"][aria-label="Pledge progress"]';
+  const sel = '[role="status"][aria-label="Promise progress"]';
   new MutationObserver(() => {
     const el = document.querySelector(sel);
     if (!el) return;
@@ -188,9 +201,10 @@ async function sendTx(s, tx) {
   if (!allowedSendTarget(tx.to, [CONTRACT, USDC, CIRBTC])) throw rpcError(-32602, `the dry run wallet only sends to SatStake and its two tokens, not to ${String(tx.to)}`);
   assertChainId(await read(() => pub.getChainId()));
   await sleep(HUMAN_CONFIRM_MS);
+  if (PROBE) throw rpcError(4001, "User rejected the request (probe run)");
   const request = { account, to: tx.to, data: tx.data, value: tx.value ? BigInt(tx.value) : undefined, gas: tx.gas ? BigInt(tx.gas) : undefined };
   const hash = await read(() => wallet(account).sendTransaction(request));
-  const entry = { role: s.role, hash, fn: labelFor(tx.data, tx.to), to: getAddress(tx.to) };
+  const entry = { role: s.role, hash, fn: labelFor(tx.data, tx.to), to: getAddress(tx.to), at: utc() };
   txLog.push(entry);
   cur?.txs.push(entry);
   console.log(`   tx ${entry.role} ${entry.fn} ${hash}`);
@@ -234,19 +248,21 @@ async function dispatch(s, method, params) {
   }
 }
 
-async function switchRole(s, role) {
-  s.role = role;
-  await s.page.evaluate((a) => window.__walletEmit("accountsChanged", [a]), accounts[role].address.toLowerCase());
-}
-
-async function openSession(name, role, { noWallet = false, wrongChain = false } = {}) {
-  const context = await browserRef.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", timezoneId: "UTC" });
+async function openSession(name, role, { noWallet = false, wrongChain = false, viewport = DESKTOP, colorScheme = "light" } = {}) {
+  const context = await browserRef.newContext({ viewport, colorScheme, timezoneId: "UTC", locale: "en-US" });
   await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(SITE).origin });
   const page = await context.newPage();
-  const s = { name, role, page, context, authorized: false, reportedChain: wrongChain ? 1 : CHAIN_ID, requests: [], noWallet };
-  page.on("pageerror", (e) => consoleErrors.set(`${name}: ${firstLine(e)}`, true));
+  const s = { name, role, page, context, authorized: false, reportedChain: wrongChain ? 1 : CHAIN_ID, requests: [], noWallet, viewport, colorScheme };
+  page.on("pageerror", (e) => consoleErrors.set(`${name}: page error: ${firstLine(e)}`, true));
   page.on("console", (m) => {
     if (m.type() === "error") consoleErrors.set(`${name}: ${redact(m.text()).slice(0, 300)}`, true);
+  });
+  page.on("response", (r) => {
+    if (r.status() >= 400) {
+      const u = new URL(r.url());
+      const key = `${r.status()} ${r.request().method()} ${u.origin}`;
+      httpErrors.set(key, (httpErrors.get(key) ?? 0) + 1);
+    }
   });
   if (!noWallet) {
     await page.exposeBinding("__walletRequest", async (_source, payload) => {
@@ -290,23 +306,30 @@ async function go(s, hash) {
   await s.page.goto(SITE + hash);
   await waitBody(s.page, "SatStake", 30_000);
 }
+async function gotoUrl(s, url) {
+  lastPage = s.page;
+  await s.page.goto(url);
+  await waitBody(s.page, "SatStake", 30_000);
+}
 async function connect(s) {
   lastPage = s.page;
   await s.page.getByRole("button", { name: "Connect Dry run wallet", exact: true }).click();
   await waitBody(s.page, /Connected: 0x\w{4}…\w{4}/);
 }
 const buttonVisible = (page, name) => page.getByRole("button", { name, exact: true }).isVisible();
-const submitDisabled = async (page) => (await page.getByRole("button", { name: "Create pledge", exact: true }).getAttribute("aria-disabled")) === "true";
-const SETTLE_BUTTONS = ["Withdraw my stake", "Send stake to staker", "Send stake to beneficiary", "Claim stake"];
-async function settleButtonsShown(page) {
+const actionButtons = async (page) => {
   const shown = [];
-  for (const name of SETTLE_BUTTONS) if (await buttonVisible(page, name)) shown.push(name);
+  for (const name of ["Kept", "Broken", "Send payout"]) if (await buttonVisible(page, name)) shown.push(name);
   return shown;
-}
+};
+const sealButton = (page) => page.locator('form[aria-label="New promise"] button[type="submit"]');
+const sealDisabled = async (page) => (await sealButton(page).getAttribute("aria-disabled")) === "true";
+const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+const background = (page) => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 
 // ---------------------------------------------------------------- chain helpers
 
-const view = (functionName, args = []) => read(() => pub.readContract({ address: CONTRACT, abi, functionName, args }));
+const view = (functionName, args = [], blockNumber) => read(() => pub.readContract({ address: CONTRACT, abi, functionName, args, blockNumber }));
 const balanceOf = (token, who) => read(() => pub.readContract({ address: token, abi: erc20Abi, functionName: "balanceOf", args: [who] }));
 const stateOf = async (id) => STATE[Number(await view("stateOf", [BigInt(id)]))];
 async function waitChain(timestamp) {
@@ -321,6 +344,9 @@ function transfersTo(receipt, token, who) {
     .filter((l) => getAddress(l.address) === token && getAddress(l.args.to) === getAddress(who))
     .map((l) => l.args.value);
 }
+// The app writes the deadline in the visitor's zone; the browser contexts are set to UTC.
+const timeText = (seconds) =>
+  new Intl.DateTimeFormat("en-US", { timeZone: "UTC", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(new Date(Number(seconds) * 1000));
 
 async function fundNative(to, value) {
   const hash = await wallet(operator).sendTransaction({ to, value });
@@ -329,627 +355,541 @@ async function fundNative(to, value) {
   return hash;
 }
 
-// Used only when a UI creation fails, so the later journeys still have a pledge to act on.
-async function fallbackCreate({ token, amount, deadlineIn, text }) {
-  const w = wallet(operator);
-  const approve = await w.writeContract({ address: token, abi: erc20Abi, functionName: "approve", args: [CONTRACT, amount] });
-  await receiptOf(approve);
-  const deadline = (await read(() => pub.getBlock())).timestamp + deadlineIn;
-  const hash = await w.writeContract({ address: CONTRACT, abi, functionName: "createPledge", args: [token, amount, accounts.referee.address, accounts.beneficiary.address, deadline, text] });
-  const receipt = await receiptOf(hash);
-  const [created] = parseEventLogs({ abi, logs: receipt.logs, eventName: "PledgeCreated" });
-  txLog.push({ role: "staker", hash: approve, fn: "approve (script fallback)", to: token }, { role: "staker", hash, fn: "createPledge (script fallback)", to: CONTRACT });
-  cur?.txs.push({ role: "staker", hash, fn: "createPledge (script fallback)" });
-  return { id: Number(created.args.id), deadline };
-}
+// ---------------------------------------------------------------- the hero pad
 
-// ---------------------------------------------------------------- the create form
-
-const PROMISE_PREFIX = "UI dry run";
-
-async function fillCreate(page, { promise, token, amount, referee, beneficiary, deadline }) {
-  await page.getByLabel("Promise", { exact: true }).fill(promise);
-  await page.getByLabel("Token", { exact: true }).selectOption({ label: token });
-  await page.getByLabel("Amount", { exact: true }).fill(amount);
-  // The balance and amount hints appear asynchronously and move the fields below them, so a click made before
-  // they settle can miss its target.
-  await waitBody(page, /Your balance: /);
-  await waitBody(page, /This amount: /);
-  await page.getByLabel("Referee address", { exact: true }).fill(referee);
-  await page.getByLabel("Beneficiary address", { exact: true }).fill(beneficiary);
-  await page.getByRole("radio", { name: deadline, exact: true }).check();
-  await tickAcknowledgement(page);
-}
-
-// A plain click, so a click that does not register is seen and described and not retried silently.
 async function tickAcknowledgement(page) {
   const box = page.getByRole("checkbox");
-  const probe = () =>
-    box.evaluate((el) => {
-      const r = el.getBoundingClientRect();
-      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-      return { checked: el.checked, disabled: el.disabled, top: Math.round(r.y + window.scrollY), scrollY: Math.round(window.scrollY), hit: hit ? `${hit.tagName}${hit.id ? "#" : ""}` : null, hitIsBox: hit === el };
-    });
+  const probe = () => box.evaluate((el) => ({ checked: el.checked, disabled: el.disabled }));
   await box.scrollIntoViewIfNeeded();
-  const before = await probe();
   await box.click({ force: true });
   await sleep(400);
-  const after = await probe();
-  if (after.checked) return;
-  finding(`The first click on the acknowledgement checkbox did not tick it (before ${JSON.stringify(before)}, after ${JSON.stringify(after)}); a second click was made.`, await shotPage(page, "checkbox-click-missed").catch(() => undefined));
+  if ((await probe()).checked) return;
+  finding("The first click on the acknowledgement checkbox did not tick it; a second click was made.", await shotPage(page, "checkbox-click-missed").catch(() => undefined));
   await box.click({ force: true });
   await sleep(400);
   check((await probe()).checked, "the acknowledgement checkbox would not tick after two clicks");
 }
 
-async function createViaUi(s, spec) {
+async function fillPad(page, spec) {
+  const promise = page.getByLabel("Your promise", { exact: true });
+  if ((await promise.count()) === 0) await page.getByRole("button", { name: "Write your own ↗", exact: true }).click();
+  await promise.fill(spec.promise);
+  await page.getByLabel("Token", { exact: true }).selectOption({ label: spec.token });
+  await page.getByLabel("Amount", { exact: true }).fill(spec.amount);
+  // The hints appear asynchronously and move what is below them, so a click made before they settle can miss.
+  await waitBody(page, /Your balance: /);
+  await waitBody(page, /This amount: /);
+  const clip = await promise.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
+  if (clip.scroll > clip.client + 1) {
+    finding(`The hero's promise field is wider than its box for the ${spec.promise.length}-character promise "${spec.promise}": the field scrolls (${clip.scroll} px of text in ${clip.client} px) and the end of the sentence is cut off at ${page.viewportSize().width} px wide.`, await shotPage(page, "hero-promise-clipped").catch(() => undefined));
+  }
+  await page.getByLabel("Referee address", { exact: true }).fill(accounts.referee.address);
+  await page.getByLabel("Beneficiary address", { exact: true }).fill(accounts.beneficiary.address);
+  await page.getByRole("radio", { name: spec.deadline, exact: true }).check();
+  await tickAcknowledgement(page);
+  await page.waitForFunction(() => document.querySelector('form[aria-label="New promise"] button[type="submit"]')?.getAttribute("aria-disabled") === "false", null, { timeout: 30_000 });
+}
+
+const PROMISE_PREFIX = "UI dry run";
+const hashBits = (hash) => {
+  const bytes = hexToBytes(hash);
+  return Array.from({ length: 64 }, (_, i) => (bytes[i >> 3] >> (i & 7)) & 1);
+};
+
+// Makes one promise by clicking and typing, then checks the sealed panel against the chain and the wallet.
+// `mode` is "landing" (the hero on the home page, writing mode started by Write your own), "create" (the hero page)
+// or "another" (the Make another promise button of a sealed panel).
+async function sealPromise(s, spec, mode) {
   const page = s.page;
-  await go(s, "#/create");
-  await waitBody(page, "Create a pledge");
+  lastPage = page;
+  if (mode === "landing") {
+    await go(s, "#/");
+    await waitBody(page, "I promise to");
+    await page.getByRole("button", { name: "Write your own ↗", exact: true }).click();
+  } else if (mode === "create") {
+    await go(s, "#/create");
+    await waitBody(page, "I promise to");
+  } else {
+    await page.getByRole("button", { name: "Make another promise", exact: true }).click();
+    await page.getByRole("button", { name: "Write your own ↗", exact: true }).click();
+  }
+  const fullSpec = { ...spec, promise: `${PROMISE_PREFIX}: ${spec.label}` };
+  await fillPad(page, fullSpec);
+  const buttonLabel = (await sealButton(page).innerText()).trim();
+  check(buttonLabel.startsWith("Seal it"), `submit reads "${buttonLabel}"`);
+  await shot(s, `${spec.label}-pad-filled`);
   await page.evaluate(() => {
     window.__progress = [];
   });
-  await fillCreate(page, {
-    promise: `${PROMISE_PREFIX}: ${spec.label}`,
-    token: spec.token,
-    amount: spec.amount,
-    referee: accounts.referee.address,
-    beneficiary: accounts.beneficiary.address,
-    deadline: spec.deadline,
-  });
-  await waitBody(page, /Your balance: /);
-  await waitBody(page, /This amount: /);
-  await shot(s, `${spec.label}-form-filled`);
-  await page.waitForFunction(() => document.querySelector('button[type="submit"]')?.getAttribute("aria-disabled") === "false", null, { timeout: 30_000 });
-  await page.getByRole("button", { name: "Create pledge", exact: true }).click();
+  const before = txLog.length;
+  await sealButton(page).click();
   await waitBody(page, /Confirm in your wallet\./, 10_000).catch(() => {});
-  await shot(s, `${spec.label}-progress`);
-  await page.waitForURL(/#\/p\/\d+$/, { timeout: 120_000 });
-  const id = Number(page.url().match(/#\/p\/(\d+)$/)[1]);
-  await waitBody(page, `Pledge #${id}`);
-  await waitBody(page, "Your pledge is created.");
+  await shot(s, `${spec.label}-confirming`);
+  if (PROBE) {
+    await waitBody(page, /rejected|cancelled|denied/i, 20_000).catch(() => {});
+    await shot(s, `${spec.label}-probe-rejected`);
+    throw new Error("probe stop: the first Seal it was rejected as designed");
+  }
+  const panel = page.locator('section[aria-label="Sealed promise"]');
+  await panel.waitFor({ timeout: 150_000 });
+  await sleep(2500); // the seal draws itself in
+  await shot(s, `${spec.label}-sealed`);
   const progress = await page.evaluate(() => window.__progress);
-  return { id, progress };
+
+  const problems = [];
+  const soft = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+  const create = lastTx("staker", "createPledge", before);
+  check(create, "the wallet sent no createPledge");
+  const receipt = await receiptOf(create.hash);
+  check(receipt.status === "success", "createPledge reverted");
+  const [created] = parseEventLogs({ abi, logs: receipt.logs, eventName: "PledgeCreated" });
+  const id = Number(created.args.id);
+  const countAtBlock = Number(await view("pledgeCount", [], receipt.blockNumber));
+  const p = await view("getPledge", [BigInt(id)]);
+  soft(getAddress(p.staker) === operator.address && getAddress(p.token) === spec.tokenAddress && p.amount === spec.units, "pledge on chain does not match what was typed");
+  soft(getAddress(p.referee) === accounts.referee.address && getAddress(p.beneficiary) === accounts.beneficiary.address, "parties on chain do not match");
+  soft(String(p.promiseText) === fullSpec.promise, `promise text on chain is "${p.promiseText}"`);
+  const lead = p.deadline - p.createdAt;
+  soft(lead >= spec.leadSeconds - 20n && lead <= spec.leadSeconds + 20n, `deadline lead ${lead} s, expected about ${spec.leadSeconds}`);
+
+  const panelText = (await panel.innerText()).replace(/\s+/g, " ");
+  const shownHash = await panel.locator(".hash-value code").first().getAttribute("title");
+  soft(shownHash === create.hash, `the panel shows ${shownHash}, the wallet sent ${create.hash}`);
+  const link = panel.locator(`.hash-value a[href="${EXPLORER}/tx/${create.hash}"]`);
+  soft((await link.count()) === 1, "no explorer link for the creation transaction");
+  const shownNumber = Number(panelText.match(/Promise number #(\d+)/i)?.[1]);
+  soft(shownNumber === id, `the panel shows promise number ${shownNumber}, the event says ${id}`);
+  soft(shownNumber === countAtBlock, `the panel shows promise number ${shownNumber}, pledgeCount at the creation block is ${countAtBlock}`);
+  const shareText = (await panel.locator(".sealed-share code").innerText()).trim();
+  soft(shareText === `${SITE}#/p/${id}`, `share link is ${shareText}`);
+  soft(panelText.includes(`Referee rules, or ${timeText(p.deadline)}`), `Locked until line is not "${timeText(p.deadline)}": ${panelText}`);
+
+  const svg = page.locator("svg.seal-svg");
+  await page.waitForFunction(() => document.querySelector("svg.seal-svg")?.classList.contains("on"), null, { timeout: 10_000 });
+  const label = (await svg.locator("textPath").textContent()) ?? "";
+  const hash8 = create.hash.slice(2, 10).toUpperCase();
+  soft(label.startsWith(`PROMISE № ${id} · ${spec.sealStake} · SEALED ON ARC TESTNET · ${hash8}`), `seal label is "${label}"`);
+  const ticks = await svg.locator("path.d").evaluateAll((ps) => ps.map((p) => p.getAttribute("d")).filter((d) => d.includes("L")));
+  soft(ticks.length === 64, `${ticks.length} ticks drawn`);
+  const bits = hashBits(create.hash);
+  const mismatched = ticks.filter((d, i) => {
+    const [, x, y] = d.match(/L(-?[\d.]+) (-?[\d.]+)/) ?? [];
+    return (Math.hypot(Number(x), Number(y)) < 65.5 ? 1 : 0) !== bits[i];
+  });
+  soft(mismatched.length === 0, `${mismatched.length} of 64 ticks disagree with the creation hash`);
+  const inks = await svg.evaluate((el) => ({ onClass: el.classList.contains("on"), box: el.getBoundingClientRect().width }));
+  for (const m of problems) {
+    cur.status = "Fail";
+    cur.notes.push(`CHECK FAILED: ${m}`);
+    findings.push({ journey: cur.id, text: `After sealing promise #${id}: ${m}` });
+  }
+  return { id, hash: create.hash, progress, buttonLabel, label, share: shareText, panelText, ticks: 64, seal: inks, deadline: p.deadline, shownHash, spec: fullSpec };
 }
 
-async function verifyOnChain(id, { token, amount, deadlineIn }) {
-  const p = await view("getPledge", [BigInt(id)]);
-  check(getAddress(p.staker) === operator.address, "staker recorded");
-  check(getAddress(p.token) === token && p.amount === amount, "token and amount recorded");
-  check(getAddress(p.referee) === accounts.referee.address && getAddress(p.beneficiary) === accounts.beneficiary.address, "parties recorded");
-  const lead = p.deadline - p.createdAt;
-  check(lead >= deadlineIn - 20n && lead <= deadlineIn + 20n, `deadline lead ${lead} s, expected about ${deadlineIn}`);
-  check(String(p.promiseText).startsWith(PROMISE_PREFIX), "promise text recorded");
-  check((await stateOf(id)) === "Active", "state is Active");
-  return p;
+// ---------------------------------------------------------------- reading a promise page
+
+async function readPledgePage(page, id, { amountText, stateText } = {}) {
+  await waitBody(page, `Promise #${id}`);
+  if (amountText) await waitBody(page, amountText);
+  if (stateText) await waitBody(page, stateText, 60_000);
+  return {
+    heading: (await page.locator("h1").first().innerText()).replace(/\s+/g, " "),
+    banner: (await page.locator(".pledge-banner").innerText().catch(() => "")).replace(/\s+/g, " "),
+    status: (await page.locator('[aria-label="Promise status"]').innerText().catch(() => "")).replace(/\s+/g, " "),
+    badge: (await page.locator(".role-badge").innerText().catch(() => "")).replace(/\s+/g, " "),
+  };
 }
 
 // ---------------------------------------------------------------- main
 
 let browserRef;
-const ctx = { p1: null, p2: null, p3: null };
+const P = { p1: null, p2: null, p3: null, p4: null };
 const startBalances = {};
 let fundingTxs = [];
 let sweepSteps = [];
 let sweepError = null;
 let fundingStarted = false;
+let buildInfo = {};
 
 async function main() {
   rmSync(OUT, { recursive: true, force: true });
   mkdirSync(OUT, { recursive: true });
+  try {
+    buildInfo.dirty = execFileSync("git", ["status", "--porcelain", "--", "app/src", "app/index.html", "app/vite.config.ts", "deployments"], { cwd: root }).toString().trim();
+  } catch {
+    buildInfo.dirty = "unknown";
+  }
 
   // ---- preflight
   assertChainId(await read(() => pub.getChainId()));
   check(((await read(() => pub.getCode({ address: CONTRACT })))?.length ?? 0) > 2, "no contract code at the deployment address");
+  const html = await fetch(SITE).then((r) => r.text());
+  check(html.includes(RPC) && !html.includes("rpc.mainnet.arc.io"), "the served build is not the testnet build (its policy does not name the testnet RPC alone)");
   const fees = await read(() => pub.estimateFeesPerGas());
   const feeCap = fees.maxFeePerGas * 2n;
-  const callsFor = { referee: 4, beneficiary: 3, settler: 3 };
+  const callsFor = { referee: 4, beneficiary: 3, settler: 4 };
   const funding = Object.fromEntries(Object.entries(callsFor).map(([r, calls]) => [r, fundingFor({ calls, feeCap })]));
   const totalFunding = Object.values(funding).reduce((a, b) => a + b, 0n);
   startBalances.native = await read(() => pub.getBalance({ address: operator.address }));
   startBalances.sats = await balanceOf(CIRBTC, operator.address);
-  startBalances.usdc = await balanceOf(USDC, operator.address);
+  startBalances.lockedUsdc = await view("totalLocked", [USDC]);
+  startBalances.lockedSats = await view("totalLocked", [CIRBTC]);
+  startBalances.pledgeCount = await view("pledgeCount");
   console.log(`operator ${operator.address}: ${formatUnits(startBalances.native, 18)} USDC native, ${startBalances.sats} sats`);
-  const reserve = fundingFor({ calls: 12, feeCap });
+  const reserve = fundingFor({ calls: 14, feeCap });
   if (startBalances.sats < CIRBTC_SATS * 2n) throw new Error(`stopping: the operator holds ${startBalances.sats} sats, the run needs at least ${CIRBTC_SATS * 2n}`);
   if (startBalances.native < totalFunding + reserve + USDC_AMOUNT * 3n * 10n ** 12n)
     throw new Error(`stopping: the operator holds ${formatUnits(startBalances.native, 18)} USDC, the run needs about ${formatUnits(totalFunding + reserve + USDC_AMOUNT * 3n * 10n ** 12n, 18)}`);
 
   browserRef = await chromium.launch();
-  fundingStarted = true;
-  for (const role of ["referee", "beneficiary", "settler"]) {
-    const hash = await fundNative(accounts[role].address, funding[role]);
-    fundingTxs.push({ role, hash, value: funding[role] });
+  if (!PROBE) {
+    fundingStarted = true;
+    for (const role of ["referee", "beneficiary", "settler"]) {
+      const hash = await fundNative(accounts[role].address, funding[role]);
+      fundingTxs.push({ role, hash, value: funding[role] });
+    }
   }
 
-  // ---- UJ-01 home and the example link (visitor, no wallet)
+  const usdcSpec = { token: "USDC", tokenAddress: USDC, amount: "0.1", units: USDC_AMOUNT, sealStake: "$0.10 IN USDC" };
+
+  // ---- (a) no wallet
   const V = await openSession("visitor", null, { noWallet: true });
-  await run("UJ-01", "Home page and the example pledge link", async () => {
+  await run("SG-a", "No wallet: landing, a promise page read-only, unknown id", async () => {
     await go(V, "#/");
-    await waitBody(V.page, "Lock Bitcoin against a promise.");
-    await waitBody(V.page, "Keep it and you get your sats back. Miss it and they go to someone else.");
-    await waitBody(V.page, "How it works");
+    await waitBody(V.page, "I promise to");
+    await waitBody(V.page, "Or my stake goes to someone I chose.");
+    await waitBody(V.page, "Seven lines.");
     await waitBody(V.page, CONTRACT);
-    await waitBody(V.page, /Pledges created \d+/);
+    await waitBody(V.page, /\d+ Promises made/i);
+    await waitBody(V.page, "You need a browser wallet on Arc with a little USDC for network fees. Reading needs none.");
     const sourcify = await V.page.getByRole("link", { name: "Verified on Sourcify" }).getAttribute("href");
     check(sourcify === `https://repo.sourcify.dev/${CHAIN_ID}/${CONTRACT}`, `Sourcify link ${sourcify}`);
-    note("Heading, lead sentence, three steps, the full contract address, the Sourcify link and a pledge count are shown with no wallet.");
-    await shot(V, "home");
-    await V.page.getByRole("link", { name: "See an example pledge" }).click();
-    await waitBody(V.page, /Pledge #\d+/);
-    check(/#\/p\/1$/.test(V.page.url()), "example link goes to #/p/1");
-    await waitBody(V.page, /Settled|Active|Kept|Broken|Expired/);
-    note(`The example link opened pledge #1 (state badge: ${await V.page.locator(".state-badge").first().innerText()}), with no wallet.`);
-    await shot(V, "example-pledge");
-  });
+    note("The landing reads with no wallet: the hero sentence \"I promise to\" with rotating examples, the lead sentence, the agreement, the full contract address, a Sourcify link and a promise count.");
+    const hero = await V.page.locator(".hero").innerText();
+    check(/Write your own/.test(hero), "no Write your own control in the hero");
+    check(await sealDisabled(V.page), "Seal it is not disabled with no wallet");
+    note("The pad is drawn with a demonstration signature; with no wallet and no promise written, the Seal it control is aria-disabled.");
+    await shot(V, "landing");
 
-  // ---- UJ-21 unknown pledge
-  await run("UJ-21", "Unknown pledge", async () => {
+    await V.page.getByRole("link", { name: "A live promise" }).click();
+    await waitBody(V.page, /Promise #\d+/);
+    check(/#\/p\/1$/.test(V.page.url()), "the live promise link goes to #/p/1");
+    const pg = await readPledgePage(V.page, 1);
+    await waitBody(V.page, /Paid out|Paid back|Open|Kept|Broken|No answer/);
+    const actions = await actionButtons(V.page);
+    check(actions.length === 0, `no-wallet visitor sees ${actions.join(", ")}`);
+    check(pg.badge === "", `no-wallet visitor has the badge "${pg.badge}"`);
+    await waitBody(V.page, "The agreement");
+    check((await V.page.locator(".hash-value").count()) >= 3, "fewer than three addresses with copy and explorer controls");
+    note(`The live promise (#1) opened with no wallet and shows its heading, "${pg.banner.slice(0, 120)}", the seven-line agreement with the three addresses, and the clock. Status line: "${pg.status}". No Kept, Broken or Send payout control, no role badge.`);
+    await shot(V, "live-promise");
+
     await go(V, "#/p/999999999");
-    await waitBody(V.page, "This pledge does not exist. Check the link.");
-    await shot(V, "unknown-pledge");
-    note('The page says "This pledge does not exist. Check the link." with a link home.');
+    await waitBody(V.page, "This promise does not exist. Check the link.");
+    check((await V.page.locator("h1").first().innerText()).includes("Promise"), "unknown promise has no heading");
+    await shot(V, "unknown-promise");
+    note('An unknown id shows the heading "Promise not found" and "This promise does not exist. Check the link.", with links home and to My promises.');
     await go(V, "#/nowhere");
     await waitBody(V.page, "This page does not exist.");
-    note('An unknown route says "This page does not exist."');
+    note('An unknown route shows "This page does not exist."');
+    check(V.requests.length === 0, "a wallet-less session made wallet requests");
   });
 
-  // ---- UJ-02 connect
-  await run("UJ-02", "Connect a wallet", async () => {
-    const X = await openSession("connect", "staker");
-    await go(X, "#/");
-    await sleep(2500);
-    check(!X.requests.includes("eth_requestAccounts"), "the page asked for accounts before any click");
-    note(`Before any click the page sent only: ${[...new Set(X.requests)].join(", ") || "nothing"}. No account request.`);
-    await waitBody(X.page, "Connect a wallet to create or settle a pledge.");
-    await shot(X, "before-connect");
-    await connect(X);
-    await waitBody(X.page, "on Arc Testnet.");
-    note("Connect Dry run wallet showed the connected address and the network name.");
-    await shot(X, "connected");
-    await X.context.close();
-  });
-
-  // ---- UJ-03 wrong network, then switch (this session carries on as the staker)
+  // ---- (b) connect, wrong network, switch
   const S = await openSession("staker", "staker", { wrongChain: true });
-  await run("UJ-03", "Wrong network, then switch", async () => {
-    await go(S, "#/create");
+  await run("SG-b", "Connect, wrong network, then switch", async () => {
+    await go(S, "#/");
+    await sleep(2500);
+    check(!S.requests.includes("eth_requestAccounts"), "the page asked for accounts before any click");
+    note(`Before any click the page sent only: ${[...new Set(S.requests)].join(", ") || "nothing"}. No account request.`);
+    await waitBody(S.page, "Connect a wallet to create or settle a promise.");
+    await shot(S, "before-connect");
     await connect(S);
     await waitBody(S.page, "Your wallet is on another network. SatStake runs on Arc Testnet.");
-    const help = await S.page.locator('[id$="-submit-help"]').innerText();
-    note(`Create page reasons while on chain 1: ${help.replace(/\s+/g, " ").trim()}`);
-    check(/another network/i.test(help), "no wrong-network reason beside submit");
-    check(await submitDisabled(S.page), "submit is enabled on the wrong network");
+    await S.page.getByRole("button", { name: "Write your own ↗", exact: true }).click();
+    await S.page.getByLabel("Your promise", { exact: true }).fill(`${PROMISE_PREFIX}: wrong network`);
+    const help = (await S.page.locator('[id$="-submit-help"]').innerText()).replace(/\s+/g, " ").trim();
+    note(`Beside Seal it while the wallet is on chain 1: ${help}`);
+    check(/another network/i.test(help), "no wrong-network reason beside Seal it");
+    check(await sealDisabled(S.page), "Seal it is enabled on the wrong network");
     await shot(S, "wrong-network");
     await S.page.getByRole("button", { name: "Switch to Arc Testnet", exact: true }).click();
     await waitBody(S.page, /Connected: 0x\w{4}…\w{4} on Arc Testnet\./);
-    check(!(await buttonVisible(S.page, "Switch to Arc Testnet")), "switch button still shown");
-    note("The Switch to Arc Testnet button asked the wallet to switch; the status then read connected on Arc Testnet.");
+    check(!(await buttonVisible(S.page, "Switch to Arc Testnet")), "the switch button is still shown");
+    check(!(await bodyHas(S.page, "Your wallet is on another network. Switch to Arc Testnet.")), "the wrong-network reason stayed after the switch");
+    note("Switch to Arc Testnet asked the wallet to switch; the status then read connected on Arc Testnet and the wrong-network reason went.");
     await shot(S, "switched");
   });
 
-  // ---- UJ-12 invalid inputs
-  await run("UJ-12", "Invalid inputs show inline errors and submit stays disabled", async () => {
-    const page = S.page;
-    await go(S, "#/create");
-    await waitBody(page, "Create a pledge");
-    await page.getByLabel("Token", { exact: true }).selectOption({ label: "cirBTC" });
-    await waitBody(page, /Your balance: /);
-    await page.getByRole("button", { name: "Create pledge", exact: true }).click({ force: true });
-    for (const m of ["Write the promise you are making.", "Choose a deadline.", "Tick the box to confirm you understand.", /Still to complete: /]) await waitBody(page, m, 8000);
-    check(await submitDisabled(page), "submit enabled on an empty form");
-    note('Activating submit on an empty form listed the faults: "Write the promise you are making.", "Choose a deadline.", "Tick the box to confirm you understand." and a "Still to complete" line.');
-    await shot(S, "empty-form");
-    const cases = [
-      ["Referee address", "abc", "Enter the referee's address: 0x followed by 40 letters and digits."],
-      ["Referee address", "0x0000000000000000000000000000000000000000", "Enter a valid address for the referee and the beneficiary."],
-      ["Referee address", operator.address, "You cannot be your own referee or beneficiary."],
-      ["Amount", "0", "Enter an amount above zero."],
-      ["Amount", "abc", "Use digits and at most one decimal point."],
-      ["Amount", "0.123456789", "cirBTC has 8 decimal places. Remove the extra digits."],
-      ["Amount", "1000000", /Your balance is .* cirBTC, which is less than this amount\./],
-      ["Promise", "a".repeat(300), "Shorten the promise to 280 bytes or fewer."],
-    ];
-    for (const [label, value, expected] of cases) {
-      const field = page.getByLabel(label, { exact: true });
-      await field.fill(value);
-      await field.press("Tab");
-      await waitBody(page, expected, 8000);
-      note(`${label} = ${value.length > 20 ? `${value.length} characters` : `"${value}"`}: ${expected instanceof RegExp ? "balance is less than this amount" : `"${expected}"`}`);
-    }
-    await page.getByLabel("Referee address", { exact: true }).fill(accounts.referee.address);
-    await page.getByLabel("Beneficiary address", { exact: true }).fill(accounts.referee.address);
-    await page.getByLabel("Beneficiary address", { exact: true }).press("Tab");
-    await waitBody(page, "The referee and the beneficiary must be different people.", 8000);
-    note('Same referee and beneficiary: "The referee and the beneficiary must be different people."');
-    await page.getByRole("radio", { name: "Custom", exact: true }).check();
-    const past = new Date(Date.now() - 86_400_000);
-    const pad = (n) => String(n).padStart(2, "0");
-    await page.getByLabel("Custom date and time", { exact: true }).fill(`${past.getFullYear()}-${pad(past.getMonth() + 1)}-${pad(past.getDate())}T${pad(past.getHours())}:${pad(past.getMinutes())}`);
-    await page.getByLabel("Promise", { exact: true }).focus();
-    await waitBody(page, "The deadline must be at least 90 seconds from now. Pick a later time.", 8000);
-    note('A custom deadline a day in the past: "The deadline must be at least 90 seconds from now. Pick a later time."');
-    check(await submitDisabled(page), "submit enabled with invalid inputs");
-    note("Submit stayed aria-disabled throughout.");
-    await shot(S, "invalid-inputs");
-  });
-
-  // ---- UJ-10 cirBTC pledge
-  await run("UJ-10", "Create a cirBTC pledge (approval then creation)", async () => {
-    const spec = { label: "cirBTC kept", token: "cirBTC", amount: "0.0000001", deadline: "1 day" };
-    let created;
-    try {
-      created = await createViaUi(S, spec);
-    } catch (e) {
-      finding(`UI creation of the cirBTC pledge failed: ${firstLine(e)}; a script fallback created it so later journeys could run.`, await shotPage(S.page, "UJ-10-create-failed").catch(() => undefined));
-      created = { ...(await fallbackCreate({ token: CIRBTC, amount: CIRBTC_AMOUNT, deadlineIn: 86_400n, text: `${PROMISE_PREFIX}: cirBTC kept` })), progress: [], fallback: true };
-      throw e;
-    } finally {
-      if (created) ctx.p1 = created;
-    }
-    note(`Progress texts seen: ${created.progress.join(" ;; ")}`);
-    check(created.progress.some((t) => /Step 1 of 2/.test(t)) && created.progress.some((t) => /Step 2 of 2/.test(t)), "no numbered Step 1 of 2 and Step 2 of 2 in the progress");
-    note(`Landed on #/p/${created.id}.`);
-    await waitBody(S.page, "Copy the link to this pledge");
-    await waitBody(S.page, "0.0000001 cirBTC (10 sats)");
-    await shot(S, "cirBTC-created");
-    await S.page.getByRole("button", { name: "Copy the link to this pledge" }).click();
+  // ---- (c) create a USDC promise from the hero
+  let p1;
+  await run("SG-c", "Create a USDC promise from the hero; the sealed panel", async () => {
+    // The page is still on the landing with the sentence half written; a fresh landing keeps the check plain.
+    await S.page.reload();
+    await waitBody(S.page, /Connected: 0x\w{4}…\w{4} on Arc Testnet\./);
+    await go(S, "#/");
+    p1 = await sealPromise(S, { ...usdcSpec, label: "USDC kept", deadline: "1 day", leadSeconds: 86_400n }, "landing");
+    P.p1 = p1;
+    note(`Seal it was labelled "${p1.buttonLabel}". Progress texts seen: ${p1.progress.join(" ;; ")}`);
+    check(p1.progress.some((t) => /Step 1 of 2/.test(t)) && p1.progress.some((t) => /Step 2 of 2/.test(t)), "no numbered Step 1 of 2 and Step 2 of 2 in the progress");
+    const approve = lastTx("staker", "approve");
+    note(`The wallet sent approve ${approve.hash} and then createPledge ${p1.hash}.`);
+    note(`The sealed panel shows the creation hash ${p1.shownHash}, the same as the hash the wallet sent; its explorer link is ${EXPLORER}/tx/${p1.hash}.`);
+    note(`The panel's promise number is #${p1.id}; the creation event says #${p1.id}, and pledgeCount at the creation block is ${p1.id}.`);
+    note(`The share link in the panel is ${p1.share}. The "Locked until" line reads "Referee rules, or ${timeText(p1.deadline)}", the chain deadline.`);
+    note(`The seal is drawn (svg class "on"); its ring label reads "${p1.label}"; all 64 ticks agree with the bits of the creation hash.`);
+    await S.page.getByRole("button", { name: "Copy the link to this promise", exact: true }).click();
     await waitBody(S.page, "Link copied.");
     const clip = await S.page.evaluate(() => navigator.clipboard.readText());
-    check(clip === `${SITE}#/p/${created.id}`, `clipboard holds ${clip}`);
-    note(`Copy link put ${clip} on the clipboard.`);
-    await shot(S, "cirBTC-link-copied");
-    await verifyOnChain(created.id, { token: CIRBTC, amount: CIRBTC_AMOUNT, deadlineIn: 86_400n });
-    note("On chain: staker, token, amount, referee, beneficiary, a deadline of about one day and the promise text match; state Active.");
+    check(clip === p1.share, `clipboard holds ${clip}`);
+    note("Copy the link to this promise put the share link on the clipboard.");
+    // The pad is read-only once the promise exists: the fields are not editable and the submit is gone.
+    check((await S.page.getByRole("button", { name: /^Seal it/ }).count()) === 0, "a Seal it control remains after sealing");
+    note("After sealing, the Seal it control is gone and the sealed panel holds focus.");
+    await shot(S, "sealed-after-copy");
   });
 
-  // ---- UJ-11 USDC pledge
-  await run("UJ-11", "Create a USDC pledge", async () => {
-    const spec = { label: "USDC broken", token: "USDC", amount: "0.1", deadline: "1 day" };
-    let created;
-    try {
-      created = await createViaUi(S, spec);
-    } catch (e) {
-      finding(`UI creation of the USDC pledge failed: ${firstLine(e)}; a script fallback created it.`, await shotPage(S.page, "UJ-11-create-failed").catch(() => undefined));
-      created = { ...(await fallbackCreate({ token: USDC, amount: USDC_AMOUNT, deadlineIn: 86_400n, text: `${PROMISE_PREFIX}: USDC broken` })), progress: [], fallback: true };
-      throw e;
-    } finally {
-      if (created) ctx.p2 = created;
-    }
-    note(`Progress texts seen: ${created.progress.join(" ;; ")}`);
-    check(created.progress.some((t) => /Step 1 of 2/.test(t)) && created.progress.some((t) => /Step 2 of 2/.test(t)), "no numbered progress for the USDC pledge");
-    await waitBody(S.page, "0.1 USDC");
-    await shot(S, "USDC-created");
-    await verifyOnChain(created.id, { token: USDC, amount: USDC_AMOUNT, deadlineIn: 86_400n });
-    note(`Landed on #/p/${created.id}; chain state matches.`);
-  });
-
-  // ---- sessions for the 2-minute window
-  const R3 = await openSession("referee-watch", "referee");
-  const B = await openSession("beneficiary", "beneficiary");
-  const T = await openSession("settler", "settler");
+  // ---- (d) the referee follows the share link
   const R = await openSession("referee", "referee");
-  for (const x of [R3, B, T, R]) {
+  await run("SG-d", "Referee opens the share link: Kept, and Broken with the inline confirm", async () => {
+    check(p1, "blocked: the first promise was not created");
+    await go(R, "#/");
+    await connect(R);
+    await gotoUrl(R, p1.share);
+    const pg = await readPledgePage(R.page, p1.id);
+    await waitBody(R.page, "Was this promise kept?");
+    check(await buttonVisible(R.page, "Kept"), "Kept missing for the referee");
+    check(await buttonVisible(R.page, "Broken"), "Broken missing for the referee");
+    check(pg.badge === "You judge this promise", `referee badge is "${pg.badge}"`);
+    note(`The referee, opening the share link from the sealed panel, sees the badge "${pg.badge}", the question "Was this promise kept?" and the Kept and Broken buttons. Banner: "${pg.banner.slice(0, 160)}"`);
+    await shot(R, "p1-verdict-controls");
+    const t0 = txLog.length;
+    await R.page.getByRole("button", { name: "Kept", exact: true }).click();
+    await waitBody(R.page, /Confirm in your wallet\./, 10_000).catch(() => {});
+    await shot(R, "p1-kept-confirming");
+    await waitBody(R.page, "You marked this promise kept.", 90_000);
+    const tx = lastTx("referee", "markKept", t0);
+    check(tx, "no markKept transaction");
+    const shown = await R.page.locator(".pledge-progress .hash-value code").first().getAttribute("title");
+    check(shown === tx.hash, `the page shows ${shown}, the wallet sent ${tx.hash}`);
+    check((await R.page.locator(`.pledge-progress a[href="${EXPLORER}/tx/${tx.hash}"]`).count()) === 1, "no explorer link for the verdict");
+    check(!(await buttonVisible(R.page, "Kept")), "the verdict controls stayed after the verdict");
+    check((await stateOf(p1.id)) === "Kept", "chain state is not Kept");
+    await waitBody(R.page, /Kept\. The stake goes back to/, 40_000);
+    note("Kept sent one transaction (markKept); the page said \"You marked this promise kept.\" with the same hash the wallet sent and an explorer link; chain state is Kept and the banner reads Kept.");
+    await shot(R, "p1-kept-done");
+
+    // second promise, Broken through the inline confirm
+    await S.page.bringToFront();
+    const p2 = await sealPromise(S, { ...usdcSpec, label: "USDC broken", deadline: "1 day", leadSeconds: 86_400n }, "another");
+    P.p2 = p2;
+    note(`A second promise, #${p2.id}, was made with Make another promise from the sealed panel (creation ${p2.hash}). Its panel number matches the event and pledgeCount.`);
+    await gotoUrl(R, p2.share);
+    await waitBody(R.page, `Promise #${p2.id}`);
+    await waitBody(R.page, "Was this promise kept?");
+    await R.page.getByRole("button", { name: "Broken", exact: true }).click();
+    await waitBody(R.page, "Mark this promise broken?");
+    await waitBody(R.page, /The stake of \$0\.10 in USDC will go to the beneficiary, 0x\w{4}…\w{4}\. Your verdict cannot be changed\./);
+    const focused = await R.page.evaluate(() => document.activeElement?.textContent?.trim());
+    check(focused === "Cancel", `focus starts on ${focused}, expected Cancel`);
+    check((await R.page.locator("dialog").count()) === 0, "the confirm is a dialog element, not inline");
+    await shot(R, "p2-broken-confirm");
+    note('Broken opened the inline confirm "Mark this promise broken?" under the ruling line with the amount and the beneficiary; focus started on Cancel; it is not a modal dialog.');
+    const sends = methodCounts.get("eth_sendTransaction") ?? 0;
+    const txCount = txLog.length;
+    await R.page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await sleep(2500);
+    check((await R.page.getByText("Mark this promise broken?").count()) === 0, "the confirm stayed after Cancel");
+    check((methodCounts.get("eth_sendTransaction") ?? 0) === sends && txLog.length === txCount, "Cancel sent a transaction request");
+    check((await stateOf(p2.id)) === "Active", "Cancel changed the state");
+    check(await buttonVisible(R.page, "Broken"), "Broken missing after Cancel");
+    note("Cancel closed the confirm and sent no request to the wallet (eth_sendTransaction count unchanged); the promise stayed Active with Kept and Broken still offered.");
+    await R.page.getByRole("button", { name: "Broken", exact: true }).click();
+    await waitBody(R.page, "Mark this promise broken?");
+    const t1 = txLog.length;
+    await R.page.getByRole("button", { name: "Mark it broken", exact: true }).click();
+    await waitBody(R.page, "You marked this promise broken.", 90_000);
+    const tx2 = lastTx("referee", "markBroken", t1);
+    check(tx2, "no markBroken transaction");
+    check((await R.page.locator(".pledge-progress .hash-value code").first().getAttribute("title")) === tx2.hash, "the page's verdict hash differs from the wallet's");
+    check((await stateOf(p2.id)) === "Broken", "chain state is not Broken");
+    note(`Mark it broken sent markBroken ${tx2.hash}; the page said "You marked this promise broken." with that hash; chain state is Broken.`);
+    await shot(R, "p2-broken-done");
+  });
+
+  // ---- (f, first half) the two-minute promise is made now so its deadline passes while the payouts run
+  const W = await openSession("referee-watch", "referee");
+  const T = await openSession("settler", "settler");
+  const B = await openSession("beneficiary", "beneficiary");
+  for (const x of [W, T, B]) {
     await go(x, "#/");
     await connect(x);
   }
-
-  // ---- UJ-13 second USDC pledge, allowance already sufficient
-  let allowanceTx;
-  await run("UJ-13", "USDC pledge with the allowance already sufficient", async () => {
-    // The flow approves exactly the amount and the contract spends it, so no allowance is ever left over after a
-    // normal pledge. The one honest way to meet a sufficient allowance is to grant it before the page reads it.
-    allowanceTx = await wallet(operator).writeContract({ address: USDC, abi: erc20Abi, functionName: "approve", args: [CONTRACT, USDC_AMOUNT] });
-    await receiptOf(allowanceTx);
-    txLog.push({ role: "staker", hash: allowanceTx, fn: "approve (script, before the form)", to: USDC });
-    cur.txs.push({ role: "staker", hash: allowanceTx, fn: "approve (script, before the form)" });
-    note("The script approved exactly 0.1 USDC from the staker before opening the form, since the app never leaves an allowance behind.");
-    const spec = { label: "USDC two-minute", token: "USDC", amount: "0.1", deadline: "2 minutes" };
-    let created;
-    try {
-      created = await createViaUi(S, spec);
-    } catch (e) {
-      finding(`UI creation of the 2-minute pledge failed: ${firstLine(e)}; a script fallback created it.`, await shotPage(S.page, "UJ-13-create-failed").catch(() => undefined));
-      created = { ...(await fallbackCreate({ token: USDC, amount: USDC_AMOUNT, deadlineIn: 120n, text: `${PROMISE_PREFIX}: USDC two-minute` })), progress: [], fallback: true };
-      throw e;
-    } finally {
-      if (created) ctx.p3 = created;
-    }
-    ctx.p3.deadline = (await view("getPledge", [BigInt(created.id)])).deadline;
-    note(`Progress texts seen: ${created.progress.join(" ;; ")}`);
-    check(!created.progress.some((t) => /Step 1 of 2/.test(t)), "the flow asked for a second approval");
-    check(created.progress.some((t) => /Create the pledge/.test(t)), "no create step in the progress");
-    note("With the allowance in place the flow showed a single unnumbered step, Create the pledge, and no approval.");
-    await shot(S, "two-minute-created");
-    await verifyOnChain(created.id, { token: USDC, amount: USDC_AMOUNT, deadlineIn: 120n });
-    check((await read(() => pub.readContract({ address: USDC, abi: erc20Abi, functionName: "allowance", args: [operator.address, CONTRACT] }))) === 0n, "allowance left over");
-    note("The contract spent the whole allowance; none is left.");
+  await run("SG-f", "Two-minute promise with no verdict reads No answer and pays the beneficiary", async () => {
+    P.p3 = await sealPromise(S, { ...usdcSpec, label: "USDC two-minute", deadline: "2 minutes", leadSeconds: 120n }, "create");
+    note(`The two-minute promise #${P.p3.id} was made from the hero page (#/create); creation ${P.p3.hash}; the panel number matches the event and pledgeCount.`);
+    await gotoUrl(W, P.p3.share);
+    await waitBody(W.page, `Promise #${P.p3.id}`);
+    await waitBody(W.page, "Was this promise kept?");
+    note("The referee's page for it, opened from its share link, offers Kept and Broken while the deadline is ahead.");
+    await shot(W, "p3-active");
   });
 
-  // ---- the 2-minute window: UJ-34, UJ-20, UJ-22, UJ-44
-  const id3 = ctx.p3?.id;
-  await run("UJ-34", "Under-10-minutes warning for the staker and the referee", async () => {
-    check(id3, "blocked: the 2-minute pledge was not created");
-    await waitBody(S.page, /Less than 10 minutes left\. If your referee does not mark this promise kept before the deadline, your stake goes to the beneficiary\./);
-    note("Staker page shows: Less than 10 minutes left. If your referee does not mark this promise kept before the deadline, your stake goes to the beneficiary.");
-    await shot(S, "two-minute-warning");
-    await go(R3, `#/p/${id3}`);
-    await waitBody(R3.page, "Less than 10 minutes left. If you do not record a verdict before the deadline, the stake goes to the beneficiary.");
-    note("Referee page shows: Less than 10 minutes left. If you do not record a verdict before the deadline, the stake goes to the beneficiary.");
-    await shot(R3, "two-minute-warning");
-  });
-  await run("UJ-20", "Pledge page as each role: badge and action matrix", async () => {
-    check(id3, "blocked: the 2-minute pledge was not created");
-    check(await bodyHas(S.page, "You are the staker"), "staker badge");
-    check(await bodyHas(S.page, "Your referee must mark this promise kept before the deadline."), "staker hint");
-    check((await settleButtonsShown(S.page)).length === 0, "settle control shown to the staker while Active");
-    note('Staker: badge "You are the staker", hint "Your referee must mark this promise kept before the deadline.", no verdict or settle control.');
-    check(await bodyHas(R3.page, "You are the referee"), "referee badge");
-    check(await buttonVisible(R3.page, "Kept"), "Kept missing for the referee");
-    check(await buttonVisible(R3.page, "Broken"), "Broken missing for the referee");
-    check((await settleButtonsShown(R3.page)).length === 0, "settle control shown to the referee while Active");
-    check(await bodyHas(R3.page, "Your verdict is final. Record it before the deadline, or the stake goes to the beneficiary."), "referee hint");
-    note('Referee: badge "You are the referee", the question "Did the staker keep this promise?" with Kept and Broken, and no settle control.');
-    await shot(R3, "verdict-controls");
-    await go(B, `#/p/${id3}`);
-    await waitBody(B.page, "You are the beneficiary");
-    check(!(await buttonVisible(B.page, "Kept")) && !(await buttonVisible(B.page, "Broken")), "verdict controls shown to the beneficiary");
-    check((await settleButtonsShown(B.page)).length === 0, "settle control shown to the beneficiary while Active");
-    check(!(await bodyHas(B.page, "Less than 10 minutes left")), "warning shown to the beneficiary");
-    note("Beneficiary: badge \"You are the beneficiary\", no verdict or settle control, no deadline warning.");
-    await shot(B, "active");
-  });
-  await run("UJ-22", "Pledge page for a visitor and an unrelated account", async () => {
-    check(id3, "blocked: the 2-minute pledge was not created");
-    await go(V, `#/p/${id3}`);
-    await waitBody(V.page, `Pledge #${id3}`);
-    await waitBody(V.page, /Connect a wallet to act\./);
-    check(!(await bodyHas(V.page, "You are the")), "visitor has a role badge");
-    check((await settleButtonsShown(V.page)).length === 0 && !(await buttonVisible(V.page, "Kept")), "visitor sees an action control");
-    check(!(await bodyHas(V.page, "Less than 10 minutes left")), "warning shown to a visitor");
-    note('Visitor with no wallet: full facts, no badge, no controls, "Connect a wallet to act."');
-    await shot(V, "two-minute-pledge");
-    await go(T, `#/p/${id3}`);
-    await waitBody(T.page, `Pledge #${id3}`);
-    check(!(await bodyHas(T.page, "You are the")), "unrelated account has a badge");
-    check((await settleButtonsShown(T.page)).length === 0 && !(await buttonVisible(T.page, "Kept")), "unrelated account sees an action control");
-    check(!(await bodyHas(T.page, "Less than 10 minutes left")), "warning shown to an unrelated account");
-    note("Unrelated connected account: no badge, no controls, no warning while Active.");
-    await shot(T, "two-minute-pledge");
-  });
-  await run("UJ-44", "No settle control before the deadline", async () => {
-    check(id3, "blocked: the 2-minute pledge was not created");
-    const remaining = ctx.p3.deadline - (await read(() => pub.getBlock())).timestamp;
-    check(remaining > 0n, `the deadline passed ${-remaining} s ago, before the check`);
-    for (const [name, page] of [["staker", S.page], ["referee", R3.page], ["beneficiary", B.page], ["visitor", V.page], ["unrelated account", T.page]]) {
-      check((await settleButtonsShown(page)).length === 0, `${name} sees a settle control`);
-    }
-    note(`With ${remaining} s left on chain, none of the five pages (staker, referee, beneficiary, visitor, unrelated account) offered a settle control.`);
-  });
+  // ---- (e) Send payout
+  await run("SG-e", "Send payout: an unrelated account on Kept, the beneficiary on Broken", async () => {
+    check(P.p1 && P.p2, "blocked: the first two promises were not created");
+    await gotoUrl(T, P.p1.share);
+    await readPledgePage(T.page, P.p1.id);
+    await waitBody(T.page, /Kept\. The stake goes back to/, 40_000);
+    check(!(await bodyHas(T.page, "You made this promise")), "the unrelated account has a role badge");
+    await waitBody(T.page, "Anyone can send this. The full stake goes only to the staker.");
+    check(await buttonVisible(T.page, "Send payout"), "Send payout missing for the unrelated account");
+    check(!(await buttonVisible(T.page, "Kept")) && !(await buttonVisible(T.page, "Broken")), "verdict controls for an unrelated account");
+    await shot(T, "p1-payout-offered");
+    let t0 = txLog.length;
+    await T.page.getByRole("button", { name: "Send payout", exact: true }).click();
+    await waitBody(T.page, "Done. The stake was sent to the staker.", 90_000);
+    let tx = lastTx("settler", "settle", t0);
+    check(tx, "no settle transaction from the unrelated account");
+    let receipt = await receiptOf(tx.hash);
+    let got = transfersTo(receipt, USDC, accounts.staker.address);
+    check(got.length === 1 && got[0] === USDC_AMOUNT, `USDC transfers to the staker: ${got.join(",")}`);
+    check(transfersTo(receipt, USDC, accounts.settler.address).length === 0, "the unrelated sender received a transfer");
+    check((await stateOf(P.p1.id)) === "SettledToStaker", "chain state is not SettledToStaker");
+    await waitBody(T.page, /Paid back/, 30_000);
+    check((await T.page.locator(".pledge-progress .hash-value code").first().getAttribute("title")) === tx.hash, "page hash differs from the wallet's");
+    note(`On the Kept promise #${P.p1.id} an unrelated account pressed Send payout (${tx.hash}); the page said "Done. The stake was sent to the staker." and then read Paid back. The receipt holds one Transfer of 0.1 USDC to the staker and none to the sender.`);
+    await shot(T, "p1-payout-done");
 
-  // ---- UJ-30 and UJ-24: the referee marks Kept on pledge 1, the staker's open page follows
-  const id1 = ctx.p1?.id;
-  const id2 = ctx.p2?.id;
-  await run("UJ-30", "Referee marks Kept", async () => {
-    check(id1, "blocked: the cirBTC pledge was not created");
-    await go(S, `#/p/${id1}`);
-    await waitBody(S.page, "Active.");
-    await go(R, `#/p/${id1}`);
-    await waitBody(R.page, "Did the staker keep this promise?");
-    await shot(R, "kept-controls");
-    const before = txLog.length;
-    await R.page.getByRole("button", { name: "Kept", exact: true }).click();
-    await waitBody(R.page, /Confirm in your wallet\./, 10_000).catch(() => {});
-    await shot(R, "kept-confirming");
-    await waitBody(R.page, "You marked this promise kept.", 90_000);
-    const t0 = Date.now();
-    const tx = lastTx("referee", "markKept", before);
-    check(tx, "no markKept transaction from the referee");
-    const shown = await R.page.locator(".pledge-progress .hash-value code").first().getAttribute("title");
-    check(shown === tx.hash, `the page shows ${shown}, the wallet sent ${tx.hash}`);
-    check(await R.page.locator(`.pledge-progress a[href="${EXPLORER}/tx/${tx.hash}"]`).count() === 1, "no explorer link for the transaction");
-    check(!(await buttonVisible(R.page, "Kept")), "the verdict controls stayed after the verdict");
-    note("The referee's page showed Confirm in your wallet, then the result \"You marked this promise kept.\" with the transaction hash, a copy control and an explorer link; the verdict controls went.");
-    await shot(R, "kept-done");
-    check((await stateOf(id1)) === "Kept", "chain state is not Kept");
-    note("Chain state: Kept.");
-    ctx.keptAt = t0;
-  });
-  await run("UJ-24", "Another session's change reaches an open page within a poll", async () => {
-    check(id1 && ctx.keptAt, "blocked: no verdict was recorded");
-    await waitBody(S.page, /Kept\. The referee confirmed the promise\./, 40_000);
-    const seconds = (Date.now() - ctx.keptAt) / 1000;
-    note(`The staker's page, already open on the pledge, showed Kept ${seconds.toFixed(1)} s after the referee's page confirmed (poll interval 4 s), with no reload.`);
-    check(seconds < 15, `the update took ${seconds} s`);
-    await shot(S, "followed-kept");
-  });
-
-  // ---- UJ-40 staker withdraws
-  await run("UJ-40", "Staker withdraws after Kept", async () => {
-    check(id1, "blocked: the cirBTC pledge was not created");
-    await waitBody(S.page, "You are the staker");
-    check(await buttonVisible(S.page, "Withdraw my stake"), "Withdraw my stake missing");
-    check(!(await buttonVisible(S.page, "Kept")) && !(await buttonVisible(S.page, "Broken")), "verdict controls for the staker");
-    const before = await balanceOf(CIRBTC, operator.address);
-    const tx0 = txLog.length;
-    await S.page.getByRole("button", { name: "Withdraw my stake", exact: true }).click();
-    await waitBody(S.page, "Done. The stake was sent to the staker.", 90_000);
-    await shot(S, "withdrawn");
-    const tx = lastTx("staker", "settle", tx0);
-    check(tx, "no settle transaction from the staker");
-    const after = await balanceOf(CIRBTC, operator.address);
-    check(after - before === CIRBTC_AMOUNT, `staker cirBTC moved by ${after - before}, expected ${CIRBTC_AMOUNT}`);
-    check((await stateOf(id1)) === "SettledToStaker", "chain state is not SettledToStaker");
-    await waitBody(S.page, "Settled to staker", 30_000);
-    note("The staker pressed Withdraw my stake; the page said \"Done. The stake was sent to the staker.\" and then showed Settled to staker. On chain the staker's cirBTC rose by exactly 10 sats.");
-    check(!(await bodyHas(S.page, "Withdraw my stake")) || !(await buttonVisible(S.page, "Withdraw my stake")), "the control stayed after settling");
-  });
-
-  // ---- UJ-42a: the deadline arrives with no verdict
-  await run("UJ-42", "Two-minute pledge expires with no verdict", async () => {
-    check(id3, "blocked: the 2-minute pledge was not created");
-    const stillOpen = (await read(() => pub.getBlock())).timestamp < ctx.p3.deadline;
-    note(stillOpen ? "The deadline had not arrived when this step began; waiting for chain time." : "The deadline had already passed when this step began, so the controls going away is checked after the fact.");
-    await waitChain(ctx.p3.deadline);
-    await waitBody(R3.page, /Expired\. The deadline passed with no verdict\./, 40_000);
-    check(!(await buttonVisible(R3.page, "Kept")) && !(await buttonVisible(R3.page, "Broken")), "Kept or Broken still shown after the deadline");
-    check(await bodyHas(R3.page, "Deadline passed"), "no Deadline passed row");
-    note("The referee's open page read Expired, showed Deadline passed, and no longer offered Kept or Broken.");
-    await shot(R3, "expired");
-    check((await stateOf(id3)) === "Expired", "chain state is not Expired");
-  });
-
-  // ---- UJ-31 broken through the dialog, UJ-41 beneficiary claims
-  await run("UJ-31", "Referee marks Broken through the confirmation dialog", async () => {
-    check(id2, "blocked: the USDC pledge was not created");
-    await go(R, `#/p/${id2}`);
-    await waitBody(R.page, "Did the staker keep this promise?");
-    await R.page.getByRole("button", { name: "Broken", exact: true }).click();
-    await waitBody(R.page, "Mark this promise broken?");
-    await waitBody(R.page, /The stake of 0\.1 USDC will go to the beneficiary, 0x\w{4}…\w{4}\. Your verdict cannot be changed\./);
-    const focused = await R.page.evaluate(() => document.activeElement?.textContent?.trim());
-    check(focused === "Cancel", `focus starts on ${focused}, expected Cancel`);
-    await shot(R, "broken-dialog");
-    note('The dialog said "Mark this promise broken?" with the amount and the beneficiary, and focus started on Cancel.');
-    await R.page.getByRole("button", { name: "Cancel", exact: true }).click();
-    check(!(await R.page.locator("dialog[open]").count()), "dialog still open after Cancel");
-    check((await stateOf(id2)) === "Active", "Cancel changed the state");
-    note("Cancel closed it and sent nothing.");
-    await R.page.getByRole("button", { name: "Broken", exact: true }).click();
-    await waitBody(R.page, "Mark this promise broken?");
-    const before = txLog.length;
-    await R.page.getByRole("button", { name: "Mark it broken", exact: true }).click();
-    await waitBody(R.page, "You marked this promise broken.", 90_000);
-    await shot(R, "broken-done");
-    const tx = lastTx("referee", "markBroken", before);
-    check(tx, "no markBroken transaction");
-    check((await stateOf(id2)) === "Broken", "chain state is not Broken");
-    note("Mark it broken sent one transaction; the page said \"You marked this promise broken.\"; chain state Broken.");
-  });
-  await run("UJ-41", "Beneficiary claims a broken stake", async () => {
-    check(id2, "blocked: the USDC pledge was not created");
-    await go(B, `#/p/${id2}`);
-    await waitBody(B.page, /Broken\. The referee marked the promise broken\./, 40_000);
-    await waitBody(B.page, "You are the beneficiary");
-    check(await buttonVisible(B.page, "Claim stake"), "Claim stake missing");
-    await shot(B, "claim-offered");
-    const tx0 = txLog.length;
-    await B.page.getByRole("button", { name: "Claim stake", exact: true }).click();
+    await gotoUrl(B, P.p2.share);
+    await readPledgePage(B.page, P.p2.id);
+    await waitBody(B.page, /Marked broken\. The stake goes to/, 40_000);
+    check((await B.page.locator(".role-badge").innerText()) === "You get the stake if it is broken or missed", "beneficiary badge");
+    await waitBody(B.page, "Anyone can send this. The full stake goes only to the beneficiary.");
+    await shot(B, "p2-payout-offered");
+    t0 = txLog.length;
+    await B.page.getByRole("button", { name: "Send payout", exact: true }).click();
     await waitBody(B.page, "Done. The stake was sent to the beneficiary.", 90_000);
-    await shot(B, "claimed");
-    const tx = lastTx("beneficiary", "settle", tx0);
+    tx = lastTx("beneficiary", "settle", t0);
     check(tx, "no settle transaction from the beneficiary");
+    receipt = await receiptOf(tx.hash);
+    got = transfersTo(receipt, USDC, accounts.beneficiary.address);
+    check(got.length === 1 && got[0] === USDC_AMOUNT, `USDC transfers to the beneficiary: ${got.join(",")}`);
+    check(transfersTo(receipt, USDC, accounts.staker.address).length === 0, "the staker received a transfer on a Broken payout");
+    check((await stateOf(P.p2.id)) === "SettledToBeneficiary", "chain state is not SettledToBeneficiary");
+    await waitBody(B.page, /Paid out/, 30_000);
+    note(`On the Broken promise #${P.p2.id} the beneficiary pressed Send payout (${tx.hash}); the page said "Done. The stake was sent to the beneficiary." and then read Paid out. The receipt holds one Transfer of 0.1 USDC to the beneficiary and none to the staker.`);
+    await shot(B, "p2-payout-done");
+  });
+
+  // ---- (g) and (h): cirBTC from the hero on a phone in dark mode
+  const M = await openSession("phone-dark", "staker", { viewport: PHONE, colorScheme: "dark" });
+  await run("SG-h", "390 px wide and dark mode", async () => {
+    // The landing three ways, with no wallet, so the colour scheme and width are each seen alone and together.
+    const light = await openSession("phone-light-visitor", null, { noWallet: true, viewport: PHONE, colorScheme: "light" });
+    await go(light, "#/");
+    await waitBody(light.page, "I promise to");
+    const lightBg = await background(light.page);
+    note(`390 px, light, no wallet: horizontal overflow ${await overflow(light.page)} px, page background ${lightBg}.`);
+    await shot(light, "landing");
+    await light.context.close();
+    const desk = await openSession("desktop-dark-visitor", null, { noWallet: true, colorScheme: "dark" });
+    await go(desk, "#/");
+    await waitBody(desk.page, "I promise to");
+    const deskBg = await background(desk.page);
+    note(`1440 px, dark, no wallet: page background ${deskBg}, prefers-color-scheme dark matches: ${await desk.page.evaluate(() => matchMedia("(prefers-color-scheme: dark)").matches)}.`);
+    await shot(desk, "landing");
+    await desk.context.close();
+    await go(M, "#/");
+    await waitBody(M.page, "I promise to");
+    const darkBg = await background(M.page);
+    check(darkBg !== lightBg, "dark and light backgrounds are the same");
+    const over = await overflow(M.page);
+    note(`390 px, dark: page background ${darkBg} (light was ${lightBg}); horizontal overflow ${over} px.`);
+    if (over > 0) finding(`At 390 px the landing page scrolls sideways by ${over} px.`);
+    await shot(M, "landing");
+    await connect(M);
+  });
+
+  await run("SG-g", "cirBTC promise of 100 sats from the hero", async () => {
+    const cirSpec = { token: "cirBTC", tokenAddress: CIRBTC, amount: "0.000001", units: CIRBTC_AMOUNT, sealStake: "100 SATS", label: "cirBTC 100 sats", deadline: "1 day", leadSeconds: 86_400n };
+    const p4 = await sealPromise(M, cirSpec, "landing");
+    P.p4 = p4;
+    note(`Seal it was labelled "${p4.buttonLabel}"; the seal label reads "${p4.label}"; the panel number #${p4.id} matches the event and pledgeCount. Progress: ${p4.progress.join(" ;; ")}`);
+    cur = journey("SG-h", "390 px wide and dark mode");
+    note(`390 px, dark, sealed panel for #${p4.id}: horizontal overflow ${await overflow(M.page)} px.`);
+    cur = journey("SG-g", "cirBTC promise of 100 sats from the hero");
+    await M.page.getByRole("link", { name: "Open the promise", exact: true }).click();
+    const pg = await readPledgePage(M.page, p4.id, { amountText: "100 sats, 0.000001 cirBTC" });
+    await waitBody(M.page, "A sat is the smallest unit of Bitcoin.");
+    await waitBody(M.page, "100 sats");
+    note(`The promise page for #${p4.id} reads "${pg.heading}" and "100 sats, 0.000001 cirBTC" in the agreement, with the note "A sat is the smallest unit of Bitcoin." Banner: "${pg.banner.slice(0, 140)}"`);
+    cur = journey("SG-h", "390 px wide and dark mode");
+    note(`390 px, dark, promise page #${p4.id}: horizontal overflow ${await overflow(M.page)} px.`);
+    await shotPage(M.page, "phone-dark-p4-promise-page");
+    cur = journey("SG-g", "cirBTC promise of 100 sats from the hero");
+    // Kept by the referee, paid out by the unrelated account, so the sats return to the staker.
+    await gotoUrl(R, P.p4.share);
+    await waitBody(R.page, "Was this promise kept?");
+    await waitBody(R.page, "100 sats");
+    let t0 = txLog.length;
+    await R.page.getByRole("button", { name: "Kept", exact: true }).click();
+    await waitBody(R.page, "You marked this promise kept.", 90_000);
+    check(lastTx("referee", "markKept", t0), "no markKept for the cirBTC promise");
+    await gotoUrl(T, P.p4.share);
+    await waitBody(T.page, /Kept\. The stake goes back to/, 40_000);
+    await waitBody(T.page, "100 sats");
+    t0 = txLog.length;
+    await T.page.getByRole("button", { name: "Send payout", exact: true }).click();
+    await waitBody(T.page, "Done. The stake was sent to the staker.", 90_000);
+    const tx = lastTx("settler", "settle", t0);
+    const receipt = await receiptOf(tx.hash);
+    const got = transfersTo(receipt, CIRBTC, accounts.staker.address);
+    check(got.length === 1 && got[0] === CIRBTC_AMOUNT, `cirBTC transfers to the staker: ${got.join(",")}`);
+    check((await balanceOf(CIRBTC, operator.address)) === startBalances.sats, "the staker's sats are not back to the start");
+    await waitBody(T.page, /Paid back/, 30_000);
+    note(`The referee marked it Kept and an unrelated account sent the payout (${tx.hash}); the receipt moves exactly 100 sats to the staker and the staker's balance is back to ${startBalances.sats} sats.`);
+    await shot(T, "p4-payout-done");
+  });
+
+  // ---- (f, second half) the deadline arrives with no verdict
+  await run("SG-f", "Two-minute promise with no verdict reads No answer and pays the beneficiary", async () => {
+    check(P.p3, "blocked: the two-minute promise was not created");
+    const stillOpen = (await read(() => pub.getBlock())).timestamp < P.p3.deadline;
+    note(stillOpen ? "The deadline had not arrived when this step began; waiting for chain time." : "The deadline had already passed when this step began.");
+    await waitChain(P.p3.deadline);
+    await waitBody(W.page, /No answer by the deadline/, 60_000);
+    check(!(await buttonVisible(W.page, "Kept")) && !(await buttonVisible(W.page, "Broken")), "Kept or Broken still offered after the deadline");
+    const pg = await readPledgePage(W.page, P.p3.id);
+    check((await stateOf(P.p3.id)) === "Expired", "chain state is not Expired");
+    note(`The referee's open page, with no reload, read "${pg.status}" after the deadline; Kept and Broken were gone. Banner: "${pg.banner.slice(0, 150)}"`);
+    await shot(W, "p3-no-answer");
+    await gotoUrl(T, P.p3.share);
+    await waitBody(T.page, /No answer by the deadline/, 40_000);
+    await waitBody(T.page, "Anyone can send this. The full stake goes only to the beneficiary.");
+    await shot(T, "p3-payout-offered");
+    const t0 = txLog.length;
+    await T.page.getByRole("button", { name: "Send payout", exact: true }).click();
+    await waitBody(T.page, "Done. The stake was sent to the beneficiary.", 90_000);
+    const tx = lastTx("settler", "settle", t0);
+    check(tx, "no settle transaction");
     const receipt = await receiptOf(tx.hash);
     const got = transfersTo(receipt, USDC, accounts.beneficiary.address);
     check(got.length === 1 && got[0] === USDC_AMOUNT, `USDC transfers to the beneficiary: ${got.join(",")}`);
-    check((await stateOf(id2)) === "SettledToBeneficiary", "chain state is not SettledToBeneficiary");
-    note("The beneficiary claimed; the receipt holds one Transfer of 0.1 USDC to the beneficiary; chain state SettledToBeneficiary.");
-  });
-
-  // ---- UJ-42b: an unrelated account sends the expired stake
-  await run("UJ-42", "Two-minute pledge expires with no verdict", async () => {
-    check(id3, "blocked: the 2-minute pledge was not created");
-    await go(T, `#/p/${id3}`);
-    await waitBody(T.page, /Expired\. The deadline passed with no verdict\./, 40_000);
-    check(await buttonVisible(T.page, "Send stake to beneficiary"), "Send stake to beneficiary missing for an unrelated account");
-    check(!(await buttonVisible(T.page, "Kept")) && !(await buttonVisible(T.page, "Broken")), "verdict controls after expiry");
-    await shot(T, "expired-offer");
-    const benBefore = await balanceOf(USDC, accounts.beneficiary.address);
-    const tx0 = txLog.length;
-    await T.page.getByRole("button", { name: "Send stake to beneficiary", exact: true }).click();
-    await waitBody(T.page, "Done. The stake was sent to the beneficiary.", 90_000);
-    await shot(T, "expired-settled");
-    const tx = lastTx("settler", "settle", tx0);
-    check(tx, "no settle transaction from the settler");
-    const receipt = await receiptOf(tx.hash);
-    check(transfersTo(receipt, USDC, accounts.settler.address).length === 0, "the settler received a transfer");
-    const got = transfersTo(receipt, USDC, accounts.beneficiary.address);
-    check(got.length === 1 && got[0] === USDC_AMOUNT, `transfers to the beneficiary: ${got.join(",")}`);
-    check((await balanceOf(USDC, accounts.beneficiary.address)) - benBefore === USDC_AMOUNT, "beneficiary balance did not rise by exactly 0.1 USDC");
-    check((await stateOf(id3)) === "SettledToBeneficiary", "chain state is not SettledToBeneficiary");
-    note("An unrelated account sent the expired stake; the beneficiary received exactly 0.1 USDC and the sender received no transfer.");
-    const t1 = Date.now();
-    await waitBody(R3.page, "Settled to beneficiary", 40_000);
-    note(`The referee's open page followed to Settled to beneficiary on its own, ${((Date.now() - t1) / 1000).toFixed(1)} s after the settler's page confirmed.`);
-  });
-
-  // ---- UJ-22 continued: account switch
-  await run("UJ-22", "Pledge page for a visitor and an unrelated account", async () => {
-    check(id2, "blocked: the USDC pledge was not created");
-    const M = await openSession("multi", "staker");
-    await go(M, `#/p/${id2}`);
-    await connect(M);
-    for (const [role, badge] of [["staker", "You are the staker"], ["referee", "You are the referee"], ["beneficiary", "You are the beneficiary"]]) {
-      await switchRole(M, role);
-      await waitBody(M.page, badge, 15_000);
-      note(`After accountsChanged to the ${role}, the badge read "${badge}".`);
-    }
-    await switchRole(M, "settler");
-    await M.page.waitForFunction(() => !document.body.innerText.includes("You are the"), null, { timeout: 15_000 });
-    note("After accountsChanged to an unrelated account, the badge went.");
-    await shot(M, "role-switch");
-    await M.context.close();
-  });
-
-  // ---- UJ-23 My pledges
-  await run("UJ-23", "My pledges lists the new pledges newest first with roles", async () => {
-    check(id1 && id2 && id3, "blocked: not all three pledges were created");
-    for (const [x, role] of [[S, "staker"], [B, "beneficiary"]]) {
-      await go(x, "#/mine");
-      await waitBody(x.page, /You take part in \d+ pledges?\. Newest first\./);
-      await x.page.locator(".pledge-list li").first().waitFor({ timeout: 30_000 });
-      await waitBody(x.page, new RegExp(`Pledge #${id3}`));
-      const opened = Date.now();
-      await shot(x, "mine-as-first-drawn");
-      // Each card reads its pledge and its state separately, so the cards fill in one after another.
-      await x.page
-        .waitForFunction(() => [...document.querySelectorAll(".pledge-list li")].every((li) => /Deadline|Could not read/.test(li.innerText)), null, { timeout: 90_000 })
-        .catch(() => {});
-      const all = await x.page.locator(".pledge-list li").allInnerTexts();
-      const empty = all.filter((c) => !/Deadline|Could not read/.test(c)).length;
-      const unreadable = all.filter((c) => /Could not read this pledge/.test(c)).length;
-      note(`${role}: ${all.length} cards on the first page; all filled in after ${((Date.now() - opened) / 1000).toFixed(1)} s; ${empty} still empty, ${unreadable} saying "Could not read this pledge."`);
-      if (empty || unreadable) finding(`My pledges (${role}): ${empty} of ${all.length} cards never filled in and ${unreadable} said they could not be read, most likely RPC limits on the burst of two reads per card.`, await shot(x, "mine-unfilled-cards"));
-      const cards = await x.page.locator(".pledge-list li").allInnerTexts();
-      const ids = cards.map((c) => Number(c.match(/Pledge #(\d+)/)?.[1]));
-      const order = [id3, id2, id1].map((i) => ids.indexOf(i));
-      check(order.every((i) => i >= 0) && order[0] < order[1] && order[1] < order[2], `order of ${[id3, id2, id1]} in ${ids.slice(0, 8)}`);
-      const first = cards.find((c) => c.includes(`Pledge #${id3}`)).replace(/\s+/g, " ");
-      check(first.includes(`You are the ${role}`), `card says: ${first}`);
-      note(`${role}: the list puts #${id3}, #${id2}, #${id1} in that order, newest first. Card for #${id3}: ${first}`);
-      await shot(x, "mine");
-    }
-  });
-
-  // ---- UJ-92 copy and explorer controls
-  await run("UJ-92", "Every hash and address shown has copy and explorer controls", async () => {
-    check(id2, "blocked: the USDC pledge was not created");
-    await go(S, `#/p/${id2}`);
-    await waitBody(S.page, "Settled to beneficiary");
-    const values = S.page.locator(".hash-value");
-    const count = await values.count();
-    check(count >= 3, `only ${count} address controls on the pledge page`);
-    for (let i = 0; i < count; i++) {
-      const item = values.nth(i);
-      const title = await item.locator("code").getAttribute("title");
-      const copy = await item.getByRole("button", { name: /^Copy / }).count();
-      const href = await item.locator("a").getAttribute("href");
-      check(copy === 1, `no copy button for ${title}`);
-      check(href === `${EXPLORER}/address/${title}`, `explorer link ${href} for ${title}`);
-    }
-    note(`The pledge page shows ${count} addresses (staker, referee, beneficiary); each has a Copy button and a link to ${EXPLORER}/address/<address>.`);
-    await values.nth(1).getByRole("button", { name: /^Copy / }).click();
-    await waitBody(S.page, "Copied.");
-    const copied = await S.page.evaluate(() => navigator.clipboard.readText());
-    check(copied === accounts.referee.address, `clipboard holds ${copied}`);
-    note("Copy on the referee's row put the full referee address on the clipboard and said Copied.");
-    await shot(S, "hash-controls");
-    await go(V, "#/");
-    const home = V.page.locator(".hash-value").first();
-    check((await home.locator("a").getAttribute("href")) === `${EXPLORER}/address/${CONTRACT}`, "home explorer link");
-    check((await home.getByRole("button", { name: /^Copy / }).count()) === 1, "home copy button");
-    note("The home page's contract address has the same two controls.");
-    note("Transaction hashes: the referee's result in UJ-30 showed its hash with a copy control and an explorer link (checked there against the hash the wallet sent).");
+    check(transfersTo(receipt, USDC, accounts.settler.address).length === 0 && transfersTo(receipt, USDC, accounts.staker.address).length === 0, "the sender or the staker received a transfer");
+    check((await stateOf(P.p3.id)) === "SettledToBeneficiary", "chain state is not SettledToBeneficiary");
+    await waitBody(T.page, /Paid out/, 30_000);
+    note(`An unrelated account sent the payout (${tx.hash}); the receipt holds one Transfer of 0.1 USDC to the beneficiary, none to the sender or the staker; the page read Paid out.`);
+    await shot(T, "p3-payout-done");
+    await waitBody(W.page, /Paid out/, 40_000);
+    note("The referee's open page followed to Paid out on its own.");
+    cur = journey("SG-h", "390 px wide and dark mode");
+    await gotoUrl(M, P.p3.share);
+    await waitBody(M.page, /Paid out/, 40_000);
+    note(`390 px, dark, promise page #${P.p3.id} (No answer, paid out): horizontal overflow ${await overflow(M.page)} px.`);
+    await shotPage(M.page, "phone-dark-p3-promise-page");
   });
 }
 
@@ -966,19 +906,19 @@ function render(startedAt) {
   const link = (hash) => `[\`${hash}\`](${explorerTx(hash)})`;
   const passed = journeys.filter((j) => j.status === "Pass").length;
   const out = [];
-  out.push("# UI dry run on Arc testnet", "");
-  out.push(`Date: ${startedAt.toISOString().slice(0, 10)}. Site: ${SITE} (the testnet build). Chain ${CHAIN_ID}, contract \`${CONTRACT}\`.`, "");
-  out.push(`Repository commit: \`${commit}\`, the HEAD of the working branch when this ran. The Pages run that published the site is not available from this branch, so this is the closest record of what was deployed, not a proof of it.`, "");
-  out.push("The run drives the real site in a Chromium browser through an injected wallet (EIP-6963, name \"Dry run wallet\") whose requests are answered by a script holding the keys. Every action below was done by clicking and typing in the page. Screenshots are 1440 px wide, full page, in the gitignored `cache/dry-run/`; they are named per step below.", "");
+  out.push("# UI dry run of the Signed frontend on Arc testnet", "");
+  out.push(`Date: ${utc(startedAt)} to ${utc()} (UTC). Site: a local testnet build of this worktree served by \`vite preview\` at ${SITE}; the published Pages site (mainnet) was not touched. Chain ${CHAIN_ID}, contract \`${CONTRACT}\`.`, "");
+  out.push(`Build commit: \`${commit}\` (branch \`signed-frontend\`). Uncommitted changes under app/src, app/index.html, app/vite.config.ts or deployments when the run started: ${buildInfo.dirty ? `yes (${buildInfo.dirty.split("\n").length} paths)` : "none"}. The build was made with \`npm run build:testnet\` from that tree just before the run.`, "");
+  out.push("The run drives the real app in Chromium (Playwright) through an injected wallet (EIP-6963, name \"Dry run wallet\") whose requests are answered by a script holding the keys. Every action below was done by clicking and typing in the page; the script reads the chain only to check what the page showed. Screenshots are full page, in the gitignored `cache/dry-run-signed/`, named per step below; the 390 px and dark ones carry `phone` and `dark` in their names.", "");
   out.push(`Result: ${passed} of ${journeys.length} journeys passed.`, "");
   out.push("| Journey | Title | Result |", "|---|---|---|", ...journeys.map((j) => `| ${j.id} | ${j.title} | ${j.status} |`), "");
   out.push("## Journeys", "");
   for (const j of journeys) {
-    out.push(`### ${j.id} ${j.title}: ${j.status}`, "");
+    out.push(`### ${j.id} ${j.title}: ${j.status}`, "", `Time (UTC): ${j.startedAt} to ${j.endedAt}`, "");
     for (const n of j.notes) out.push(`- ${redact(n)}`);
     if (j.txs.length) {
       out.push("", "Transactions:", "");
-      for (const t of j.txs) out.push(`- ${t.role} ${t.fn}: ${link(t.hash)}`);
+      for (const t of j.txs) out.push(`- ${t.at} ${t.role} ${t.fn}: ${link(t.hash)}`);
     }
     if (j.shots.length) out.push("", `Screenshots: ${j.shots.map((s) => `\`${s}\``).join(", ")}`);
     out.push("");
@@ -990,30 +930,35 @@ function render(startedAt) {
   out.push("");
   out.push("## Accounts", "");
   out.push(`- Staker (the testnet operator): \`${operator.address}\``);
-  for (const r of ["referee", "beneficiary", "settler"]) out.push(`- ${r[0].toUpperCase()}${r.slice(1)} (throwaway, generated in memory): \`${accounts[r].address}\``);
+  for (const r of ["referee", "beneficiary", "settler"]) out.push(`- ${r[0].toUpperCase()}${r.slice(1)} (throwaway, generated in memory; the settler is the unrelated account): \`${accounts[r].address}\``);
   out.push("");
-  out.push("## Pledges created", "");
-  for (const [k, label] of [["p1", "cirBTC, 10 sats, 1 day"], ["p2", "USDC 0.1, 1 day"], ["p3", "USDC 0.1, 2 minutes"]]) {
-    out.push(`- #${ctx[k]?.id ?? "not created"}: ${label}${ctx[k]?.fallback ? " (created by the script fallback, not the UI)" : ""}`);
+  out.push("## Promises created", "");
+  for (const [k, label] of [["p1", "USDC 0.1, 1 day, Kept, payout by an unrelated account"], ["p2", "USDC 0.1, 1 day, Broken, payout by the beneficiary"], ["p3", "USDC 0.1, 2 minutes, no verdict, payout by an unrelated account"], ["p4", "cirBTC 100 sats, 1 day, Kept, payout by an unrelated account"]]) {
+    out.push(`- #${P[k]?.id ?? "not created"}: ${label}${P[k] ? `, created ${link(P[k].hash)}` : ""}`);
   }
   out.push("");
   out.push("## Funds", "");
   out.push(`- Gas funding sent to the throwaway accounts: ${fundingTxs.map((f) => `${f.role} ${formatUnits(f.value, 18)} USDC ${link(f.hash)}`).join("; ") || "none"}.`);
-  out.push(`- Operator before: ${formatUnits(startBalances.native ?? 0n, 18)} USDC, ${startBalances.sats ?? 0n} sats.`);
-  out.push(`- Operator after the sweep: ${formatUnits(startBalances.nativeAfter ?? 0n, 18)} USDC, ${startBalances.satsAfter ?? 0n} sats.`);
+  out.push(`- Operator before: ${formatUnits(startBalances.native ?? 0n, 18)} USDC, ${startBalances.sats ?? 0n} sats. Locked in SatStake before: ${startBalances.lockedUsdc ?? "?"} USDC units, ${startBalances.lockedSats ?? "?"} cirBTC units; pledge count ${startBalances.pledgeCount ?? "?"}.`);
+  out.push(`- Operator after the sweep: ${formatUnits(startBalances.nativeAfter ?? 0n, 18)} USDC, ${startBalances.satsAfter ?? 0n} sats. Locked in SatStake after: ${startBalances.lockedUsdcAfter ?? "?"} USDC units, ${startBalances.lockedSatsAfter ?? "?"} cirBTC units; pledge count ${startBalances.pledgeCountAfter ?? "?"}.`);
   if (startBalances.native !== undefined && startBalances.nativeAfter !== undefined) {
-    out.push(`- Net cost: ${formatUnits(startBalances.native - startBalances.nativeAfter, 18)} USDC (network fees; every stake returned to the operator, the beneficiary's receipts swept back), ${startBalances.sats - startBalances.satsAfter} sats.`);
+    out.push(`- Net cost: ${formatUnits(startBalances.native - startBalances.nativeAfter, 18)} USDC (network fees; every stake returned to the operator or swept back from the beneficiary), ${startBalances.sats - startBalances.satsAfter} sats.`);
   }
   out.push(`- Sweep: ${sweepError ? `INCOMPLETE, ${sweepError}` : "completed"}.`);
   for (const s of sweepSteps) out.push(`  - ${s.description}${s.tx ? ` ${link(s.tx)}` : ""}${s.note ? ` (${s.note})` : ""}`);
   out.push("");
-  out.push("## Findings", "");
-  if (findings.length === 0 && consoleErrors.size === 0) out.push("None.");
-  for (const f of findings) out.push(`- ${f.journey ?? "run"}: ${redact(f.text)}${f.shot ? ` Screenshot: \`${f.shot}\`.` : ""}`);
-  if (consoleErrors.size) {
-    out.push("- Browser console errors and page errors seen (deduplicated):");
-    for (const m of consoleErrors.keys()) out.push(`  - ${m}`);
+  out.push("## Console and network errors (SG-i)", "");
+  if (consoleErrors.size === 0) out.push("No console errors and no page errors in any session.");
+  else for (const m of consoleErrors.keys()) out.push(`- ${m}`);
+  out.push("");
+  if (httpErrors.size) {
+    out.push("HTTP responses with status 400 or above seen by the browser (counts):", "");
+    for (const [k, n] of httpErrors) out.push(`- ${k}: ${n}`);
+    out.push("");
   }
+  out.push("## Findings", "");
+  if (findings.length === 0) out.push("None recorded by the script.");
+  for (const f of findings) out.push(`- ${f.journey ?? "run"}: ${redact(f.text)}${f.shot ? ` Screenshot: \`${f.shot}\`.` : ""}`);
   out.push("");
   return out.join("\n");
 }
@@ -1025,9 +970,21 @@ try {
 } catch (e) {
   failure = e;
   console.error(`RUN STOPPED: ${firstLine(e)}`);
-  journey("run", "Setup and run").status = "Fail";
-  findings.push({ journey: "run", text: `The run stopped: ${firstLine(e)}` });
+  if (!/^probe stop/.test(firstLine(e))) {
+    journey("run", "Setup and run").status = "Fail";
+    findings.push({ journey: "run", text: `The run stopped: ${firstLine(e)}` });
+  }
 } finally {
+  // SG-i is decided last: every console and page error of the run, in every session.
+  if (!PROBE) {
+    const j = journey("SG-i", "Console errors and page errors across the run");
+    j.startedAt = utc(startedAt);
+    j.endedAt = utc();
+    if (consoleErrors.size) {
+      j.status = "Fail";
+      j.notes.push(`${consoleErrors.size} distinct console or page errors; listed under Console and network errors.`);
+    } else j.notes.push("No console error and no page error in any session.");
+  }
   if (browserRef) await browserRef.close().catch(() => {});
   if (fundingStarted) {
     const steps = [];
@@ -1041,14 +998,17 @@ try {
   try {
     startBalances.nativeAfter = await read(() => pub.getBalance({ address: operator.address }));
     startBalances.satsAfter = await balanceOf(CIRBTC, operator.address);
+    startBalances.lockedUsdcAfter = await view("totalLocked", [USDC]);
+    startBalances.lockedSatsAfter = await view("totalLocked", [CIRBTC]);
+    startBalances.pledgeCountAfter = await view("pledgeCount");
   } catch {
-    // reported as zero if the final read fails
+    // reported as unknown if the final read fails
   }
   if (startBalances.native !== undefined) {
-    writeFileSync(join(root, "docs/evidence/ui-dry-run-testnet.md"), render(startedAt));
-    console.log("evidence written to docs/evidence/ui-dry-run-testnet.md");
+    writeFileSync(EVIDENCE, render(startedAt));
+    console.log(`evidence written to ${redact(EVIDENCE)}`);
   }
   const failed = journeys.filter((j) => j.status !== "Pass").map((j) => j.id);
-  console.log(`journeys: ${journeys.length - failed.length} passed, ${failed.length} failed ${failed.join(",")}; sweep ${sweepError ? `INCOMPLETE ${sweepError}` : "complete"}`);
+  console.log(`journeys: ${journeys.length - failed.length} passed, ${failed.length} failed ${failed.join(",")}; sweep ${sweepError ? `INCOMPLETE ${sweepError}` : fundingStarted ? "complete" : "not needed"}`);
   process.exitCode = failure ? 1 : 0;
 }
