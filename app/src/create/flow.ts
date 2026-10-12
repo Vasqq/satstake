@@ -12,6 +12,8 @@ export interface ReceiptLike {
   status: "success" | "reverted";
   /** The block that mined the transaction. A node's receipt always has it; test doubles may leave it out. */
   blockNumber?: bigint;
+  /** The transaction that was mined. A speed-up replaces the hash the wallet first returned. */
+  transactionHash?: Hex;
   logs: readonly { address: string; topics: readonly Hex[]; data: Hex }[];
 }
 export interface FlowIO {
@@ -187,5 +189,5 @@ export async function runCreate(io: FlowIO, input: CreateInput, onProgress: (ste
     throw new CreationUnconfirmedError(creation, cause); // LLR-FE-062
   }
   onProgress(progressOf(approving ? "done" : null, "done"));
-  return { ...created, hash: creation }; // LLR-FE-037
+  return { ...created, hash: receipt.transactionHash ?? creation }; // LLR-FE-037
 }

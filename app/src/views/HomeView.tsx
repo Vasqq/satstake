@@ -3,8 +3,8 @@ import type { Reads } from "../chain/reads";
 import type { SelectedNetwork } from "../config/networks";
 import { AgreementDoc } from "../design/AgreementDoc";
 import { Clock } from "../design/Clock";
+import { Hero } from "../design/Hero";
 import { SectionHead, Strikes, Trust } from "../design/Sections";
-import { LandingCreate } from "../create/LandingCreate";
 import { formatAmount } from "../format";
 import { HashValue } from "./HashValue";
 import { PromiseRotator } from "./home/PromiseRotator";
@@ -46,17 +46,19 @@ const EXAMPLE = {
   beneficiary: "0x4f2b…a9d1",
 };
 
+const HERO_SUB = "Or my stake goes to someone I chose. A friend decides whether I kept it, and code makes sure the money goes where they say.";
+
 /**
  * What SatStake does and how, for someone without a wallet, with the proof that it is live: the network, the
  * whole contract address to compare with a published one, its verified source, and figures read from it. The
- * hero is the create flow itself, so a promise is written and sealed here; the pad's signature is a demonstration.
+ * hero only starts the sentence: a promise is written and signed on the create page, which "Write your own" opens.
  *
  * @trace LLR-FE-070
  */
 export function HomeView({ reads, network }: { reads: Reads; network: SelectedNetwork }) {
   return (
     <div className="home">
-      <LandingCreate reads={reads} network={network} />
+      <Hero writeHref="#/create" sub={HERO_SUB} />
 
       <section className="s" id="agreement" aria-labelledby="home-agreement">
         <SectionHead label="The agreement" title={<span id="home-agreement">Seven lines. <em>No fine print.</em></span>}>
@@ -83,7 +85,7 @@ export function HomeView({ reads, network }: { reads: Reads; network: SelectedNe
       </section>
 
       <section className="s" aria-labelledby="home-strikes">
-        <SectionHead label="Once it’s sealed" title={<span id="home-strikes">Nobody can <em>take it back.</em></span>}>
+        <SectionHead label="Once it’s signed" title={<span id="home-strikes">Nobody can <em>take it back.</em></span>}>
           Not you, not your referee, not the people who built it. The rules live in code that has no owner.
         </SectionHead>
         <Strikes />

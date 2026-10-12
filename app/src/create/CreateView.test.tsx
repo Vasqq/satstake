@@ -17,7 +17,7 @@ import {
   localInput,
   openCreate,
   ready,
-  sealedPanel,
+  signedPanel,
   submit,
   tickAcknowledgement,
   type,
@@ -45,9 +45,7 @@ const progress = () => screen.getByRole("status", { name: "Promise progress" });
 const prompts = (wallet: { count: (m: string) => number }) => wallet.count("eth_sendTransaction");
 
 function touchAll() {
-  for (const label of ["Promise", "Amount", "Referee address", "Beneficiary address"]) fireEvent.blur(field(label));
-  fireEvent.blur(screen.getByRole("radio", { name: "2 minutes" }));
-  fireEvent.blur(screen.getByRole("checkbox", { name: ACK_TEXT }));
+  click(submit());
 }
 
 /** Makes the nth transaction the wallet is asked to send fail with the error, and lets the others through. */
@@ -252,9 +250,10 @@ describe("LLR-FE-030 Arc pays fees from the USDC balance, so a USDC stake leaves
     const { wallet } = await openCreate({ balance: 1_000_000n });
     fill({ amount: "0.950001" });
     fireEvent.blur(field("Amount"));
-    expect(errorFor("Amount")).toBe(LEAVE_RESERVE);
+    expect(errorFor("Amount")).toBe("");
     expect(isDisabled(submit())).toBe(true);
     click(submit());
+    expect(errorFor("Amount")).toBe(LEAVE_RESERVE);
     expect(prompts(wallet)).toBe(0);
     type("Amount", "0.95");
     expect(errorFor("Amount")).toBe("");
@@ -338,13 +337,13 @@ describe("LLR-FE-030 Arc pays fees from the USDC balance, so a USDC stake leaves
   });
 });
 
-describe("LLR-FE-030 a failure shows once its field has been left, and then follows every change", () => {
+describe("LLR-FE-030 a failure shows when Sign it is pressed, and then follows every change", () => {
   it.each([
     ["Promise", "", "Run 5 km", "Write the promise you are making."],
     ["Amount", "0", "1.5", "Enter an amount above zero."],
     ["Referee address", "0x12", REFEREE, "Enter the referee's address: 0x followed by 40 letters and digits."],
     ["Beneficiary address", "0x12", BENEFICIARY, "Enter the beneficiary's address: 0x followed by 40 letters and digits."],
-  ])("%s: nothing while it is typed in, the failure when it is left, and then on every change", async (label, bad, good, message) => {
+  ])("%s: nothing while it is typed or left, the failure when Sign it is pressed, and then on every change", async (label, bad, good, message) => {
     await openCreate();
     await waitFor(() => expect(describedText(field("Amount"))).toContain("Your balance"));
     type(label, "x");
@@ -352,6 +351,8 @@ describe("LLR-FE-030 a failure shows once its field has been left, and then foll
     expect(errorFor(label)).toBe("");
     expect(field(label).getAttribute("aria-invalid")).not.toBe("true");
     fireEvent.blur(field(label));
+    expect(errorFor(label)).toBe("");
+    click(submit());
     expect(errorFor(label)).toBe(message);
     type(label, good);
     expect(errorFor(label)).toBe("");
@@ -359,35 +360,40 @@ describe("LLR-FE-030 a failure shows once its field has been left, and then foll
     expect(errorFor(label)).toBe(message);
   });
 
-  it("shows the acknowledgement's failure on the change that unticks it, with no blur", async () => {
+  it("shows the acknowledgement's failure when Sign it is pressed, not when the box is unticked", async () => {
     await openCreate();
     const box = screen.getByRole("checkbox", { name: ACK_TEXT });
     click(box);
     expect(describedText(box)).not.toContain("Tick the box");
     click(box);
+    expect(describedText(box)).not.toContain("Tick the box");
+    click(submit());
     expect(describedText(box)).toContain("Tick the box to confirm you understand.");
   });
 
-  it("does not report a custom deadline that is still being chosen, and reports it once the deadline is left", async () => {
+  it("does not report a custom deadline while it is being chosen, and reports it when Sign it is pressed", async () => {
     await openCreate();
     chooseDeadline("Custom");
     const group = () => describedText(screen.getByRole("group", { name: "Deadline" }));
     expect(group()).not.toContain("Pick a date and time.");
     const custom = screen.getByLabelText("Custom date and time");
-    // Moving from the Custom choice to its date field stays inside the deadline.
     fireEvent.blur(screen.getByRole("radio", { name: "Custom" }), { relatedTarget: custom });
     expect(group()).not.toContain("Pick a date and time.");
     fireEvent.change(custom, { target: { value: localInput(T0 + 60n) } });
     expect(group()).not.toContain("at least 90 seconds");
     fireEvent.blur(custom);
+    expect(group()).not.toContain("at least 90 seconds");
+    click(submit());
     expect(group()).toContain("at least 90 seconds");
     fireEvent.change(custom, { target: { value: localInput(T0 + 3_600n) } });
     expect(group()).not.toContain("at least 90 seconds");
   });
 
-  it("reports a deadline when focus leaves the choices without one being made", async () => {
+  it("does not report a deadline when focus leaves the choices, and does when Sign it is pressed", async () => {
     await openCreate();
     fireEvent.blur(screen.getByRole("radio", { name: "2 minutes" }));
+    expect(describedText(screen.getByRole("group", { name: "Deadline" }))).not.toContain("Choose a deadline.");
+    click(submit());
     expect(describedText(screen.getByRole("group", { name: "Deadline" }))).toContain("Choose a deadline.");
   });
 });
@@ -534,8 +540,9 @@ describe("LLR-FE-031 the deadline is a preset or a custom date and time, judged 
     fireEvent.change(screen.getByLabelText("Custom date and time"), { target: { value: localInput(T0 + 3_600n) } });
     await ready();
     fireEvent.change(screen.getByLabelText("Custom date and time"), { target: { value: localInput(T0 - 3_600n) } });
-    fireEvent.blur(screen.getByLabelText("Custom date and time"));
     await waitFor(() => expect(isDisabled(submit())).toBe(true));
+    expect(describedText(screen.getByRole("group", { name: "Deadline" }))).not.toContain("at least 90 seconds");
+    click(submit());
     expect(describedText(screen.getByRole("group", { name: "Deadline" }))).toContain("at least 90 seconds");
   });
 
@@ -827,7 +834,7 @@ describe("LLR-FE-034 the form warns beside the beneficiary field that an address
     await waitFor(() => expect(warningElement("Beneficiary address").textContent).not.toBe(""));
     expect(describedText(field("Beneficiary address"))).toMatch(LOST);
     type("Beneficiary address", "0x12");
-    fireEvent.blur(field("Beneficiary address"));
+    click(submit());
     expect(errorFor("Beneficiary address")).not.toBe("");
     expect(describedText(field("Beneficiary address"))).toMatch(LOST);
   });
@@ -902,7 +909,7 @@ describe("LLR-FE-045 cirBTC amounts are also shown in satoshis on the create for
     fireEvent.change(field("Token"), { target: { value: cirbtc.address } });
     await waitFor(() => expect(describedText(field("Amount"))).toContain("Your balance: 1.5 cirBTC"));
     type("Amount", "2");
-    fireEvent.blur(field("Amount"));
+    click(submit());
     expect(errorFor("Amount")).toContain("Your balance is 1.5 cirBTC");
     expect(describedText(field("Amount"))).not.toContain("This amount");
   });
@@ -937,7 +944,7 @@ describe("LLR-FE-035 the warning for a contract says what could go wrong, and gi
     await openCreate({ prepare: ({ chain }) => void chain.code.add(network.contract.toLowerCase()) });
     type("Referee address", network.contract);
     await waitFor(() => expect(warningElement("Referee address").textContent).toBe(REFEREE_WARNING));
-    fireEvent.blur(field("Referee address"));
+    click(submit());
     expect(errorFor("Referee address")).toContain("cannot be a party");
     expect(warningElement("Referee address").textContent).toBe("");
   });
@@ -948,7 +955,7 @@ describe("LLR-FE-035 the beneficiary's warning also gives way to a failure of it
     await openCreate({ prepare: ({ chain }) => void chain.code.add(network.contract.toLowerCase()) });
     type("Beneficiary address", network.contract);
     await waitFor(() => expect(warningElement("Beneficiary address").textContent).toContain("If it cannot move tokens"));
-    fireEvent.blur(field("Beneficiary address"));
+    click(submit());
     expect(errorFor("Beneficiary address")).toContain("cannot be a party");
     expect(warningElement("Beneficiary address").textContent).toBe("");
   });
@@ -1090,7 +1097,7 @@ describe("LLR-FE-033 creation is preceded by an approval of exactly the amount, 
     await waitFor(() => expect(progress().textContent).toContain("Step 1 of 2"));
     expect(submit().nextElementSibling?.firstElementChild?.textContent).toBe("");
     release();
-    await sealedPanel();
+    await signedPanel();
   });
 
   it("says before the first prompt that the wallet may ask twice, under the submit control and linked to it", async () => {
@@ -1222,7 +1229,7 @@ describe("LLR-FE-033 the receipt wait follows a transaction the wallet replaces"
     fill();
     await ready();
     click(submit());
-    expect(within(await sealedPanel()).getByText("#61")).toBeTruthy();
+    expect(within(await signedPanel()).getByText("#61")).toBeTruthy();
     expect(world.count("createPledge")).toBe(1);
   });
 });
@@ -1471,7 +1478,7 @@ describe("LLR-FE-036 while a transaction from the form is pending, submit is dis
     click(submit());
     expect(prompts(wallet)).toBe(2);
     open();
-    await sealedPanel();
+    await signedPanel();
     expect(world.count("approve")).toBe(1);
     expect(world.count("createPledge")).toBe(1);
     expect(prompts(wallet)).toBe(2);
@@ -1497,7 +1504,7 @@ describe("LLR-FE-036 while a transaction from the form is pending, submit is dis
     await waitFor(() => expect(prompts(wallet)).toBe(1));
     expect(frozen()).toEqual({ text: [true, true, true, true, true], select: true, choices: [true, true, true, true, true], box: true });
     release();
-    await sealedPanel();
+    await signedPanel();
   });
 
   it("makes the fields editable again when the request fails", async () => {

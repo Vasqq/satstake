@@ -135,9 +135,7 @@ function Shell({ client, network }: { client: PublicClient; network: SelectedNet
       </div>
       <main className={route.name === "home" ? "wrap landing" : "wrap"}>
         {route.name === "home" && <HomeView reads={reads} network={network} />}
-        {route.name === "create" && (
-          <CreateView client={client} reads={reads} network={network} health={health} variant="page" onCreated={setCreated} />
-        )}
+        {route.name === "create" && <CreateView client={client} reads={reads} network={network} health={health} onCreated={setCreated} />}
         {route.name === "mine" && <MineView reads={reads} network={network} />}
         {route.name === "about" && <AboutView />}
         {route.name === "pledge" && (

@@ -46,8 +46,8 @@ function useTyper(active: boolean): string {
 
 export interface HeroProps {
   /** The visitor's own ending of the sentence, or null while the examples rotate. The owner keeps it. */
-  custom: string | null;
-  onCustomChange: (next: string | null) => void;
+  custom?: string | null;
+  onCustomChange?: (next: string | null) => void;
   /** The longest ending the field takes. */
   maxLength?: number;
   /** The sentence under the heading. */
@@ -56,22 +56,25 @@ export interface HeroProps {
   title?: string;
   /** Attributes for the field, such as the description that links it to its count and failure. Never its value, class or length. */
   inputProps?: Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange" | "className" | "maxLength" | "rows" | "placeholder">;
+  /** Where "Write your own" goes, for a hero that is not the page where the promise is written. Left out, the hero is that page. */
+  writeHref?: string;
   /** Mounted under the sentence: the pad, and whatever the create flow shows around it. */
   children?: ReactNode;
 }
 
 /**
  * The first screen: "I promise to" finished by rotating examples, or by the visitor's own words, then one
- * sentence on how it works, then the slot the pad goes in.
+ * sentence on how it works, then the slot the pad goes in. On the landing it holds no pad and "Write your own"
+ * is a link to the page where the promise is written.
  *
  * @trace LLR-FE-070
  */
-export function Hero({ custom, onCustomChange, maxLength = 200, sub, title = "SatStake", inputProps, children }: HeroProps) {
+export function Hero({ custom = null, onCustomChange, maxLength = 200, sub, title = "SatStake", inputProps, writeHref, children }: HeroProps) {
   const typed = useTyper(custom === null);
   const input = useRef<HTMLTextAreaElement>(null);
   const writing = custom !== null;
   // The field is kept as tall as what is written in it, so a promise of any length is read whole while it is typed
-  // and after it is sealed. It is measured again when the window changes size and when the fonts arrive, since
+  // and after it is signed. It is measured again when the window changes size and when the fonts arrive, since
   // both change where the lines break.
   const fit = () => {
     const el = input.current;
@@ -96,7 +99,7 @@ export function Hero({ custom, onCustomChange, maxLength = 200, sub, title = "Sa
     input.current?.select();
   }, [writing]);
   const start = () => {
-    onCustomChange(typed.replace(/\.$/, ""));
+    onCustomChange?.(typed.replace(/\.$/, ""));
     focusNext.current = true;
   };
   return (
@@ -113,7 +116,7 @@ export function Hero({ custom, onCustomChange, maxLength = 200, sub, title = "Sa
             // An example in an empty field, so a page with nothing typed yet is not a bare line.
             placeholder={(EXAMPLES[0] as string).replace(/\.$/, "")}
             // A promise is one sentence, so a line break is never kept: a pasted one becomes a space.
-            onChange={(e) => onCustomChange(e.target.value.replace(/\r?\n/g, " "))}
+            onChange={(e) => onCustomChange?.(e.target.value.replace(/\r?\n/g, " "))}
             onKeyDown={(e) => {
               // Safari ends a composition with an Enter whose isComposing is false; key code 229 is what marks it.
               if (e.key !== "Enter" || e.nativeEvent.isComposing || e.keyCode === 229) return;
@@ -125,7 +128,7 @@ export function Hero({ custom, onCustomChange, maxLength = 200, sub, title = "Sa
             autoComplete="off"
           />
         ) : (
-          <span className="typed" onClick={start} aria-hidden="true">
+          <span className="typed" onClick={writeHref === undefined ? start : undefined} aria-hidden="true">
             {typed}
             <span className="caret" />
           </span>
@@ -133,11 +136,16 @@ export function Hero({ custom, onCustomChange, maxLength = 200, sub, title = "Sa
       </PageHeading>
       <div className="hero-sub">
         <p>{sub}</p>
-        {!writing && (
-          <button type="button" className="writebtn" onClick={start}>
-            Write your own ↗
-          </button>
-        )}
+        {!writing &&
+          (writeHref === undefined ? (
+            <button type="button" className="writebtn" onClick={start}>
+              Write your own ↗
+            </button>
+          ) : (
+            <a className="writebtn" href={writeHref}>
+              Write your own ↗
+            </a>
+          ))}
       </div>
       {children}
     </section>

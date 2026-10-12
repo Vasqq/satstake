@@ -1,27 +1,6 @@
-import { type Address, type Hex, hexToBytes } from "viem";
+import type { Address } from "viem";
 import type { NetworkConfig } from "../config/networks";
 import { formatAmount, formatSats } from "../format";
-
-const TRANSACTION_HASH = /^0x[0-9a-fA-F]{64}$/;
-
-/**
- * The 32 bytes a seal is drawn from, or nothing when the answer is not a transaction hash. The money has moved
- * by the time a hash is shown, so an odd answer from a wallet must cost the picture and never the page.
- *
- * @trace LLR-FE-037
- */
-export function sealBytesOf(hash: string): Uint8Array | null {
-  return TRANSACTION_HASH.test(hash) ? hexToBytes(hash as Hex) : null; // LLR-FE-037
-}
-
-/**
- * The words that run round the ring of the seal: every value is the real one, and none of it changes a mark.
- *
- * @trace LLR-FE-037
- */
-export function sealLabelOf(parts: { id: bigint; stake: string; networkName: string; hash: string }): string {
-  return `PROMISE № ${parts.id.toString()} · ${parts.stake} · SEALED ON ${parts.networkName} · ${parts.hash.slice(2, 10)}`.toUpperCase(); // LLR-FE-037
-}
 
 /**
  * A stake in the words of its token: sats of cirBTC and dollars for USDC, as LLR-FE-045 asks. The USDC form is

@@ -133,16 +133,15 @@ describe("LLR-FE-070 what SatStake does, for a visitor without a wallet", () => 
     home();
     expect(screen.getByRole("heading", { level: 1 }).textContent?.startsWith("I promise to")).toBe(true);
     expect(document.body.textContent).toContain("A friend decides whether I kept it");
-    expect(screen.getByText(/You need a browser wallet on Arc/)).toBeTruthy();
     expect(document.title).toBe("SatStake");
   });
 
-  it("offers the create call to action in the hero and again at the close", () => {
+  it("offers the create call to action in the hero and again at the close, and both lead to the create page", () => {
     home();
     const toCreate = [...document.querySelectorAll("a")].filter((a) => a.getAttribute("href") === "#/create");
     expect(toCreate.some((a) => a.textContent === "Make a promise")).toBe(true);
-    // The hero is the create pad itself now, so the links are the header's and the close's.
-    expect(toCreate.length).toBeGreaterThanOrEqual(2);
+    expect((document.querySelector(".hero") as HTMLElement).contains(toCreate.find((a) => /Write your own/.test(a.textContent ?? "")) ?? null)).toBe(true);
+    expect(toCreate.length).toBeGreaterThanOrEqual(3);
     expect(heading(/^Your word, in writing\.$/)).toBeTruthy();
   });
 
@@ -173,11 +172,35 @@ describe("LLR-FE-070 what SatStake does, for a visitor without a wallet", () => 
     expect(hero.textContent).not.toMatch(/Promise #\d|0x[0-9a-f]{4}…|\bsats\b/i);
   });
 
-  it("shows the pad with a signature that writes itself, and a seal button that does nothing until the form is complete", () => {
+  it("holds no create form: no pad, no signature, no field for the stake or the parties, and no sign button", () => {
     home();
-    expect(document.querySelector(".pad canvas")).toBeTruthy();
-    const seal = screen.getByRole("button", { name: "Seal it" });
-    expect(seal.getAttribute("aria-disabled")).toBe("true");
+    expect(document.querySelector(".pad")).toBeNull();
+    expect(document.querySelector("canvas")).toBeNull();
+    expect(document.querySelector("form")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Sign it/ })).toBeNull();
+    for (const label of ["Amount", "Referee address", "Beneficiary address", "Token", "Your promise"]) {
+      expect(screen.queryByLabelText(label), label).toBeNull();
+    }
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: /I understand that the referee alone decides/ })).toBeNull();
+  });
+
+  it("keeps the sentence to finish with its rotating examples, and sends Write your own to the create page as a link", () => {
+    home();
+    const heading1 = screen.getByRole("heading", { level: 1 });
+    expect(heading1.querySelector(".typed")?.textContent).toBeTruthy();
+    const write = screen.getByRole("link", { name: /Write your own/ });
+    expect(write.tagName).toBe("A");
+    expect(write.getAttribute("href")).toBe("#/create");
+    // A real link takes the keyboard and is not taken out of the tab order.
+    expect(write.getAttribute("tabindex")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Write your own/ })).toBeNull();
+  });
+
+  it("opens the create page when Write your own is followed", () => {
+    home();
+    const write = screen.getByRole("link", { name: /Write your own/ }) as HTMLAnchorElement;
+    expect(new URL(write.href).hash).toBe("#/create");
   });
 
   it("says plainly what it cannot do beside the claims it makes", () => {

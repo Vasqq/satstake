@@ -10,7 +10,7 @@
 // written. Referee, beneficiary and an unrelated settler are throwaway keys made in memory; each is funded with
 // gas and swept back at the end, including after a failure. Screenshots go to the gitignored cache/dry-run-signed/
 // and the record to docs/evidence/ui-dry-run-signed-testnet.md. PROBE=1 rejects every send, funds nothing, stops
-// at the first rejected "Seal it", and writes its record under cache/ instead.
+// at the first rejected "Sign it", and writes its record under cache/ instead.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -24,7 +24,6 @@ import {
   erc20Abi,
   formatUnits,
   getAddress,
-  hexToBytes,
   http,
   parseEventLogs,
   parseUnits,
@@ -322,8 +321,8 @@ const actionButtons = async (page) => {
   for (const name of ["Kept", "Broken", "Send payout"]) if (await buttonVisible(page, name)) shown.push(name);
   return shown;
 };
-const sealButton = (page) => page.locator('form[aria-label="New promise"] button[type="submit"]');
-const sealDisabled = async (page) => (await sealButton(page).getAttribute("aria-disabled")) === "true";
+const signButton = (page) => page.locator('form[aria-label="New promise"] button[type="submit"]');
+const signDisabled = async (page) => (await signButton(page).getAttribute("aria-disabled")) === "true";
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
 const background = (page) => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 
@@ -371,8 +370,8 @@ async function tickAcknowledgement(page) {
 }
 
 async function fillPad(page, spec) {
+  // The promise field is on the New promise page; the landing only links there.
   const promise = page.getByLabel("Your promise", { exact: true });
-  if ((await promise.count()) === 0) await page.getByRole("button", { name: "Write your own ↗", exact: true }).click();
   await promise.fill(spec.promise);
   await page.getByLabel("Token", { exact: true }).selectOption({ label: spec.token });
   await page.getByLabel("Amount", { exact: true }).fill(spec.amount);
@@ -391,49 +390,41 @@ async function fillPad(page, spec) {
 }
 
 const PROMISE_PREFIX = "UI dry run";
-const hashBits = (hash) => {
-  const bytes = hexToBytes(hash);
-  return Array.from({ length: 64 }, (_, i) => (bytes[i >> 3] >> (i & 7)) & 1);
-};
 
-// Makes one promise by clicking and typing, then checks the sealed panel against the chain and the wallet.
-// `mode` is "landing" (the hero on the home page, writing mode started by Write your own), "create" (the hero page)
-// or "another" (the Make another promise button of a sealed panel).
-async function sealPromise(s, spec, mode) {
+// Makes one promise by clicking and typing, then checks the signed panel against the chain and the wallet.
+// `mode` is "create" (the New promise page) or "another" (the Make another promise button of a signed panel).
+async function signPromise(s, spec, mode) {
   const page = s.page;
   lastPage = page;
-  if (mode === "landing") {
-    await go(s, "#/");
-    await waitBody(page, "I promise to");
-    await page.getByRole("button", { name: "Write your own ↗", exact: true }).click();
-  } else if (mode === "create") {
+  if (mode === "another") {
+    await page.getByRole("button", { name: "Make another promise", exact: true }).click();
+  } else {
     await go(s, "#/create");
     await waitBody(page, "I promise to");
-  } else {
-    await page.getByRole("button", { name: "Make another promise", exact: true }).click();
-    await page.getByRole("button", { name: "Write your own ↗", exact: true }).click();
   }
   const fullSpec = { ...spec, promise: `${PROMISE_PREFIX}: ${spec.label}` };
   await fillPad(page, fullSpec);
-  const buttonLabel = (await sealButton(page).innerText()).trim();
-  check(buttonLabel.startsWith("Seal it"), `submit reads "${buttonLabel}"`);
+  const buttonLabel = (await signButton(page).innerText()).trim();
+  check(buttonLabel.startsWith("Sign it"), `submit reads "${buttonLabel}"`);
   await shot(s, `${spec.label}-pad-filled`);
   await page.evaluate(() => {
     window.__progress = [];
   });
   const before = txLog.length;
-  await sealButton(page).click();
+  await signButton(page).click();
   await waitBody(page, /Confirm in your wallet\./, 10_000).catch(() => {});
+  // The signature is written only after the creation confirms, so the line is empty while the wallet is open.
+  check((await page.locator('.pad-area[role="img"]').count()) === 0, "the pad shows a signature before the creation confirms");
   await shot(s, `${spec.label}-confirming`);
   if (PROBE) {
     await waitBody(page, /rejected|cancelled|denied/i, 20_000).catch(() => {});
     await shot(s, `${spec.label}-probe-rejected`);
-    throw new Error("probe stop: the first Seal it was rejected as designed");
+    throw new Error("probe stop: the first Sign it was rejected as designed");
   }
-  const panel = page.locator('section[aria-label="Sealed promise"]');
+  const panel = page.locator('section[aria-label="Signed promise"]');
   await panel.waitFor({ timeout: 150_000 });
-  await sleep(2500); // the seal draws itself in
-  await shot(s, `${spec.label}-sealed`);
+  await page.getByRole("img", { name: "Signed: SatStake" }).waitFor({ timeout: 10_000 });
+  await shot(s, `${spec.label}-signed`);
   const progress = await page.evaluate(() => window.__progress);
 
   const problems = [];
@@ -462,30 +453,16 @@ async function sealPromise(s, spec, mode) {
   const shownNumber = Number(panelText.match(/Promise number #(\d+)/i)?.[1]);
   soft(shownNumber === id, `the panel shows promise number ${shownNumber}, the event says ${id}`);
   soft(shownNumber === countAtBlock, `the panel shows promise number ${shownNumber}, pledgeCount at the creation block is ${countAtBlock}`);
-  const shareText = (await panel.locator(".sealed-share code").innerText()).trim();
+  const shareText = (await panel.locator(".signed-share code").innerText()).trim();
   soft(shareText === `${SITE}#/p/${id}`, `share link is ${shareText}`);
-  soft(panelText.includes(`Referee rules, or ${timeText(p.deadline)}`), `Locked until line is not "${timeText(p.deadline)}": ${panelText}`);
+  soft(panelText.includes(`after the referee rules or ${timeText(p.deadline)}`), `stake-held line is not "after the referee rules or ${timeText(p.deadline)}": ${panelText}`);
 
-  const svg = page.locator("svg.seal-svg");
-  await page.waitForFunction(() => document.querySelector("svg.seal-svg")?.classList.contains("on"), null, { timeout: 10_000 });
-  const label = (await svg.locator("textPath").textContent()) ?? "";
-  const hash8 = create.hash.slice(2, 10).toUpperCase();
-  soft(label.startsWith(`PROMISE № ${id} · ${spec.sealStake} · SEALED ON ARC TESTNET · ${hash8}`), `seal label is "${label}"`);
-  const ticks = await svg.locator("path.d").evaluateAll((ps) => ps.map((p) => p.getAttribute("d")).filter((d) => d.includes("L")));
-  soft(ticks.length === 64, `${ticks.length} ticks drawn`);
-  const bits = hashBits(create.hash);
-  const mismatched = ticks.filter((d, i) => {
-    const [, x, y] = d.match(/L(-?[\d.]+) (-?[\d.]+)/) ?? [];
-    return (Math.hypot(Number(x), Number(y)) < 65.5 ? 1 : 0) !== bits[i];
-  });
-  soft(mismatched.length === 0, `${mismatched.length} of 64 ticks disagree with the creation hash`);
-  const inks = await svg.evaluate((el) => ({ onClass: el.classList.contains("on"), box: el.getBoundingClientRect().width }));
   for (const m of problems) {
     cur.status = "Fail";
     cur.notes.push(`CHECK FAILED: ${m}`);
-    findings.push({ journey: cur.id, text: `After sealing promise #${id}: ${m}` });
+    findings.push({ journey: cur.id, text: `After signing promise #${id}: ${m}` });
   }
-  return { id, hash: create.hash, progress, buttonLabel, label, share: shareText, panelText, ticks: 64, seal: inks, deadline: p.deadline, shownHash, spec: fullSpec };
+  return { id, hash: create.hash, progress, buttonLabel, share: shareText, panelText, deadline: p.deadline, shownHash, spec: fullSpec };
 }
 
 // ---------------------------------------------------------------- reading a promise page
@@ -552,7 +529,7 @@ async function main() {
     }
   }
 
-  const usdcSpec = { token: "USDC", tokenAddress: USDC, amount: "0.1", units: USDC_AMOUNT, sealStake: "$0.10 IN USDC" };
+  const usdcSpec = { token: "USDC", tokenAddress: USDC, amount: "0.1", units: USDC_AMOUNT };
 
   // ---- (a) no wallet
   const V = await openSession("visitor", null, { noWallet: true });
@@ -563,14 +540,15 @@ async function main() {
     await waitBody(V.page, "Seven lines.");
     await waitBody(V.page, CONTRACT);
     await waitBody(V.page, /\d+ Promises made/i);
-    await waitBody(V.page, "You need a browser wallet on Arc with a little USDC for network fees. Reading needs none.");
+    await waitBody(V.page, "A wallet on Arc and a little USDC for fees.");
     const sourcify = await V.page.getByRole("link", { name: "Verified on Sourcify" }).getAttribute("href");
     check(sourcify === `https://repo.sourcify.dev/${CHAIN_ID}/${CONTRACT}`, `Sourcify link ${sourcify}`);
     note("The landing reads with no wallet: the hero sentence \"I promise to\" with rotating examples, the lead sentence, the agreement, the full contract address, a Sourcify link and a promise count.");
     const hero = await V.page.locator(".hero").innerText();
     check(/Write your own/.test(hero), "no Write your own control in the hero");
-    check(await sealDisabled(V.page), "Seal it is not disabled with no wallet");
-    note("The pad is drawn with a demonstration signature; with no wallet and no promise written, the Seal it control is aria-disabled.");
+    check((await V.page.locator('form[aria-label="New promise"]').count()) === 0, "the landing has a create form");
+    check((await V.page.getByRole("link", { name: "Write your own ↗", exact: true }).getAttribute("href")) === "#/create", "Write your own does not link to #/create");
+    note("The landing has no create form; Write your own links to the New promise page.");
     await shot(V, "landing");
 
     await V.page.getByRole("link", { name: "A live promise" }).click();
@@ -608,12 +586,13 @@ async function main() {
     await shot(S, "before-connect");
     await connect(S);
     await waitBody(S.page, "Your wallet is on another network. SatStake runs on Arc Testnet.");
-    await S.page.getByRole("button", { name: "Write your own ↗", exact: true }).click();
+    await S.page.getByRole("link", { name: "Write your own ↗", exact: true }).click();
+    await waitBody(S.page, "New promise");
     await S.page.getByLabel("Your promise", { exact: true }).fill(`${PROMISE_PREFIX}: wrong network`);
     const help = (await S.page.locator('[id$="-submit-help"]').innerText()).replace(/\s+/g, " ").trim();
-    note(`Beside Seal it while the wallet is on chain 1: ${help}`);
-    check(/another network/i.test(help), "no wrong-network reason beside Seal it");
-    check(await sealDisabled(S.page), "Seal it is enabled on the wrong network");
+    note(`Beside Sign it while the wallet is on chain 1: ${help}`);
+    check(/another network/i.test(help), "no wrong-network reason beside Sign it");
+    check(await signDisabled(S.page), "Sign it is enabled on the wrong network");
     await shot(S, "wrong-network");
     await S.page.getByRole("button", { name: "Switch to Arc Testnet", exact: true }).click();
     await waitBody(S.page, /Connected: 0x\w{4}…\w{4} on Arc Testnet\./);
@@ -623,32 +602,30 @@ async function main() {
     await shot(S, "switched");
   });
 
-  // ---- (c) create a USDC promise from the hero
+  // ---- (c) create a USDC promise on the New promise page
   let p1;
-  await run("SG-c", "Create a USDC promise from the hero; the sealed panel", async () => {
-    // The page is still on the landing with the sentence half written; a fresh landing keeps the check plain.
+  await run("SG-c", "Create a USDC promise on the New promise page; the signature and the panel", async () => {
     await S.page.reload();
     await waitBody(S.page, /Connected: 0x\w{4}…\w{4} on Arc Testnet\./);
-    await go(S, "#/");
-    p1 = await sealPromise(S, { ...usdcSpec, label: "USDC kept", deadline: "1 day", leadSeconds: 86_400n }, "landing");
+    p1 = await signPromise(S, { ...usdcSpec, label: "USDC kept", deadline: "1 day", leadSeconds: 86_400n }, "create");
     P.p1 = p1;
-    note(`Seal it was labelled "${p1.buttonLabel}". Progress texts seen: ${p1.progress.join(" ;; ")}`);
+    note(`Sign it was labelled "${p1.buttonLabel}". Progress texts seen: ${p1.progress.join(" ;; ")}`);
     check(p1.progress.some((t) => /Step 1 of 2/.test(t)) && p1.progress.some((t) => /Step 2 of 2/.test(t)), "no numbered Step 1 of 2 and Step 2 of 2 in the progress");
     const approve = lastTx("staker", "approve");
     note(`The wallet sent approve ${approve.hash} and then createPledge ${p1.hash}.`);
-    note(`The sealed panel shows the creation hash ${p1.shownHash}, the same as the hash the wallet sent; its explorer link is ${EXPLORER}/tx/${p1.hash}.`);
+    note(`The signed panel shows the creation hash ${p1.shownHash}, the same as the hash the wallet sent; its explorer link is ${EXPLORER}/tx/${p1.hash}.`);
     note(`The panel's promise number is #${p1.id}; the creation event says #${p1.id}, and pledgeCount at the creation block is ${p1.id}.`);
-    note(`The share link in the panel is ${p1.share}. The "Locked until" line reads "Referee rules, or ${timeText(p1.deadline)}", the chain deadline.`);
-    note(`The seal is drawn (svg class "on"); its ring label reads "${p1.label}"; all 64 ticks agree with the bits of the creation hash.`);
+    note(`The share link in the panel is ${p1.share}. The stake-held line reads "after the referee rules or ${timeText(p1.deadline)}", the chain deadline.`);
+    note('The pad shows "Signed: SatStake" only after the creation confirmed; it showed no signature while the wallet prompt was open.');
     await S.page.getByRole("button", { name: "Copy the link to this promise", exact: true }).click();
     await waitBody(S.page, "Link copied.");
     const clip = await S.page.evaluate(() => navigator.clipboard.readText());
     check(clip === p1.share, `clipboard holds ${clip}`);
     note("Copy the link to this promise put the share link on the clipboard.");
     // The pad is read-only once the promise exists: the fields are not editable and the submit is gone.
-    check((await S.page.getByRole("button", { name: /^Seal it/ }).count()) === 0, "a Seal it control remains after sealing");
-    note("After sealing, the Seal it control is gone and the sealed panel holds focus.");
-    await shot(S, "sealed-after-copy");
+    check((await S.page.getByRole("button", { name: /^Sign it/ }).count()) === 0, "a Sign it control remains after signing");
+    note("After signing, the Sign it control is gone and the signed panel holds focus.");
+    await shot(S, "signed-after-copy");
   });
 
   // ---- (d) the referee follows the share link
@@ -663,7 +640,7 @@ async function main() {
     check(await buttonVisible(R.page, "Kept"), "Kept missing for the referee");
     check(await buttonVisible(R.page, "Broken"), "Broken missing for the referee");
     check(pg.badge === "You judge this promise", `referee badge is "${pg.badge}"`);
-    note(`The referee, opening the share link from the sealed panel, sees the badge "${pg.badge}", the question "Was this promise kept?" and the Kept and Broken buttons. Banner: "${pg.banner.slice(0, 160)}"`);
+    note(`The referee, opening the share link from the signed panel, sees the badge "${pg.badge}", the question "Was this promise kept?" and the Kept and Broken buttons. Banner: "${pg.banner.slice(0, 160)}"`);
     await shot(R, "p1-verdict-controls");
     const t0 = txLog.length;
     await R.page.getByRole("button", { name: "Kept", exact: true }).click();
@@ -683,9 +660,9 @@ async function main() {
 
     // second promise, Broken through the inline confirm
     await S.page.bringToFront();
-    const p2 = await sealPromise(S, { ...usdcSpec, label: "USDC broken", deadline: "1 day", leadSeconds: 86_400n }, "another");
+    const p2 = await signPromise(S, { ...usdcSpec, label: "USDC broken", deadline: "1 day", leadSeconds: 86_400n }, "another");
     P.p2 = p2;
-    note(`A second promise, #${p2.id}, was made with Make another promise from the sealed panel (creation ${p2.hash}). Its panel number matches the event and pledgeCount.`);
+    note(`A second promise, #${p2.id}, was made with Make another promise from the signed panel (creation ${p2.hash}). Its panel number matches the event and pledgeCount.`);
     await gotoUrl(R, p2.share);
     await waitBody(R.page, `Promise #${p2.id}`);
     await waitBody(R.page, "Was this promise kept?");
@@ -728,7 +705,7 @@ async function main() {
     await connect(x);
   }
   await run("SG-f", "Two-minute promise with no verdict reads No answer and pays the beneficiary", async () => {
-    P.p3 = await sealPromise(S, { ...usdcSpec, label: "USDC two-minute", deadline: "2 minutes", leadSeconds: 120n }, "create");
+    P.p3 = await signPromise(S, { ...usdcSpec, label: "USDC two-minute", deadline: "2 minutes", leadSeconds: 120n }, "create");
     note(`The two-minute promise #${P.p3.id} was made from the hero page (#/create); creation ${P.p3.hash}; the panel number matches the event and pledgeCount.`);
     await gotoUrl(W, P.p3.share);
     await waitBody(W.page, `Promise #${P.p3.id}`);
@@ -813,23 +790,23 @@ async function main() {
     await connect(M);
   });
 
-  await run("SG-g", "cirBTC promise of 100 sats from the hero", async () => {
-    const cirSpec = { token: "cirBTC", tokenAddress: CIRBTC, amount: "0.000001", units: CIRBTC_AMOUNT, sealStake: "100 SATS", label: "cirBTC 100 sats", deadline: "1 day", leadSeconds: 86_400n };
-    const p4 = await sealPromise(M, cirSpec, "landing");
+  await run("SG-g", "cirBTC promise of 100 sats from the New promise page", async () => {
+    const cirSpec = { token: "cirBTC", tokenAddress: CIRBTC, amount: "0.000001", units: CIRBTC_AMOUNT, label: "cirBTC 100 sats", deadline: "1 day", leadSeconds: 86_400n };
+    const p4 = await signPromise(M, cirSpec, "create");
     P.p4 = p4;
-    note(`Seal it was labelled "${p4.buttonLabel}"; the seal label reads "${p4.label}"; the panel number #${p4.id} matches the event and pledgeCount. Progress: ${p4.progress.join(" ;; ")}`);
+    note(`Sign it was labelled "${p4.buttonLabel}"; the panel number #${p4.id} matches the event and pledgeCount. Progress: ${p4.progress.join(" ;; ")}`);
     cur = journey("SG-h", "390 px wide and dark mode");
-    note(`390 px, dark, sealed panel for #${p4.id}: horizontal overflow ${await overflow(M.page)} px.`);
-    cur = journey("SG-g", "cirBTC promise of 100 sats from the hero");
+    note(`390 px, dark, signed panel for #${p4.id}: horizontal overflow ${await overflow(M.page)} px.`);
+    cur = journey("SG-g", "cirBTC promise of 100 sats from the New promise page");
     await M.page.getByRole("link", { name: "Open the promise", exact: true }).click();
-    const pg = await readPledgePage(M.page, p4.id, { amountText: "100 sats, 0.000001 cirBTC" });
+    const pg = await readPledgePage(M.page, p4.id, { amountText: "100 sats (0.000001 cirBTC)" });
     await waitBody(M.page, "A sat is the smallest unit of Bitcoin.");
     await waitBody(M.page, "100 sats");
-    note(`The promise page for #${p4.id} reads "${pg.heading}" and "100 sats, 0.000001 cirBTC" in the agreement, with the note "A sat is the smallest unit of Bitcoin." Banner: "${pg.banner.slice(0, 140)}"`);
+    note(`The promise page for #${p4.id} reads "${pg.heading}" and "100 sats (0.000001 cirBTC)" in the agreement, with the note "A sat is the smallest unit of Bitcoin." Banner: "${pg.banner.slice(0, 140)}"`);
     cur = journey("SG-h", "390 px wide and dark mode");
     note(`390 px, dark, promise page #${p4.id}: horizontal overflow ${await overflow(M.page)} px.`);
     await shotPage(M.page, "phone-dark-p4-promise-page");
-    cur = journey("SG-g", "cirBTC promise of 100 sats from the hero");
+    cur = journey("SG-g", "cirBTC promise of 100 sats from the New promise page");
     // Kept by the referee, paid out by the unrelated account, so the sats return to the staker.
     await gotoUrl(R, P.p4.share);
     await waitBody(R.page, "Was this promise kept?");

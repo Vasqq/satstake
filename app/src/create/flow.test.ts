@@ -370,6 +370,14 @@ describe("LLR-FE-037 the creation is read from the PledgeCreated event and hande
     expect(done).toMatchObject({ id: 42n, deadline: 777n, staker: STAKER, referee: REFEREE, beneficiary: BENEFICIARY, amount: AMOUNT });
   });
 
+  it("hands back the hash that was mined when the wallet replaced the creation", async () => {
+    const mined = `0x${"ab".repeat(32)}` as Hex;
+    const { io } = world({ receipts: { [CREATE_HASH]: { status: "success", logs: [log()], transactionHash: mined } } });
+    const done = await runCreate(io, preset, () => {});
+    expect(done.hash).toBe(mined);
+    expect(done.hash).not.toBe(CREATE_HASH);
+  });
+
   it("hands back the hash when no approval was needed", async () => {
     const { io } = world({ allowance: AMOUNT });
     expect((await runCreate(io, preset, () => {})).hash).toBe(CREATE_HASH);

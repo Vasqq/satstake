@@ -10,7 +10,6 @@ import type { Reads } from "../chain/reads";
 import type { Health } from "../chain/useHealth";
 import type { SelectedNetwork, TokenConfig } from "../config/networks";
 import { Hero } from "../design/Hero";
-import { SignaturePad } from "../design/SignaturePad";
 import { HashValue } from "../views/HashValue";
 import { RequestNotice, useConnectionFailure } from "../wallet/failure";
 import { useWriteGate } from "../wallet/gate";
@@ -28,7 +27,7 @@ import {
   receiptOf,
   runCreate,
 } from "./flow";
-import { sealBytesOf, sealLabelOf, shareLink, stakeWords } from "./sealed";
+import { shareLink, stakeWords } from "./signed";
 import { type BalanceState, MAX_PROMISE_BYTES, type Field, type FormValues, checkForm, customDeadlineMessage, promiseBytes } from "./validate";
 
 /** The statement of LLR-FE-034. */
@@ -36,8 +35,6 @@ const ACKNOWLEDGEMENT =
   "I understand that the referee alone decides whether I kept this promise. If the referee marks it broken, or has not marked it kept by the deadline, my stake goes to the beneficiary and cannot be recovered.";
 
 const INTRO = "Lock a stake against a promise. Your referee decides whether you kept it.";
-const LANDING_SUB =
-  "Or my stake goes to someone I chose. A friend decides whether I kept it, and code makes sure the money goes where they say.";
 
 // The field takes more than the contract does, so a pasted text that is too long is said to be too long beside the
 // field, as LLR-FE-030 asks, and is not cut short without a word.
@@ -222,19 +219,15 @@ export interface CreateViewProps {
   network: SelectedNetwork;
   /** The shell's checks, so the page does not run a second set. */
   health: Health;
-  /**
-   * `page` is the hero on a page of its own, with focus in the promise. `landing` is the same hero under the
-   * landing's sentence, where the promise starts as rotating examples until the visitor writes.
-   */
-  variant: "page" | "landing";
   /** Called with the new pledge's identifier once the creation has landed. */
   onCreated?: (id: bigint) => void;
 }
 
 /**
- * The hero and the pad that make a promise: the sentence is the promise, the pad's head holds the stake and the
- * parties, its foot the deadline, the statement and the steps. The creation ends here, on a seal drawn from its
- * transaction hash and the link to share (LLR-FE-037). Making another promise starts the pad again.
+ * The hero and the form that make a promise: the sentence is the promise, the head holds the stake and the
+ * parties, the foot the deadline, the statement and the steps. This is the only place a promise is made. The
+ * creation ends here: once the receipt has confirmed, the page shows the promise's number, its transaction hash
+ * and the link to share (LLR-FE-037). Making another promise starts the form again.
  */
 export function CreateView(props: CreateViewProps) {
   const [round, setRound] = useState(0);
@@ -244,12 +237,13 @@ export function CreateView(props: CreateViewProps) {
 /**
  * Every write goes through `useWriteGate`, names the configured chain so the wallet's chain is read again when
  * the request is sent, and is one the wallet shows as a transaction: nothing here asks for a signature of a
- * message. The pad takes no drawing: the signature on it is an animation and nothing of it is stored or sent.
+ * message. The pad takes no drawing: the signature on it is a fixed drawing, written after the receipt confirms,
+ * and nothing of it is stored or sent.
  *
  * @trace LLR-FE-006 LLR-FE-023 LLR-FE-030 LLR-FE-031 LLR-FE-032 LLR-FE-033 LLR-FE-034 LLR-FE-035 LLR-FE-036 LLR-FE-037
  * @trace LLR-FE-060 LLR-FE-061 LLR-FE-062 LLR-FE-072 LLR-FE-074
  */
-function CreatePad({ client, reads, network, health, variant, onCreated, another }: CreateViewProps & { another: () => void }) {
+function CreatePad({ client, reads, network, health, onCreated, another }: CreateViewProps & { another: () => void }) {
   const ids = useId();
   const formId = `${ids}-form`;
   const config = useConfig();
@@ -262,8 +256,8 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
   // and blocks a second one, until the page is left or reloaded (LLR-FE-062).
   const [unconfirmed, setUnconfirmed] = useState<CreationUnconfirmedError | null>(null);
 
-  // The visitor's own ending of the sentence; null while the examples rotate, which is no promise at all.
-  const [custom, setCustom] = useState<string | null>(variant === "page" ? "" : null);
+  // The ending of the sentence, which is the promise.
+  const [custom, setCustom] = useState("");
   const [rest, setRest] = useState<Omit<FormValues, "promise">>({
     token: network.tokens[0]!.address,
     amount: "",
@@ -272,12 +266,11 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
     deadline: INITIAL_DEADLINE,
     acknowledged: false,
   });
-  const values: FormValues = { ...rest, promise: custom ?? "" };
+  const values: FormValues = { ...rest, promise: custom };
   const [touched, setTouched] = useState<ReadonlySet<Field>>(new Set());
   const [busy, setBusy] = useState(false);
-  // The creation, once it has landed; the ink then collapses into the ring, and only after that is the seal shown.
+  // The creation, once its receipt has confirmed. The panel is shown in that same moment.
   const [created, setCreated] = useState<Creation | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
   const panel = useRef<HTMLElement>(null);
   // The failure of a custom deadline found when submit was activated or before the creation, which the person
   // mends by choosing another time, so it goes when the deadline changes or a new attempt starts.
@@ -335,16 +328,13 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
   const errors = { ...check.errors };
   if (health.tokens === null) delete errors.token;
 
-  // A failure shows once its field has been left, or at once when typing cannot mend it, and then follows every
-  // change because it is computed from the values on each render.
+  // A failure of what was typed shows only after Sign it, and then follows every change. A failure typing
+  // cannot mend, such as an empty balance, shows as soon as it is known.
   const shown = (field: Field): string | undefined =>
     touched.has(field) || check.atOnce.includes(field) ? errors[field] : undefined; // LLR-FE-030
-  const touch = (field: Field) => setTouched((previous) => (previous.has(field) ? previous : new Set(previous).add(field)));
-  /** `leaves` is for a control whose change is the person finishing with it: a choice or a tick, not a keystroke. */
-  const set = <K extends Exclude<keyof FormValues, "promise">>(field: K, value: FormValues[K], leaves = false) => {
+  const set = <K extends Exclude<keyof FormValues, "promise">>(field: K, value: FormValues[K]) => {
     if (field === "deadline") setRecheck(null);
     setRest((previous) => ({ ...previous, [field]: value }));
-    if (leaves) touch(field);
   };
 
   const parsed = token === undefined ? null : parseAmount(values.amount, token.decimals);
@@ -364,32 +354,21 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
     acknowledged: `${ids}-acknowledged`,
   };
 
-  // The promise is a field only once the visitor has chosen to write, so focus waits for it to exist.
-  const focusPromise = useRef(false);
+  // The button is gone as soon as the receipt confirms, and focus moves to the panel that replaces it.
   useEffect(() => {
-    if (custom === null || !focusPromise.current) return;
-    focusPromise.current = false;
-    document.getElementById(promiseId)?.focus();
-  }, [custom, promiseId]);
-
-  // Focus goes to the panel that replaces the button which was pressed, once the seal is shown.
-  useEffect(() => {
-    if (collapsed) panel.current?.focus(); // LLR-FE-072
-  }, [collapsed]);
+    if (created !== null) panel.current?.focus(); // LLR-FE-072
+  }, [created]);
 
   /** What activating a disabled submit does: every field counts as left, and focus goes to the first at fault. */
   function revealFaults() {
     setTouched(new Set(FIELD_ORDER));
     const first = FIELD_ORDER.find((field) => errors[field] !== undefined); // LLR-FE-030
-    if (first === "promise" && custom === null) {
-      focusPromise.current = true;
-      setCustom("");
-    } else if (first !== undefined) document.getElementById(focusIds[first])?.focus();
+    if (first !== undefined) document.getElementById(focusIds[first])?.focus();
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (inFlight.current) return; // LLR-FE-036
+    if (inFlight.current || created !== null) return; // LLR-FE-036
     if (!canSubmit || staker === undefined || token === undefined || parsed?.ok !== true || deadlineInput === null) {
       if (!busy && created === null) revealFaults();
       return;
@@ -440,7 +419,7 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
         latest = steps;
         setProgress({ steps, amountText, kept: false });
       });
-      // The view stays where the creation was made (LLR-FE-037): the ink collapses, then the seal is shown.
+      // The view stays where the creation was made (LLR-FE-037): the panel is shown here.
       setCreated(done); // LLR-FE-037
       onCreated?.(done.id);
     } catch (error) {
@@ -487,19 +466,19 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
       key: preset.id,
       label: preset.label,
       checked: choice.kind === "preset" && choice.id === preset.id,
-      select: () => set("deadline", { kind: "preset", id: preset.id }, true),
+      select: () => set("deadline", { kind: "preset", id: preset.id }),
     })),
     // Choosing Custom is the start of choosing a time, not the end of it, so the deadline is judged when it is left.
     { key: "custom", label: "Custom", checked: choice.kind === "custom", select: () => set("deadline", { kind: "custom", local: "" }) },
   ];
 
-  // The button names what will be sealed, once there is an amount to name.
-  const sealLabel =
-    token !== undefined && parsed?.ok === true && parsed.value > 0n ? `Seal it with ${stakeWords(network, token.address, parsed.value)}` : "Seal it";
+  // The button names what will be signed, once there is an amount to name.
+  const signLabel =
+    token !== undefined && parsed?.ok === true && parsed.value > 0n ? `Sign it with ${stakeWords(network, token.address, parsed.value)}` : "Sign it";
 
-  const sealed = created !== null && collapsed;
+  const signed = created !== null;
   const head =
-    created === null || !collapsed ? (
+    created === null ? (
       <div className="pad-form-head">
         <span className="label">New promise</span>
         <div className="pad-fields">
@@ -508,7 +487,7 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
             label="Token"
             error={shown("token")}
             control={(props) => (
-              <select {...props} disabled={locked} value={values.token} onChange={(event) => set("token", event.target.value as Address, true)} onBlur={() => touch("token")}>
+              <select {...props} disabled={locked} value={values.token} onChange={(event) => set("token", event.target.value as Address)}>
                 {network.tokens.map((t) => (
                   <option key={t.address} value={t.address}>
                     {t.symbol}
@@ -531,7 +510,6 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
                 autoComplete="off"
                 value={values.amount}
                 onChange={(event) => set("amount", event.target.value)}
-                onBlur={() => touch("amount")}
               />
             )}
           />
@@ -550,7 +528,6 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
                 spellCheck={false}
                 value={values.referee}
                 onChange={(event) => set("referee", event.target.value)}
-                onBlur={() => touch("referee")}
               />
             )}
           />
@@ -569,7 +546,6 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
                 spellCheck={false}
                 value={values.beneficiary}
                 onChange={(event) => set("beneficiary", event.target.value)}
-                onBlur={() => touch("beneficiary")}
               />
             )}
           />
@@ -577,7 +553,7 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
       </div>
     ) : (
       <>
-        <span className="label">{`Promise #${created.id.toString()} · sealed`}</span>
+        <span className="label">{`Promise #${created.id.toString()} · signed`}</span>
         <div className="who">
           <span>
             Staker <b className="mono">{shorten(created.staker)}</b>
@@ -592,10 +568,10 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
       </>
     );
 
-  const foot = sealed ? (
-    <section ref={panel} className="sealed" aria-label="Sealed promise" tabIndex={-1}>
+  const foot = signed ? (
+    <section ref={panel} className="signed" aria-label="Signed promise" tabIndex={-1}>
       <div>
-        <span className="label">Sealed in transaction</span>
+        <span className="label">Signed in transaction</span>
         <HashValue
           kind="transaction"
           value={created.hash}
@@ -613,7 +589,7 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
         <span className="label">Stake held</span>
         <b>{`Until the payout is sent, after the referee rules or ${formatLocalTime(created.deadline)}`}</b>
       </div>
-      <div className="sealed-share">
+      <div className="signed-share">
         <span className="label">Send this link to your referee and your beneficiary</span>
         <code>{shareLink(created.id)}</code>
         <div className="btns">
@@ -629,13 +605,7 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
     </section>
   ) : (
     <div className="pad-foot">
-      {/* The deadline is left when focus goes out of the whole group, and not when it moves from Custom to its date. */}
-      <fieldset
-        aria-describedby={`${ids}-deadline-end ${ids}-deadline-error`}
-        onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) touch("deadline");
-        }}
-      >
+      <fieldset aria-describedby={`${ids}-deadline-end ${ids}-deadline-error`}>
         <legend className="label">Deadline</legend>
         <div className="choices">
           {choices.map((option) => (
@@ -690,8 +660,7 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
             checked={values.acknowledged}
             aria-describedby={`${ids}-acknowledged-error`}
             aria-invalid={shown("acknowledged") ? true : undefined}
-            onChange={(event) => set("acknowledged", event.target.checked, true)}
-            onBlur={() => touch("acknowledged")}
+            onChange={(event) => set("acknowledged", event.target.checked)}
           />
           {ACKNOWLEDGEMENT}
         </label>
@@ -703,7 +672,7 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
       <div className="submit-area">
         {/* aria-disabled and not the disabled attribute, so the control stays reachable by keyboard and its reasons can be heard. */}
         <button type="submit" className="b ink" aria-disabled={!canSubmit} aria-describedby={`${ids}-prompts ${ids}-submit-help`}>
-          {sealLabel}
+          {signLabel}
         </button>
         {/* The status and every note, in one block: beside the button on a wide pad, under it on a phone. */}
         <div className="submit-notes">
@@ -751,20 +720,18 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
     </div>
   );
 
-  const hash = created === null ? null : sealBytesOf(created.hash);
   return (
     <Hero
       custom={custom}
-      onCustomChange={setCustom}
+      onCustomChange={(next) => setCustom(next ?? "")}
       maxLength={PROMISE_FIELD_LIMIT}
-      title={variant === "page" ? "New promise | SatStake" : "SatStake"}
-      sub={variant === "page" ? INTRO : LANDING_SUB}
+      title="New promise | SatStake"
+      sub={INTRO}
       inputProps={{
         id: promiseId,
         "aria-describedby": `${promiseId}-hint ${promiseId}-error`,
         "aria-invalid": shown("promise") ? true : undefined,
         readOnly: locked,
-        onBlur: () => touch("promise"),
       }}
     >
       <form id={formId} className="create-pad" aria-label="New promise" noValidate onSubmit={(event) => void submit(event)}>
@@ -779,27 +746,11 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
             </p>
           </div>
         )}
-        <SignaturePad
-          head={head}
-          foot={foot}
-          sealBytes={sealed ? hash : null}
-          sealLabel={
-            created === null
-              ? ""
-              : sealLabelOf({
-                  id: created.id,
-                  stake: stakeWords(network, created.token, created.amount),
-                  networkName: network.name,
-                  hash: created.hash,
-                })
-          }
-          collapsing={created !== null && !collapsed}
-          onCollapsed={() => setCollapsed(true)}
-        />
+        <div className="pad">
+          <div className="pad-head">{head}</div>
+          {foot}
+        </div>
       </form>
-      {variant === "landing" && (
-        <p className="home-need">You need a browser wallet on Arc with a little USDC for network fees. Reading needs none.</p>
-      )}
     </Hero>
   );
 }

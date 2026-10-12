@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { type Address, getAddress } from "viem";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import { FakeWallet } from "./fakeWallet";
 import { FakeWorld } from "./fakeWorld";
 import { ACCOUNT, findConnected, freshChain, mountApp, network } from "./walletHarness";
@@ -20,7 +20,7 @@ export interface OpenOptions {
   /** Allowance of USDC the contract holds from the account at the start. */
   allowance?: bigint;
   walletChain?: number;
-  /** The route to open: the create page by default, or the landing, where the same pad is live. */
+  /** The route to open: the create page by default. */
   hash?: string;
   /** Leave the wallet unconnected, so the page opens as a visitor with a wallet installed. */
   disconnected?: boolean;
@@ -28,8 +28,45 @@ export interface OpenOptions {
   prepare?: (parts: { chain: ReturnType<typeof freshChain>; wallet: FakeWallet; world: FakeWorld }) => void;
 }
 
+const blankCanvas = {
+  arc() {},
+  beginPath() {},
+  fill() {},
+  clearRect() {},
+  setTransform() {},
+  drawImage() {},
+  fillStyle: "",
+  globalAlpha: 1,
+};
+
+/**
+ * jsdom has no canvas, and the pad does not call the promise signed unless it can draw. A test that has not
+ * installed its own canvas gets a blank one, so the signature can finish and the panel can appear.
+ */
+function ensureCanvas() {
+  if (!vi.isMockFunction(HTMLCanvasElement.prototype.getContext)) {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => blankCanvas as unknown as CanvasRenderingContext2D);
+  }
+  if (!vi.isMockFunction(HTMLCanvasElement.prototype.getBoundingClientRect)) {
+    vi.spyOn(HTMLCanvasElement.prototype, "getBoundingClientRect").mockReturnValue({
+      width: 800,
+      height: 240,
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      bottom: 240,
+      right: 800,
+      toJSON() {
+        return {};
+      },
+    } as DOMRect);
+  }
+}
+
 /** The create page, open against a fake chain and a wallet, with a funded account. */
 export async function openCreate(options: OpenOptions = {}) {
+  ensureCanvas();
   const { balance = 100_000_000n, allowance = 0n, walletChain = network.chainId, disconnected = false, hash = "#/create" } = options;
   const wallet = new FakeWallet({ chainId: walletChain, accounts: [ACCOUNT], authorized: !disconnected });
   wallet.knownChains.add(network.chainId);
@@ -44,25 +81,15 @@ export async function openCreate(options: OpenOptions = {}) {
   return { ...mounted, chain, wallet, world };
 }
 
-/**
- * The promise is the hero's sentence. On the landing the visitor first chooses to write their own, as a person
- * would; on the create page the field is there already.
- */
-function promiseInput(): HTMLElement {
-  const existing = screen.queryByRole("textbox", { name: "Your promise" });
-  if (existing) return existing;
-  fireEvent.click(screen.getByRole("button", { name: /Write your own/ }));
-  return screen.getByRole("textbox", { name: "Your promise" });
-}
-
-export const field = (label: string) => (label === "Promise" ? promiseInput() : screen.getByLabelText(label));
+/** The promise is the hero's sentence, a field of its own on the create page. */
+export const field = (label: string) => (label === "Promise" ? screen.getByRole("textbox", { name: "Your promise" }) : screen.getByLabelText(label));
 export const type = (label: string, value: string) => fireEvent.change(field(label), { target: { value } });
-export const submit = () => screen.getByRole("button", { name: /^Seal it/ });
+export const submit = () => screen.getByRole("button", { name: /^Sign it/ });
 export const isDisabled = (button: HTMLElement) =>
   (button as HTMLButtonElement).disabled || button.getAttribute("aria-disabled") === "true";
 
-/** The panel that takes the place of the form's foot once the creation has landed and the ink has become a seal. */
-export const sealedPanel = () => screen.findByRole("region", { name: "Sealed promise" }, { timeout: 4000 });
+/** The panel that takes the place of the form's foot once the creation has landed and the signature is written. */
+export const signedPanel = () => screen.findByRole("region", { name: "Signed promise" }, { timeout: 4000 });
 
 export function chooseDeadline(label: string) {
   fireEvent.click(screen.getByRole("radio", { name: label }));

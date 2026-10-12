@@ -6789,3 +6789,97 @@ LLR-FE-072, focus on `#/create`: the page variant passed `autoFocus` to the hero
 Green: the `autoFocus` prop is removed from `design/Hero.tsx` and `create/CreateView.tsx` (nothing else used it; "Write your own" still moves focus into the field it opens). The promise field sits inside the heading, so the next Tab reaches it. `npm test`: 1402 passed, 9 skipped; trace check OK.
 
 LLR-FE-010, the sealed panel shows the parties, deadline and stake decoded from the `PledgeCreated` event of the staker's own creation receipt, while the requirement named only the six views. No code change: 05 v1.31 allows that event in the creation flow, with the reason in its change-log row.
+
+## Signed port: Sign it, creation only on #/create (2026-10-12)
+
+Paths relative to the repository; commands from `app/`. Requirement: LLR-FE-037 (05 v1.32). Liam's design change: the landing no longer hosts the create flow, the pad shows no signature until the creation receipt confirms and then writes one cursive "SatStake", the round seal is gone, and the create flow says "sign".
+
+### Red
+
+Tests changed or written before any code change; `npx vitest run src/create/CreateFlow.test.tsx src/create/CreateView.test.tsx src/design/SignaturePad.test.tsx src/design/Hero.test.tsx src/views/HomeView.test.tsx src/create/signed.test.ts src/App.test.tsx` against the old code: 167 failed, 175 passed, in six files. Trimmed output:
+
+```
+CreateView.test  121 failed  TestingLibraryElementError: Unable to find role="button" and name `/^Sign it/`   (the shared harness now looks for "Sign it"; the button still reads "Seal it")
+CreateFlow.test   26 failed  the same, plus:
+  × is an empty signature line at rest, with no ink and no word of being signed
+      AssertionError: expected 'img' to be null            (the old pad is role img, "A signature writing itself", and writes at once)
+SignaturePad.test 10 failed  TypeError: satStakeSignature is not a function
+  × writes one signature in about a second and a half, tells its owner once ...   AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+  × shows the empty signature line, writes no ink however long it waits ...        (old pad draws the demonstration on mount)
+HomeView.test      4 failed  Unable to find an accessible element with the role "link" and name `/Write your own/`   (it is a button)
+                             expected ... .pad to be null; expected the document to hold no form
+Hero.test          1 failed  Unable to find ... role "link" and name `/Write your own/`   (no writeHref)
+signed.test        5 failed  expected [ 'Seal it with ', 'Seal it', ... ] to deeply equal []; [ 'Once it’s sealed' ]; [ ' · SEALED ON ' ]; [ './Seal' ]
+```
+
+Every failure is the one the requirement predicts: the old label, the old always-on demonstration ink and its accessible name, the landing pad, the missing function and prop. None is a compile error elsewhere (Vitest does not typecheck).
+
+Tests that pinned removed behaviour were removed or changed (06 section 10):
+
+- Removed: `design/Seal.test.tsx` (the seal component); in `create/sealed.test.ts` (renamed `signed.test.ts`) the `sealBytesOf` and `sealLabelOf` suites; in `SignaturePad.test.tsx` the demonstration-done callback, the "EXAMPLE, SIGNING…" and "EXAMPLE SIGNATURE" baseline test, the seal-in-place-of-baseline test and the two collapse tests; in `CreateFlow.test.tsx` the three seal-drawn-from-the-hash tests, the collapse-into-the-ring test, and the landing tests (create from the landing, the landing's own words, focus on submit on the landing, the landing's pad live); in `HomeView.test.tsx` the pad-with-demonstration test and the "You need a browser wallet on Arc" expectation (the `home-need` line is removed with the landing pad).
+- Changed: `createHarness.tsx` (`sealedPanel` is `signedPanel`, "Signed promise"; the button is `/^Sign it/`; the landing "Write your own" fallback in `field` is gone); the label tests (`Sign it` and `Sign it with ...` for both tokens); the sealed-panel tests (now the signed panel); the pad accessibility test (no role or name before the creation, `Signed: SatStake` after).
+- Added: signature determinism and bounds at three widths; no ink and no name at rest; no ink while either wallet prompt is open, while the receipt is awaited, after a refusal, after an unreadable receipt, and after a revert; one signature written after confirmation and no more; the panel only after the ink; reduced motion at once; the panel's ID, hash, link and copy control; the landing holds no form, field, canvas or sign button; Write your own is a link to `#/create`; the source scan for "seal" in what the create flow and landing show.
+
+### Green
+
+`design/ink.ts`: `satStakeSignature` replaces `demoSignature` (the word as cubic strokes on a 600 by 200 sheet, a slant applied afterwards, two crossbars and an underline, walked at an even pace with a time per point). `design/SignaturePad.tsx`: `signed` and `onSigned` replace the demonstration, the seal and the collapse; the signature is written once, in 1.3 s, or at once under reduced motion; the pad has no role and no name before `signed`. `create/CreateView.tsx`: the `landing` variant, `LANDING_SUB`, `home-need`, the seal and the collapse are removed, the button and the labels say sign and signed, the pad is told only when `created` is set, the panel shows after `onSigned`. `design/Hero.tsx`: optional `writeHref` makes "Write your own" a link. `views/HomeView.tsx`: the hero is the heading and the sub-line with a link to `#/create`; "Once it's signed". `create/sealed.ts` becomes `signed.ts` with `stakeWords` and `shareLink`. Deleted: `design/Seal.tsx`, `create/LandingCreate.tsx`, `Ink.points()`, and the seal, `baseline span` and `home-need` rules in `styles.css`; `.sealed` is `.signed`.
+
+### Results
+
+| Command | Result |
+|---|---|
+| `npm run lint` | clean |
+| `npm run typecheck` | clean |
+| `npm test` (run alone) | 50 files passed, 2 skipped; 1400 passed, 9 skipped |
+| `npm run build:testnet` | built |
+| `npm run build:mainnet` | built |
+| `node tools/trace-check.mjs` | OK. 106/113 LLRs referenced, 31/55 journeys passing |
+| `node --test test/tools/*.test.mjs` | 475 pass, 0 fail |
+
+### Mutations 2200 to 2211 (copies in `cache/mutants/fe037/`, restored and checked with `cmp`)
+
+| # | Mutant | Result |
+|---|---|---|
+| 2200 | `SignaturePad`: the `if (!signed) return` guard removed, so it writes on mount | killed, 10 |
+| 2201 | `SignaturePad`: the guard becomes an unconditional return, so it never writes | killed, 20 |
+| 2202 | `CreateView`: the panel shown once `created` is set, before the ink is written | killed, 2 |
+| 2203 | `HomeView`: a pad mounted on the landing | killed, 1 |
+| 2204 | `HomeView`: "Write your own" links to `#/about` | killed, 3 |
+| 2205 | `CreateView`: the button label without the stake | killed, 1 |
+| 2206 | `SignaturePad`: reduced motion ignored | killed, 1 |
+| 2207 | `SignaturePad`: role and name "Signed: SatStake" at all times | killed, 9 |
+| 2208 | `CreateView`: the pad told while the transaction is pending (`busy`) | killed, 4 |
+| 2209 | `Hero`: `writeHref` ignored, so the landing keeps a button | killed, 4 |
+| 2210 | `ink.ts`: random jitter in the signature, so it is not a fixed drawing | killed, 1 |
+| 2211 | `SignaturePad`: the signing effect without its `[signed]` dependency, so it runs on every render | killed, 1 |
+
+None survived. Test files per mutant: the pad file for pad-only mutants, the flow file for create-flow mutants, `HomeView.test.tsx` and `Hero.test.tsx` for the landing; the harness `cache/fe037/mutate.py` records the exact edit of each.
+
+### Screenshots (in `cache/screenshots-fe037/`, testnet build)
+
+`landing-top-390-light.png`, `landing-top-390-dark.png`, `landing-top-1440-light.png`, `landing-top-1440-dark.png` and the full-page `landing-*`: the heading with its rotating example, the sub-line, and "Write your own ↗" as a dashed-underline link (the link's own underline was doubling the dashed line and was removed). `create-390-*` and `create-1440-*`: the dedicated page with the promise field as the hero and an empty pad, only the `×` and the line, no ink. `pad-signed-390-*` and `pad-signed-1440-*`: the same pad with the signature stamped on its real canvas by the page's own `Ink` and `satStakeSignature` (the wallet cannot be driven in a screenshot, so the writing after a confirmed receipt is proved by tests, and the picture shows the end state). At 390 the signature was first too close to the `×`, so the sheet is now 80% of the pad's width. Not seen: the 1.3 s writing in motion.
+
+## Signed port: signature guards after the requirements review (2026-10-12)
+
+The requirements review found no path that draws before the receipt. It found tests that would still pass if one did, and two lows in the pad. A mutant that review left in `SignaturePad.tsx` (reduced motion painting on mount) was removed before these tests were trusted; the file was rewritten from the reviewed source plus the fixes below.
+
+### Red
+
+`SignaturePad.test.tsx` against the pad before the fix: "clears the ink" failed with 8565 arcs still on the canvas; "no canvas to write it on" failed because `onSigned` was called once; "keeps the pen in the size" failed because a resize during the write called `resize` again (2 calls, the test wanted the count held). The reduced-motion "not a moment before" assertions and the create-flow "empty line" after "Make another promise" passed on that tree. Their red is the mutants.
+
+### Green
+
+`SignaturePad.tsx`: when `signed` goes back to false the canvas is cleared; a resize while the pen is moving is held and applied once the drawing finishes; with no canvas context the pad does not call `onSigned` and is not named "Signed: SatStake". `createHarness.tsx` gives tests that have not installed their own canvas a blank one, because jsdom has none and the panel now waits for a drawing. `CreateFlow.test.tsx` counts ink still on the canvas (a clear resets the count), checks the line is empty after another promise, and checks reduced motion stays empty while the receipt is held.
+
+`vitest run src/design/SignaturePad.test.tsx src/create/CreateFlow.test.tsx`: 47 passed. `vitest run src/create/CreateView.test.tsx`: 175 passed.
+
+### Mutations 2212 to 2215 (copies in `cache/mutants/padfix/`, restored and checked with `cmp`)
+
+| # | Mutant | Result |
+|---|---|---|
+| 2212 | `SignaturePad`: no clear when `signed` goes false | killed, 1 (`clears the ink`) |
+| 2213 | `SignaturePad`: `onSigned` called when there is no canvas | killed, 1 (`no canvas to write it on`) |
+| 2214 | `SignaturePad`: a resize during the write is applied at once | killed, 1 (`keeps the pen in the size`) |
+| 2215 | `SignaturePad`: reduced motion paints a point on mount, before `signed` | killed, 1 (`not a moment before`) |
+
+The design confirmation found the underline crossing the pad's rule on a wide canvas, because `place` raises the writing as it goes. Red: "draws the line under the name on the pad's rule" failed, the phone width already 2 px off. Green: that stroke is drawn at `h * 0.68` in the pad's coordinates, with at most a 1.2 px wave, and is not sent through `place`. `vitest run src/design/SignaturePad.test.tsx`: 19 passed. An offscreen render at 900 by 280 and 360 by 220 shows the line on the rule at both widths.

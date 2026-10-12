@@ -245,3 +245,21 @@ describe("LLR-FE-070 the visitor can write their own ending", () => {
     expect(screen.queryByRole("button", { name: /Write your own/ })).toBeNull();
   });
 });
+
+describe("LLR-FE-070 the hero can send the visitor to the page where the promise is written", () => {
+  it("offers Write your own as a link to that page, and keeps the examples rotating and the field away", () => {
+    const onChange = vi.fn();
+    render(
+      <Hero custom={null} onCustomChange={onChange} writeHref="#/create" sub="A line.">
+        <div data-testid="slot" />
+      </Hero>,
+    );
+    const link = screen.getByRole("link", { name: /Write your own/ });
+    expect(link.getAttribute("href")).toBe("#/create");
+    expect(link.className).toBe("writebtn");
+    expect(screen.queryByRole("button", { name: /Write your own/ })).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(document.querySelector(".typed")?.getAttribute("aria-hidden")).toBe("true");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});

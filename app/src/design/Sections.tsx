@@ -32,7 +32,7 @@ export const STRIKES: readonly (readonly [string, string])[] = [
   ["Pause or upgrade it", "No owner, no admin key, no pause switch, no upgrade path."],
 ];
 
-/** What cannot be done once a promise is sealed, each struck through as it scrolls into view. */
+/** What cannot be done once a promise is signed, each struck through as it scrolls into view. */
 export function Strikes() {
   const ref = useRef<HTMLUListElement>(null);
   const [seen, setSeen] = useState(typeof IntersectionObserver !== "function");
