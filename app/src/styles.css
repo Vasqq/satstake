@@ -1684,7 +1684,9 @@ section.s {
 }
 
 /* Pending is not told by colour alone: the border turns dashed, the cursor refuses, and the text stays
-   at a readable contrast. The filled primary becomes an outline so muted text is never set on the accent. */
+   at a readable contrast. The filled primary becomes an outline so muted text is never set on the accent.
+   The design's `.b` buttons override this and dim to 40% instead; WCAG 1.4.3 exempts an inactive control,
+   and what is still to complete is said in full-contrast text beside it. */
 button[aria-disabled="true"],
 button:disabled,
 .cta[aria-disabled="true"] {

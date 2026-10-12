@@ -151,6 +151,39 @@ describe("LLR-FE-070 the visitor can write their own ending", () => {
     expect(blur).not.toHaveBeenCalled();
   });
 
+  it("leaves alone the Enter that Safari sends to end a composition, which says so only by key code 229", () => {
+    render(<Host />);
+    fireEvent.click(screen.getByRole("button", { name: /Write your own/ }));
+    const input = screen.getByRole("textbox", { name: "Your promise" });
+    const blur = vi.spyOn(input, "blur");
+    expect(fireEvent.keyDown(input, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(blur).not.toHaveBeenCalled();
+  });
+
+  it("shrinks again when words are deleted, since a browser never reports less than the height already set", () => {
+    // A browser's scrollHeight is at least the element's own height, so only a reset first lets it fall.
+    const content = { lines: 3 };
+    vi.spyOn(HTMLTextAreaElement.prototype, "scrollHeight", "get").mockImplementation(function (this: HTMLTextAreaElement) {
+      const set = this.style.height === "auto" || this.style.height === "" ? 0 : parseFloat(this.style.height);
+      return Math.max(content.lines * 60, set);
+    });
+    const { rerender } = render(
+      <Hero custom="three lines of words" onCustomChange={() => {}} sub="s">
+        {null}
+      </Hero>,
+    );
+    const input = screen.getByRole("textbox", { name: "Your promise" }) as HTMLTextAreaElement;
+    expect(input.style.height).toBe("180px");
+    content.lines = 1;
+    rerender(
+      <Hero custom="one" onCustomChange={() => {}} sub="s">
+        {null}
+      </Hero>,
+    );
+    expect(input.style.height).toBe("60px");
+    vi.restoreAllMocks();
+  });
+
   it("shows one of the examples, muted, in an empty field, so the sentence never ends in a bare line", () => {
     render(
       <Hero custom="" onCustomChange={() => {}} sub="s">
@@ -170,21 +203,14 @@ describe("LLR-FE-070 the visitor can write their own ending", () => {
     expect(screen.getByRole("textbox", { name: "Your promise" }).getAttribute("maxlength")).toBe("42");
   });
 
-  it("sets the page title it is given, and takes focus into the field on mount only when asked", () => {
-    const { unmount } = render(
+  it("sets the page title it is given, and leaves the focus where the page put it", () => {
+    render(
       <Hero custom="" onCustomChange={() => {}} sub="s" title="New promise | SatStake">
         {null}
       </Hero>,
     );
     expect(document.title).toBe("New promise | SatStake");
     expect(document.activeElement).not.toBe(screen.getByRole("textbox", { name: "Your promise" }));
-    unmount();
-    render(
-      <Hero custom="" onCustomChange={() => {}} sub="s" autoFocus>
-        {null}
-      </Hero>,
-    );
-    expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Your promise" }));
   });
 
   it("passes the owner's attributes to the field, but never its value, class or length", () => {

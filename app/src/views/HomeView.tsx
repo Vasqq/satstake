@@ -49,7 +49,7 @@ const EXAMPLE = {
 /**
  * What SatStake does and how, for someone without a wallet, with the proof that it is live: the network, the
  * whole contract address to compare with a published one, its verified source, and figures read from it. The
- * hero's pad is where the create flow mounts; here it shows the demonstration signature and cannot seal.
+ * hero is the create flow itself, so a promise is written and sealed here; the pad's signature is a demonstration.
  *
  * @trace LLR-FE-070
  */

@@ -758,7 +758,6 @@ function CreatePad({ client, reads, network, health, variant, onCreated, another
       onCustomChange={setCustom}
       maxLength={PROMISE_FIELD_LIMIT}
       title={variant === "page" ? "New promise | SatStake" : "SatStake"}
-      autoFocus={variant === "page"}
       sub={variant === "page" ? INTRO : LANDING_SUB}
       inputProps={{
         id: promiseId,

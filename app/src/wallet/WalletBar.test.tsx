@@ -436,6 +436,21 @@ describe("LLR-FE-022 a wallet on another chain is told so and offered a switch i
     await waitFor(() => expect(screen.queryByText(/another network/)).toBeNull());
     expect(within(notices()).queryByText(REJECTED_MESSAGE)).toBeNull();
   });
+
+  it("removes a refused switch's message as soon as a second switch request starts, while its prompt is still open", async () => {
+    const w = wrongChain();
+    w.knownChains.add(network.chainId);
+    w.failNext("wallet_switchEthereumChain", rejection());
+    mountApp({ wallets: [alpha(w)] });
+    await connectedAddress();
+    fireEvent.click(await screen.findByRole("button", { name: SWITCH }));
+    await within(notices()).findByText(REJECTED_MESSAGE);
+    const release = w.hold("wallet_switchEthereumChain");
+    fireEvent.click(screen.getByRole("button", { name: SWITCH }));
+    await waitFor(() => expect(w.count("wallet_switchEthereumChain")).toBe(2));
+    expect(within(notices()).queryByText(REJECTED_MESSAGE)).toBeNull();
+    release();
+  });
 });
 
 describe("LLR-FE-061 a refused connection returns to the state before it, with the neutral message and no error styling", () => {
@@ -472,6 +487,22 @@ describe("LLR-FE-061 a refused connection returns to the state before it, with t
     await connectedAddress();
     expect(within(notices()).queryByText(CONNECTION_REJECTED_MESSAGE)).toBeNull();
   });
+
+  // Once the second try connects, the connection change clears the notice anyway, so only a prompt still open
+  // shows whether the new request itself removed it.
+  it("removes the message as soon as a second connection request starts, while its prompt is still open", async () => {
+    const w = fresh();
+    w.failNext("wallet_requestPermissions", rejection());
+    mountApp({ wallets: [alpha(w)] });
+    fireEvent.click(await connectButton("Alpha Wallet"));
+    await within(notices()).findByText(CONNECTION_REJECTED_MESSAGE);
+    const release = w.hold("wallet_requestPermissions");
+    fireEvent.click(screen.getByRole("button", { name: "Connect Alpha Wallet" }));
+    await waitFor(() => expect(w.count("wallet_requestPermissions")).toBe(2));
+    expect(within(notices()).queryByText(CONNECTION_REJECTED_MESSAGE)).toBeNull();
+    release();
+  });
+
 });
 
 describe("LLR-FE-062 any other connection failure says nothing was changed and offers the raw error", () => {

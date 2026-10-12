@@ -337,10 +337,11 @@ describe("LLR-FE-037 the pad holds the form: its head the stake and the parties,
 });
 
 describe("LLR-FE-070 the create page is the hero alone, with the promise in focus, and the landing keeps the pad live", () => {
-  it("opens the create page on the sentence with focus in the promise, and with none of the landing's explanations", async () => {
+  it("opens the create page on the sentence with the promise field ready, and with none of the landing's explanations", async () => {
     await openCreate();
     const input = screen.getByRole("textbox", { name: "Your promise" });
-    expect(document.activeElement).toBe(input);
+    // LLR-FE-072 leaves focus alone on a first load, so the skip link stays the first stop.
+    expect(document.activeElement).not.toBe(input);
     expect(document.querySelector("#agreement")).toBeNull();
     expect(document.querySelector("#clock")).toBeNull();
     expect(screen.queryByRole("button", { name: /Write your own/ })).toBeNull();

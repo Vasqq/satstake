@@ -10,7 +10,7 @@ A staker locks cirBTC or USDC against a promise, names a referee who judges it, 
 
 SatStake uses cirBTC as the stake, USDC as gas so a $5 promise costs cents to make, and Arc's deterministic finality so a forfeit is final the moment it lands.
 
-Live on Arc mainnet, verified on Sourcify and the explorer. Specified before it was built: every contract and app requirement traces to code and to a test written first or a recorded inspection.
+Live on Arc mainnet, verified on Sourcify and the explorer. Specified before it was built: every contract and app requirement traces to code and to a test or a recorded inspection.
 
 Site: https://vasqq.github.io/satstake/
 Code: https://github.com/Vasqq/satstake

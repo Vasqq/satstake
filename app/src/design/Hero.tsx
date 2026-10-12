@@ -54,8 +54,6 @@ export interface HeroProps {
   sub: ReactNode;
   /** The document title while the hero is the page. */
   title?: string;
-  /** Takes focus into the field when the hero mounts already in writing mode, for a page that exists to be written in. */
-  autoFocus?: boolean;
   /** Attributes for the field, such as the description that links it to its count and failure. Never its value, class or length. */
   inputProps?: Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange" | "className" | "maxLength" | "rows" | "placeholder">;
   /** Mounted under the sentence: the pad, and whatever the create flow shows around it. */
@@ -68,7 +66,7 @@ export interface HeroProps {
  *
  * @trace LLR-FE-070
  */
-export function Hero({ custom, onCustomChange, maxLength = 200, sub, title = "SatStake", autoFocus = false, inputProps, children }: HeroProps) {
+export function Hero({ custom, onCustomChange, maxLength = 200, sub, title = "SatStake", inputProps, children }: HeroProps) {
   const typed = useTyper(custom === null);
   const input = useRef<HTMLTextAreaElement>(null);
   const writing = custom !== null;
@@ -90,7 +88,7 @@ export function Hero({ custom, onCustomChange, maxLength = 200, sub, title = "Sa
     return () => window.removeEventListener("resize", fit);
   }, [writing]);
   // Set when the visitor chose to write, so the field takes focus once it exists and not when a parent restores one.
-  const focusNext = useRef(autoFocus);
+  const focusNext = useRef(false);
   useEffect(() => {
     if (!writing || !focusNext.current) return;
     focusNext.current = false;
@@ -117,7 +115,8 @@ export function Hero({ custom, onCustomChange, maxLength = 200, sub, title = "Sa
             // A promise is one sentence, so a line break is never kept: a pasted one becomes a space.
             onChange={(e) => onCustomChange(e.target.value.replace(/\r?\n/g, " "))}
             onKeyDown={(e) => {
-              if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+              // Safari ends a composition with an Enter whose isComposing is false; key code 229 is what marks it.
+              if (e.key !== "Enter" || e.nativeEvent.isComposing || e.keyCode === 229) return;
               e.preventDefault();
               e.currentTarget.blur();
             }}

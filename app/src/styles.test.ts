@@ -165,8 +165,14 @@ describe("LLR-FE-072 text and control borders meet WCAG 2.1 AA in both themes, m
     ["sat-text", "wash"],
     ["kept", "sheet"],
     ["kept", "wash"],
+    ["kept", "paper"],
     ["broken", "sheet"],
     ["broken", "wash"],
+    ["broken", "paper"],
+    ["error-fg", "sheet"],
+    ["error-fg", "wash"],
+    ["error-fg", "paper"],
+    ["ink", "mark"],
     ["on-sat", "sat"],
     ["on-state", "kept"],
     ["on-state", "broken"],
@@ -177,6 +183,10 @@ describe("LLR-FE-072 text and control borders meet WCAG 2.1 AA in both themes, m
   const borders: [string, string][] = [
     ["control", "sheet"],
     ["control", "paper"],
+    ["sat", "sheet"],
+    ["sat", "paper"],
+    ["error-fg", "sheet"],
+    ["error-fg", "paper"],
   ];
   for (const [theme, t] of Object.entries(themes)) {
     for (const [fg, bg] of text) {
@@ -190,6 +200,15 @@ describe("LLR-FE-072 text and control borders meet WCAG 2.1 AA in both themes, m
         expect(ratio(t[fg] as string, t[bg] as string)).toBeGreaterThanOrEqual(3);
       });
     }
+    // The promise field has no box: its underline is the only boundary it has, so the token it names is measured.
+    it(`${theme}: the promise field's underline is at least 3 to 1 on the paper and the sheet`, () => {
+      const body = rulesFor(/textarea\.typed-in$/).map((r) => r.body).join(";");
+      const token = /border-bottom:\s*\S+\s+solid\s+var\(--([\w-]+)\)/.exec(body)?.[1];
+      expect(token, ".typed-in border-bottom").toBeDefined();
+      for (const bg of ["paper", "sheet"]) {
+        expect(ratio(t[token as string] as string, t[bg] as string), `--${token} on --${bg}`).toBeGreaterThanOrEqual(3);
+      }
+    });
     it(`${theme}: the agreement's lines that are not lit stay at 4.5 to 1 on the sheet`, () => {
       const dimmed = rulesFor(/^\.doc\.focus li$/)[0]?.body ?? "";
       const share = Number(/color-mix\(in srgb,\s*var\(--ink2\)\s*(\d+)%,\s*transparent\)/.exec(dimmed)?.[1]);

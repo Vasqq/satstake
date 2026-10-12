@@ -6733,3 +6733,59 @@ Hairlines: pills, chips, Read as, the ghost button and the state chip are back o
 11. "Write your own": the dashed line sits under the words and spans them only. Seen at 390 and 1440.
 12. Check it yourself: serif state word in the kept tone ("Paid back", green), serif italic quote. Seen at 1440 light.
 13. "10 sats (0.0000001 cirBTC)" in clause 01, the clock and the stat tiles. Seen on promise #1 and on the landing.
+
+## Signed port, confirmation review fixes (2026-10-12)
+
+Paths relative to the repository; commands from `app/`. An independent confirmation review (Opus) of `1d450b9..9c2ac10` found no High, three Medium and five Low; it ran seven mutants, four survived. Requirements: LLR-FE-061, 072, 045 (05 v1.30).
+
+### Red
+
+Tests written before any code change, each run against the code or mutant it is meant to catch.
+
+```
+Hero.test       × leaves alone the Enter that Safari sends to end a composition, which says so only by key code 229   (original code)
+Hero.test       × shrinks again when words are deleted, since a browser never reports less than the height already set   (mutant 2103)
+WalletBar.test  × removes a refused switch's message as soon as a second switch request starts, while its prompt is still open   (mutant 2101)
+styles.test     × light: the promise field's underline is at least 3 to 1 on the paper and the sheet   (mutant 2102)
+styles.test     × dark: the promise field's underline is at least 3 to 1 on the paper and the sheet    (mutant 2102)
+```
+
+Added without a red, since the pairs pass on the current tokens and only extend what is enforced: text pairs `kept`, `broken` and `error-fg` on paper, sheet and wash, ink on `mark`; border pairs `sat` and `error-fg` on paper and sheet (the promise field's underline and the invalid field's border).
+
+### Green
+
+`design/Hero.tsx`: an Enter with key code 229 is left to the input method. `styles.css`: the comment on disabled buttons now says that the design's `.b` buttons dim to 40%, which WCAG 1.4.3 exempts for an inactive control; the text beside the button that says what is still to complete is full contrast. `npx vitest run src/design/Hero.test.tsx src/styles.test.ts src/wallet/WalletBar.test.tsx`: all pass.
+
+### Mutations 2100 to 2103 (copies in `cache/mutants/lead/`, restored and checked with `cmp`)
+
+| # | Mutant | Result |
+|---|---|---|
+| 2100 | `WalletBar` `pick` without `failure.clear()` | survives, equivalent: starting a connection moves wagmi's status to connecting, which changes the connection key the notice is cleared on, so the notice is gone while the prompt is open either way. The new connect test asserts exactly that and passes on both |
+| 2101 | `WalletBar` `switchNetwork` without `failure.clear()` | killed, 1 |
+| 2102 | promise field underline on `--rule` | killed, 2 |
+| 2103 | `Hero` `fit` without the height reset | killed, 1 |
+
+### Findings not changed in code
+
+- Medium 1, hairline borders on text buttons: 05 v1.30 states that a hairline round a button whose own text names it is decoration, as WCAG 1.4.11 reads; fields, select, radios and checkbox keep 3 to 1. This narrows what v1.14 asked for, and the change-log row says why.
+- Low 5, "1,000 sats of cirBTC" on the button and the ring: 05 v1.30 allows a short repetition of an amount the form already shows with its decimal form (the field, with the sats beside it).
+- Low 6, zero cirBTC reads "0 sats": shown only on the landing tile labelled "Locked now in cirBTC", which names the token.
+- Low 7, `formatSats` assumes 8 decimals: unreachable, since LLR-FE-006 disables creation in a token whose decimals differ from configuration and the configuration says 8.
+- Line separators U+2028 and U+2029 are kept: what is shown, counted and sent stay the same string, which is what LLR-FE-030 needs.
+
+### Re-inspection defects (2026-10-12)
+
+The re-inspection of LLR-FE-010 and 070 to 074 on the Signed design failed two rows.
+
+LLR-FE-072, focus on `#/create`: the page variant passed `autoFocus` to the hero, so a route change to `#/create` left focus in the promise field instead of the main heading, and a fresh load skipped the skip link and the navigation. Phase B1 had pinned that behaviour in `App.test.tsx` and `CreateFlow.test.tsx` against the requirement. Tests changed first, red, from `app/`: `npx vitest run src/App.test.tsx -t LLR-FE-072`:
+
+```
+× moves the title and the focus when the route changes
+    AssertionError: expected <textarea …(9)></textarea> to be <h1 tabindex="-1" class="hero-h1">…(1)</h1>
+× leaves the focus alone on the first page load of the create page, so the skip link is still the first stop
+    AssertionError: expected <textarea …(9)></textarea> not to be <textarea …(9)></textarea>
+```
+
+Green: the `autoFocus` prop is removed from `design/Hero.tsx` and `create/CreateView.tsx` (nothing else used it; "Write your own" still moves focus into the field it opens). The promise field sits inside the heading, so the next Tab reaches it. `npm test`: 1402 passed, 9 skipped; trace check OK.
+
+LLR-FE-010, the sealed panel shows the parties, deadline and stake decoded from the `PledgeCreated` event of the staker's own creation receipt, while the requirement named only the six views. No code change: 05 v1.31 allows that event in the creation flow, with the reason in its change-log row.

@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HttpRequestError } from "viem";
 import { App } from "./App";
@@ -569,10 +569,10 @@ describe("LLR-FE-072 each page sets the title and moves focus to its heading", (
     act(() => {
       window.location.hash = "#/create";
     });
-    await screen.findByRole("heading", { name: /^I promise to/ });
+    const create = await screen.findByRole("heading", { name: /^I promise to/ });
     expect(document.title).toBe("New promise | SatStake");
-    // The page exists to be written in, so focus goes to the promise and not to the heading above it.
-    expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Your promise" }));
+    // The promise field is inside this heading, so the next Tab reaches it.
+    await waitFor(() => expect(document.activeElement).toBe(create));
   });
 
   it("moves the focus to the next pledge's heading when only the pledge changes", async () => {
@@ -704,6 +704,14 @@ describe("LLR-FE-072 focus and title on the first page load and on the swap to n
     await screen.findByRole("heading", { name: "About SatStake" });
     expect(document.title).toBe("About SatStake");
     expect(focused).toEqual([]);
+    expect(document.activeElement).not.toBe(screen.getByRole("heading", { level: 1 }));
+  });
+
+  it("leaves the focus alone on the first page load of the create page, so the skip link is still the first stop", async () => {
+    setup("#/create");
+    const field = await screen.findByRole("textbox", { name: "Your promise" });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(document.activeElement).not.toBe(field);
     expect(document.activeElement).not.toBe(screen.getByRole("heading", { level: 1 }));
   });
 
