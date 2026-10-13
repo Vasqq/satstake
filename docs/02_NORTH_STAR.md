@@ -1,6 +1,6 @@
 # 02 North Star
 
-Version 1.2, 2026-10-08 (the landing page no longer has to quote section 1, which still opens the README and the submission; 05 v1.27). This document states what SatStake is, who it serves, and which properties it must never lose. Every high-level requirement traces to a section here.
+Version 1.3, 2026-10-13 (the README may name the three mainnet contract addresses and omits local setup; 05 v1.34). This document states what SatStake is, who it serves, and which properties it must never lose. Every high-level requirement traces to a section here.
 
 Tags: [D] decided. [S] supported by evidence (see 01_VERIFICATION_PASS.md). [A] assumption. [Q] open question. Open questions are not decisions.
 
@@ -92,4 +92,4 @@ SatStake is done when all of the following are true. [D]
 
 ## 12. From North Star to README
 
-The public README is this document rewritten for a reader who has ten seconds: section 1 becomes the opening line, section 3 the description, section 6 the "Why Arc" section, section 7 the "Trust model and limitations" section. Nothing may appear in the README that is not stated here. [D]
+The public README is this document rewritten for a reader who has ten seconds: section 1 becomes the opening line, section 3 the description, section 6 the "Why Arc" section, section 7 the "Trust model and limitations" section. It may also name the SatStake contract, USDC, and cirBTC on Arc mainnet, with Sourcify and explorer links for SatStake. It does not include a local setup section. Nothing else may appear in the README that is not stated here. [D]

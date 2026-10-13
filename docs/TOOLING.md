@@ -43,6 +43,8 @@ Installed at project scope in `.claude/skills/` with `npx -y skills@1.7.0 add ..
 | Skill | Source | Reason |
 |---|---|---|
 | `ui-ux-pro-max` | https://github.com/nextlevelbuilder/ui-ux-pro-max-skill | Accessibility and UX pass on every view (contrast, touch targets, forms, focus) and its pre-delivery checklist before review (LLR-FE-072) |
+| `create-readme` | https://github.com/github/awesome-copilot, skill `create-readme`, installed 2026-10-12 with `npx -y skills@1.7.0 add github/awesome-copilot --skill create-readme -a claude-code cursor -y --copy`. Skills.sh search: 18,783 installs, the most-installed README skill. Gen Safe, Socket 0 alerts, Snyk Low Risk | Liam asked for it to draft `README.md` (LLR-SB-001) |
+| `humanizer` | https://github.com/blader/humanizer, installed 2026-10-13 with `npx -y skills@1.7.0 add blader/humanizer -a claude-code cursor -y --copy`. Skills.sh: Gen Safe, Socket 0 alerts, Snyk Med Risk | Prose pass on the hackathon README after the LLR-SB-001 rewrite; facts and links unchanged |
 | `emil-design-eng` | https://github.com/emilkowalski/skills | Polish rules: press feedback, easing, no `transition: all`, hover gating |
 | `animate` | https://github.com/emilkowalski/skills | Building the rotating promise card and the press feedback (LLR-FE-070) |
 | `review-animations` | https://github.com/emilkowalski/skills | Review of all motion before commit |

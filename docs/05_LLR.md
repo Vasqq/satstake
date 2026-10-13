@@ -1,6 +1,6 @@
 # 05 Low-Level Requirements
 
-Version 1.33, 2026-10-12. Status: baselined. Low-level requirements are precise enough to be implemented and tested without further design decisions. Conventions follow 04_HLR.md. The "Derived" column marks requirements that arise from design or platform constraints rather than directly from a user journey; each carries its reason.
+Version 1.34, 2026-10-13. Status: baselined. Low-level requirements are precise enough to be implemented and tested without further design decisions. Conventions follow 04_HLR.md. The "Derived" column marks requirements that arise from design or platform constraints rather than directly from a user journey; each carries its reason.
 
 Scopes: **SC** smart contract, **FE** frontend application, **DP** deployment, **SB** submission, **VV** verification process.
 
@@ -338,7 +338,7 @@ stateDiagram-v2
 
 | ID | Requirement | Parents | Method | Derived |
 |---|---|---|---|---|
-| LLR-SB-001 | `README.md` shall contain, in order: the one-sentence description, the live link, contract address with Sourcify and explorer links, how it works with the state diagram, why Arc, trust model and limitations, the traceability summary, and local setup. | HLR-034 | I | No |
+| LLR-SB-001 | `README.md` shall contain, in order: the one-sentence description, the live link, mainnet contract addresses (SatStake with Sourcify and explorer links; USDC and cirBTC on Arc mainnet), how it works with the state diagram, why Arc, trust model and limitations, and the traceability summary. It shall not include a local setup section. | HLR-034 | I | No |
 | LLR-SB-002 | The DoraHacks "what it does / what it uses Arc for" text shall be at most 150 words and shall contain no claim absent from the North Star. | HLR-034 | I | No |
 | LLR-SB-003 | The demo video shall be at most 90 seconds and follow UJ-10, UJ-42, and UJ-40 in that order, showing the expired stake reaching the beneficiary. | HLR-034 | I | No |
 | LLR-SB-004 | The repository shall be public under the MIT license. | HLR-034 | I | No |
@@ -366,6 +366,7 @@ stateDiagram-v2
 
 | Version | Date | Change |
 |---|---|---|
+| 1.34 | 2026-10-13 | LLR-SB-001: README lists SatStake, USDC, and cirBTC on Arc mainnet and drops the local setup section; the product entry point is the live site (North Star section 12). |
 | 1.0 | 2026-09-24 | Baseline |
 | 1.1 | 2026-09-24 | Added LLR-VV-009 to 011; LLR-FE-031 preset timing; LLR-DP-003 password files |
 | 1.2 | 2026-09-24 | LLR-VV-011 records test-first evidence in a log instead of commit history, per Liam's commit preference |
