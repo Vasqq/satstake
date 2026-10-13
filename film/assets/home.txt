@@ -1,0 +1,163 @@
+Skip to content
+SatStake
+New promise
+My promises
+About
+Live on Arc mainnet
+
+I promise to
+run three times this week.
+
+Or my stake goes to someone I chose. A friend decides whether I kept it, and code makes sure the money goes where they say.
+
+Write your own ↗
+THE AGREEMENT
+Seven lines. No fine print.
+
+Every promise is the same short contract. Pick a role to see the lines that apply to it.
+
+Staker
+Referee
+Beneficiary
+Anyone
+An example promise
+EXAMPLE, NOT A REAL PROMISEArc · the same for every promise
+The staker locks 1,000 sats in the contract. Nothing but clause 03 or 04 moves it.
+Only the referee may mark this promise Kept or Broken, once, and only before the deadline (7 days after it is made).
+If the referee marks it Kept, the stake returns to the staker.
+If it’s marked Broken, or the referee says nothing by the deadline, the stake goes to the beneficiary.
+After a verdict or the deadline, anyone may send the payout. SatStake takes no fee; the sender pays a few cents in USDC.
+Nobody can cancel, edit or extend this promise. Not the staker, and not the people who built SatStake.
+The staker, referee and beneficiary must be three different addresses.
+Staker
+0xd172…809f
+Referee
+0x8a3e…11c0 · rules once
+Beneficiary
+0x4f2b…a9d1 · receives if broken or silent
+THE CLOCK
+Drag through a week. Watch the money move.
+
+Pick what the referee does, then scrub the timeline. There are only three endings, and the contract plays them the same way every time.
+
+REFEREE
+EXAMPLE, NOT A REAL PROMISE
+Says Kept on day 4
+Says Broken on day 4
+Says nothing
+Staker
+0xd172…809f
+Beneficiary
+0x4f2b…a9d1
+Referee
+0x8a3e…11c0
+contract
+1,000
+Day 2.2 · deadline in 4.8 days
+Open
+
+Locked and waiting. Only the referee can rule, and only until day 7.
+
+Open
+Kept
+Paid back
+day 0
+day 2
+day 4
+day 6
+day 8
+day 10
+deadline
+verdict
+payout
+ONCE IT’S SIGNED
+Nobody can take it back.
+
+Not you, not your referee, not the people who built it. The rules live in code that has no owner.
+
+Cancel it
+There’s no withdraw button. Only a Kept verdict returns the stake.
+Edit the words
+The promise is written to Arc as you wrote it, permanently.
+Move the deadline
+It can be a minute or a year away, but once it’s set, it’s set.
+Swap the referee
+The people are fixed when the promise is made.
+Take a fee
+SatStake earns nothing. The only cost is Arc’s network fee, in cents.
+Pause or upgrade it
+No owner, no admin key, no pause switch, no upgrade path.
+IN PLAIN WORDS
+What you’re trusting.
+
+SatStake doesn’t claim to be trustless. The code holds the money, and two parties still matter.
+
+Your referee
+
+A dishonest referee can mark a kept promise broken, or never answer. Either way the stake goes to the beneficiary. Choose someone honest.
+
+Circle
+
+Circle issues USDC and cirBTC and can pause a token or block an address. While paused, promises in that token can’t be created or paid out. A blocked recipient’s stake waits until the block lifts.
+
+Your own care
+Every word you write is public, forever.
+A beneficiary address nobody owns loses the stake for good.
+Tokens sent straight to the contract can’t be recovered.
+Tested requirement by requirement, not audited.
+LIVE ON ARC
+Check it yourself.
+
+Everything in this section is read from the contract, with no wallet and nothing invented. SatStake uses cirBTC as the stake, USDC as gas so a promise costs cents to make, and Arc’s deterministic, sub-second finality so a payout is final the moment it lands.
+
+PROMISE #4
+OPEN
+Open promise #4:
+“Publish the first release notes by the end of October.”
+
+18d
+08h
+27m
+41s
+
+Deadline Nov 1, 2026, 12:00 AM UTC
+
+STAKE
+1,000 sats (0.00001 cirBTC)
+MADE IT
+0xd172…809f
+JUDGES IT
+0x0Fb1…E4B9
+GETS IT IF BROKEN OR MISSED
+0x8bc7…1cad
+01 / 04
+4
+PROMISES MADE
+$0 in USDC
+LOCKED NOW IN USDC
+1,000 sats (0.00001 cirBTC)
+LOCKED NOW IN CIRBTC
+Arc
+CHAIN 5042
+CONTRACT
+0xEbcda489EB528c573E9a190eB8EfE63b44d9204e
+Copy
+View on explorer
+, the contract
+
+Verified on Sourcify
+A live promise
+GitHub repository
+
+Your word, in writing.
+
+No signup, no email, no account. A wallet on Arc and a little USDC for fees. Reading a promise needs nothing at all.
+
+Make a promise
+
+SatStake · solo entry, Circle Arc Microgrants · Runs on Arc
+
+USDC or cirBTC · fees in cents · no fee to SatStake
+
+About and limits
+GitHub

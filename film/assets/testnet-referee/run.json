@@ -1,0 +1,24 @@
+{
+ "chainId": 5042002,
+ "contract": "0x3Ae26b15B9085ddB223FfEb503B4f713e682Cac4",
+ "promise": 44,
+ "txs": [
+  {
+   "role": "staker",
+   "hash": "0x8d263f112e83ff1ced59228fd533dd3d371849582d1dcde5989d6b1e2ce788c9"
+  },
+  {
+   "role": "staker",
+   "hash": "0x79d3af2a2c3fa8684c41f427e22e16687f3f16c29b6f4244566c56b03d340bd5"
+  },
+  {
+   "role": "referee",
+   "hash": "0x30fe4139f7f4c327119ba422540d7ed58797d9f8f21c2b3dafa2f84e291d48c0"
+  },
+  {
+   "role": "referee",
+   "hash": "0xa4bbcd0f02a2133f10022f2c661341e1f85dd077250f336706c14a0e042b129f"
+  }
+ ],
+ "funding": "0x0ea8b395e4dd811f6486ccea8e2463f4946f33bbb235f04d730c303d7fe1eaf2"
+}

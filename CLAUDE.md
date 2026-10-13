@@ -140,6 +140,12 @@ Dates were pulled forward on 2026-09-24 after the review was found to be rolling
 
 Newest entry first. Each entry: date, what was done, decisions with one-line reasons, next step.
 
+- 2026-10-13: Hackathon README committed. It names SatStake, USDC, and cirBTC on Arc mainnet and has no local setup section (North Star 1.3, LLR v1.34). Demo film source committed in `film/` with `out/` gitignored.
+  - Decision: no seal and no signature over the film UI, because `a34c4a1` removed both from the app. Create, sign, and verdict shots are real Arc testnet captures (`app/scripts/film-capture.mjs`); the payoff and proof shots are the live mainnet site.
+  - Cost: two failed capture attempts left 1,000 and 200 testnet sats in testnet promises #42 and #43 (throwaway referee keys gone). The testnet operator now holds 5 sats; any later cirBTC testnet run needs a top-up.
+  - DoraHacks asks for no video; the film serves LLR-SB-003 only and must not hold up the submission (deadline Oct 14, 23:59 ET).
+  - **Next step:** Fast-forward `main` and `worktree-fe-config-reading` so Pages republishes the mainnet build. `docs/DEMO_TESTNET.md` still describes the removed signature box, so it stays untracked.
+
 - 2026-10-12 (evening): Promises are made with Sign it, only on the New promise page. Field errors appear when Sign it is pressed (05 v1.33). Deadline choices are plain radios. The signature box is removed; the signed panel shows the result. Fast-forward onto `main` and `worktree-fe-config-reading` so Pages publishes the mainnet build.
   - **Next step:** Confirm the Pages deploy of this commit is the Sign it site. The practice script is `docs/DEMO_TESTNET.md`, still untracked.
 

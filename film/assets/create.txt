@@ -1,0 +1,55 @@
+Skip to content
+SatStake
+New promise
+My promises
+About
+Live on Arc mainnet
+
+Reading needs no wallet. To act, connect a browser wallet; on a phone, use your wallet app’s browser.
+
+I promise to
+
+Lock a stake against a promise. Your referee decides whether you kept it.
+
+Anyone can read this, and it cannot be changed later.
+
+0 of 280 bytes
+
+NEW PROMISE
+TOKEN
+USDC
+cirBTC
+
+AMOUNT
+
+REFEREE ADDRESS
+
+The person who decides. They must mark the promise kept before the deadline.
+
+BENEFICIARY ADDRESS
+
+This address receives your stake if the promise is broken or missed. If nobody controls it, the stake is lost for good.
+
+DEADLINE
+2 minutes
+1 day
+7 days
+30 days
+Custom
+
+I understand that the referee alone decides whether I kept this promise. If the referee marks it broken, or has not marked it kept by the deadline, my stake goes to the beneficiary and cannot be recovered.
+
+Sign it
+
+Your wallet may ask twice: first to let SatStake take exactly this amount, then to create the promise.
+
+Connect a wallet to act.
+
+Still to complete: Promise, Amount, Referee address, Beneficiary address, Deadline, the box confirming you understand.
+
+SatStake · solo entry, Circle Arc Microgrants · Runs on Arc
+
+USDC or cirBTC · fees in cents · no fee to SatStake
+
+About and limits
+GitHub

@@ -1,0 +1,46 @@
+{
+ "dpr": 2,
+ "boxes": {
+  "heroBlock": {
+   "x": 435,
+   "y": 336,
+   "w": 2010,
+   "h": 180,
+   "cssW": 1004.8125,
+   "cssH": 89.75
+  },
+  "banner": {
+   "x": 435,
+   "y": 580,
+   "w": 2010,
+   "h": 122,
+   "cssW": 1004.8125,
+   "cssH": 60.796875
+  },
+  "status": {
+   "x": 433,
+   "y": 774,
+   "w": 2,
+   "h": 2,
+   "cssW": 1,
+   "cssH": 1
+  },
+  "payout": {
+   "x": 660,
+   "y": 1973,
+   "w": 243,
+   "h": 88,
+   "cssW": 121.59375,
+   "cssH": 44
+  },
+  "header": {
+   "x": 0,
+   "y": 0,
+   "w": 2880,
+   "h": 176,
+   "cssW": 1440,
+   "cssH": 88
+  }
+ },
+ "text": "Skip to content SatStake New promise My promises About Live on Arc testnet Connected: 0x94Da…20cb on Arc Testnet. PROMISE #44 “run three times this week.” Kept. The stake goes back to 0x1864…8767; anyone can send it now. You judge this promise Kept. The stake can be sent back to the person who made the promise. The agreement Staker Referee Beneficiary Anyone Promise #44 Arc Testnet · source verified on Sourcify The staker locks $0.10 in USDC. Only the referee can mark it Kept or Broken, once, before the deadline (Oct 14, 2026, 3:30 PM UTC). Kept returns the stake to the staker. Broken, or no answer by the deadline, sends it to the beneficiary. Anyone can send that payout. Gas is a few cents in USDC. Send payout Anyone can send this. The full stake goes only to the staker. No one can cancel, edit, or extend it. The staker, referee and beneficiary are three different addresses. signed Staker 0x1864…8767 Copy View on explorer , the staker Kept Referee (you) 0x94Da…20cb · rules once Copy View on explorer , the referee Beneficiary 0xee0c…5212 · receives if broken or silent Copy View on explorer , the beneficiary You marked this promise kept. 0x30fe…48c0 Copy View on explorer , the transaction The clock DEADLINE Oct 14, 2026, 3:30 PM UTC WHERE THE MONEY IS Staker 0x1864…8767 Beneficiary 0xee0c…5212 Referee can’t vote now contract Kept Kept The referee confirmed it. The stake waits for someone to send the payout. $0.10 in USDC Open Kept created deadline SatStake · Runs on Arc Testnet About and limits GitHub"
+}

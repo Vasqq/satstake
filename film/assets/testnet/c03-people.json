@@ -1,0 +1,86 @@
+{
+ "dpr": 2,
+ "boxes": {
+  "hero": {
+   "x": 435,
+   "y": 597,
+   "w": 2010,
+   "h": 500,
+   "cssW": 1004.8125,
+   "cssH": 250
+  },
+  "heroBlock": {
+   "x": 435,
+   "y": 366,
+   "w": 2010,
+   "h": 731,
+   "cssW": 1004.8125,
+   "cssH": 365.625
+  },
+  "form": {
+   "x": 435,
+   "y": 1337,
+   "w": 2010,
+   "h": 1057,
+   "cssW": 1004.8125,
+   "cssH": 528.484375
+  },
+  "token": {
+   "x": 479,
+   "y": 1548,
+   "w": 929,
+   "h": 80,
+   "cssW": 464.40625,
+   "cssH": 40
+  },
+  "amount": {
+   "x": 1472,
+   "y": 1548,
+   "w": 929,
+   "h": 80,
+   "cssW": 464.40625,
+   "cssH": 40
+  },
+  "submit": {
+   "x": 1931,
+   "y": 2271,
+   "w": 470,
+   "h": 88,
+   "cssW": 234.75,
+   "cssH": 44
+  },
+  "header": {
+   "x": 0,
+   "y": 0,
+   "w": 2880,
+   "h": 176,
+   "cssW": 1440,
+   "cssH": 88
+  },
+  "Referee address": {
+   "x": 479,
+   "y": 1775,
+   "w": 929,
+   "h": 80
+  },
+  "Beneficiary address": {
+   "x": 1472,
+   "y": 1775,
+   "w": 929,
+   "h": 80
+  },
+  "Amount": {
+   "x": 1472,
+   "y": 1548,
+   "w": 929,
+   "h": 80
+  },
+  "Token": {
+   "x": 479,
+   "y": 1548,
+   "w": 929,
+   "h": 80
+  }
+ },
+ "text": "Skip to content SatStake New promise My promises About Live on Arc testnet Connected: 0x1864…8767 on Arc Testnet. I promise to Lock a stake against a promise. Your referee decides whether you kept it. Anyone can read this, and it cannot be changed later. 26 of 280 bytes NEW PROMISE TOKEN USDC cirBTC AMOUNT Your balance: 0.00000205 cirBTC (205 sats). This amount: 0.000002 cirBTC (200 sats). REFEREE ADDRESS The person who decides. They must mark the promise kept before the deadline. BENEFICIARY ADDRESS This address receives your stake if the promise is broken or missed. If nobody controls it, the stake is lost for good. DEADLINE 2 minutes 1 day 7 days 30 days Custom Ends about Oct 14, 2026, 3:27 PM UTC. I understand that the referee alone decides whether I kept this promise. If the referee marks it broken, or has not marked it kept by the deadline, my stake goes to the beneficiary and cannot be recovered. Sign it with 200 sats of cirBTC Your wallet may ask twice: first to let SatStake take exactly this amount, then to create the promise. Still to complete: the box confirming you understand. SatStake · Runs on Arc Testnet About and limits GitHub"
+}

@@ -1,0 +1,46 @@
+{
+ "dpr": 2,
+ "boxes": {
+  "hero": {
+   "x": 435,
+   "y": 597,
+   "w": 2010,
+   "h": 500,
+   "cssW": 1004.8125,
+   "cssH": 250
+  },
+  "heroBlock": {
+   "x": 435,
+   "y": 366,
+   "w": 2010,
+   "h": 731,
+   "cssW": 1004.8125,
+   "cssH": 365.625
+  },
+  "form": {
+   "x": 435,
+   "y": 1337,
+   "w": 2010,
+   "h": 816,
+   "cssW": 1004.8125,
+   "cssH": 407.828125
+  },
+  "panel": {
+   "x": 435,
+   "y": 1518,
+   "w": 2010,
+   "h": 635,
+   "cssW": 1004.8125,
+   "cssH": 317.3125
+  },
+  "header": {
+   "x": 0,
+   "y": 0,
+   "w": 2880,
+   "h": 176,
+   "cssW": 1440,
+   "cssH": 88
+  }
+ },
+ "text": "Skip to content SatStake New promise My promises About Live on Arc testnet Connected: 0x1864…8767 on Arc Testnet. I promise to Lock a stake against a promise. Your referee decides whether you kept it. PROMISE #43 · SIGNED Staker 0x1864…8767 Referee 0x8DdB…448A Beneficiary 0x6F0E…8aCE SIGNED IN TRANSACTION 0x2856…0681 Copy View on explorer , the creation transaction PROMISE NUMBER #43 STAKE HELD Until the payout is sent, after the referee rules or Oct 14, 2026, 3:28 PM UTC SEND THIS LINK TO YOUR REFEREE AND YOUR BENEFICIARY http://127.0.0.1:4174/#/p/43 Copy the link to this promise Open the promise Make another promise SatStake · Runs on Arc Testnet About and limits GitHub"
+}

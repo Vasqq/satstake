@@ -1,0 +1,54 @@
+{
+ "dpr": 2,
+ "boxes": {
+  "heroBlock": {
+   "x": 435,
+   "y": 336,
+   "w": 2010,
+   "h": 180,
+   "cssW": 1004.8125,
+   "cssH": 89.75
+  },
+  "banner": {
+   "x": 435,
+   "y": 580,
+   "w": 2010,
+   "h": 221,
+   "cssW": 1004.8125,
+   "cssH": 110.390625
+  },
+  "status": {
+   "x": 433,
+   "y": 873,
+   "w": 2,
+   "h": 2,
+   "cssW": 1,
+   "cssH": 1
+  },
+  "kept": {
+   "x": 660,
+   "y": 1786,
+   "w": 141,
+   "h": 88,
+   "cssW": 70.5625,
+   "cssH": 44
+  },
+  "broken": {
+   "x": 825,
+   "y": 1786,
+   "w": 173,
+   "h": 88,
+   "cssW": 86.34375,
+   "cssH": 44
+  },
+  "header": {
+   "x": 0,
+   "y": 0,
+   "w": 2880,
+   "h": 176,
+   "cssW": 1440,
+   "cssH": 88
+  }
+ },
+ "text": "Skip to content SatStake New promise My promises About Live on Arc testnet Connected: 0x94Da…20cb on Arc Testnet. PROMISE #44 “run three times this week.” 0x1864…8767 named you to judge this promise. Before Oct 14, 2026, 3:30 PM UTC, decide: was it kept? Your answer is final. The stake never passes through you. Silence counts as broken. Answering needs a wallet on Arc with a few cents of USDC for the network fee. You judge this promise Open. Waiting for the verdict. The agreement Staker Referee Beneficiary Anyone Promise #44 Arc Testnet · source verified on Sourcify The staker locks $0.10 in USDC. Only the referee can mark it Kept or Broken, once, before the deadline (Oct 14, 2026, 3:30 PM UTC). Was this promise kept? Kept Broken Your verdict is final. Record it before the deadline, or the stake goes to the beneficiary. Kept returns the stake to the staker. Broken, or no answer by the deadline, sends it to the beneficiary. Anyone can send that payout. Gas is a few cents in USDC. No one can cancel, edit, or extend it. The staker, referee and beneficiary are three different addresses. signed Staker 0x1864…8767 Copy View on explorer , the staker Referee (you) 0x94Da…20cb · rules once Copy View on explorer , the referee Beneficiary 0xee0c…5212 · receives if broken or silent Copy View on explorer , the beneficiary The clock DEADLINE Oct 14, 2026, 3:30 PM UTC WHERE THE MONEY IS Staker 0x1864…8767 Beneficiary 0xee0c…5212 Referee 0x94Da…20cb contract Deadline in 23 hours 59 minutes Open Locked until the deadline. $0.10 in USDC Open created deadline SatStake · Runs on Arc Testnet About and limits GitHub"
+}

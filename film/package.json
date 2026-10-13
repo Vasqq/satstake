@@ -1,0 +1,13 @@
+{
+  "name": "satstake-film",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "capture": "node tools/capture.mjs",
+    "stills": "node tools/render.mjs --stills",
+    "render": "node tools/render.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
