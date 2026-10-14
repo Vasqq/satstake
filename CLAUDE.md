@@ -140,6 +140,11 @@ Dates were pulled forward on 2026-09-24 after the review was found to be rolling
 
 Newest entry first. Each entry: date, what was done, decisions with one-line reasons, next step.
 
+- 2026-10-14: Brand kit committed in `brand/` (`636a232`) and pushed to `signed-frontend` and `main`. The mark is an italic S standing on an orange rule, drawn from the wordmark's Newsreader italic; it is the favicon, app icons, avatar and link preview. The header keeps the wordmark alone, because the mark beside it repeated the S. `index.html` now links the icons, manifest, theme colour and og:image tags. `docs/TRACE_MATRIX.md` regenerated: CI on `3f13518` had failed its "Matrix is committed and current" step.
+  - Decision: `brand/` holds the export kit and the scripts that rebuild it (`cd brand/src && python3 build.py`); exploration pages for dropped directions were deleted.
+  - Known limit: the orange rule on paper is 3.04:1, enough for a graphic and not for small text.
+  - **Next step:** confirm CI and Pages are green on `main`, check the live favicon and link preview, then submit on DoraHacks. Liam's walkthrough items in `docs/WALKTHROUGH.md` still apply.
+
 - 2026-10-13: Hackathon README committed. It names SatStake, USDC, and cirBTC on Arc mainnet and has no local setup section (North Star 1.3, LLR v1.34). Demo film source committed in `film/` with `out/` gitignored.
   - Decision: no seal and no signature over the film UI, because `a34c4a1` removed both from the app. Create, sign, and verdict shots are real Arc testnet captures (`app/scripts/film-capture.mjs`); the payoff and proof shots are the live mainnet site.
   - Cost: two failed capture attempts left 1,000 and 200 testnet sats in testnet promises #42 and #43 (throwaway referee keys gone). The testnet operator now holds 5 sats; any later cirBTC testnet run needs a top-up.
