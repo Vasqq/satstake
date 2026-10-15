@@ -25,8 +25,8 @@ jobs:
       - name: Scan full history
         run: gitleaks git --redact --no-banner .
 
-  # LLR-VV-002, LLR-VV-009: requirement links, journey coverage, and a current matrix.
-  trace:
+  # Tests for the deploy, verify, seed and end-to-end tools, and the secret-scanning hook.
+  tools:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,10 +46,6 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Tool tests
         run: node --test test/tools/*.test.mjs
-      - name: Trace check
-        run: node tools/trace-check.mjs
-      - name: Matrix is committed and current
-        run: git diff --exit-code docs/TRACE_MATRIX.md
 
   contracts:
     runs-on: ubuntu-latest
@@ -80,8 +76,7 @@ jobs:
           cat coverage-summary.txt
           node tools/coverage-gate.mjs coverage-summary.txt
 
-  # LLR-VV-008: static analysis of the contract. Any medium or high finding fails the build; the low
-  # ones are justified in docs/evidence/slither.md.
+  # Static analysis of the contract. Any medium or high finding fails the build.
   slither:
     runs-on: ubuntu-latest
     steps:

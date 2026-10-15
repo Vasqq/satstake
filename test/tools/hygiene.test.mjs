@@ -119,9 +119,9 @@ const MARKER = "TO" + "DO";
 const SECOND_MARKER = "FIX" + "ME";
 
 describe("LLR-SB-005 the repository scans read the repository", () => {
-  it("reads the contract, the application, the scripts, and the documents, each with its text", () => {
+  it("reads the contract, the application, the scripts, and the README, each with its text", () => {
     const files = new Map(trackedFiles().map(({ path, text }) => [path, text]));
-    for (const path of ["docs/README.md", "docs/ACCEPTANCE.md", "src/SatStake.sol", "script/Deploy.s.sol", "app/src/format.ts", "app/src/App.tsx"]) {
+    for (const path of ["README.md", "src/SatStake.sol", "script/Deploy.s.sol", "app/src/format.ts", "app/src/App.tsx"]) {
       assert.ok((files.get(path) ?? "").length > 0, `${path} was not read`);
     }
   });

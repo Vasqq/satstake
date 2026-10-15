@@ -3,7 +3,7 @@
  * Live end-to-end run on Arc testnet against the deployed SatStake (LLR-VV-005). Executes UJ-10,
  * UJ-11, UJ-30, UJ-31, UJ-32 and UJ-40 to UJ-45 with real testnet USDC and cirBTC, asserts the
  * state and the exact balance movement after every step, and records each transaction hash in
- * docs/evidence/e2e-testnet.md and .json. Refusals are mined transactions with status 0, not
+ * cache/e2e-testnet.md and .json. Refusals are mined transactions with status 0, not
  * simulations, and the throwaway accounts return what they hold to the operator at the end.
  *
  * Usage: node e2e/run.mjs [--dry-run]
@@ -64,7 +64,7 @@ async function main(holder) {
 }
 
 // A failed run leaves its partial record under cache/ (gitignored), so the hashes already sent
-// survive the terminal; it is not evidence and is never written to docs/evidence/.
+// survive the terminal; it is not evidence and is never written to cache/.
 const holder = {};
 let finished = false;
 try {
@@ -82,7 +82,7 @@ try {
 }
 if (finished && holder.evidence) {
   const data = holder.evidence.toJSON();
-  writeFileSync(join(root, "docs/evidence/e2e-testnet.json"), `${JSON.stringify(data, null, 2)}\n`);
-  writeFileSync(join(root, "docs/evidence/e2e-testnet.md"), renderEvidence(data));
-  console.log(`result ${data.result}; ${data.steps.length} steps recorded in docs/evidence/e2e-testnet.md`);
+  writeFileSync(join(root, "cache/e2e-testnet.json"), `${JSON.stringify(data, null, 2)}\n`);
+  writeFileSync(join(root, "cache/e2e-testnet.md"), renderEvidence(data));
+  console.log(`result ${data.result}; ${data.steps.length} steps recorded in cache/e2e-testnet.md`);
 }

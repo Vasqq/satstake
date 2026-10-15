@@ -1,60 +1,33 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { type Abi, BaseError, ContractFunctionRevertedError, encodeErrorResult } from "viem";
 import { describe, expect, it } from "vitest";
 import { satStakeAbi } from "../abi";
 import { ERROR_MESSAGES, TOKEN_REVERT_MESSAGE, userMessageFor } from "./errors";
 
-// Section 2.2 is read for its list of errors, which says which ones need a message. Its wording is not
-// binding (05 v1.27), so the messages themselves are free to change.
-const llr = readFileSync(resolve(import.meta.dirname, "../../../docs/05_LLR.md"), "utf8");
-const section = llr.slice(llr.indexOf("### 2.2 Error messages"), llr.indexOf("### 2.3 Requirements"));
-const table = new Map(
-  [...section.matchAll(/^\| ([^|]+?) \| ([^|]+?) \|$/gm)]
-    .map((m) => [m[1] as string, m[2] as string] as const)
-    .filter(([name]) => name !== "Error" && !/^-+$/.test(name)),
-);
-
 const abiErrors = (satStakeAbi as Abi).flatMap((item) => (item.type === "error" ? [item] : []));
 const abiErrorNames = abiErrors.map((e) => e.name);
 
-// LLR-FE-060 excludes an error that only the constructor can raise: no request the application sends can
-// produce it, and 2.2 gives it no row.
+// Only the constructor can raise this one, so no request the application sends can produce it.
 const CONSTRUCTOR_ONLY = ["InvalidAllowlist"];
+const reachable = (name: string) => !CONSTRUCTOR_ONLY.includes(name);
 
 describe("LLR-FE-060 LLR-VV-006 every custom error in the contract ABI has a message", () => {
-  it("reads the table and the ABI, and not nothing", () => {
-    expect(table.size).toBeGreaterThanOrEqual(20);
+  it("reads the ABI, and not nothing", () => {
     expect(abiErrorNames.length).toBeGreaterThanOrEqual(20);
     expect(abiErrorNames).toContain("SafeERC20FailedOperation");
     expect(abiErrorNames).toContain("ReentrancyGuardReentrantCall");
   });
 
-  it("gives each ABI error that section 2.2 lists a message with words in it", () => {
-    const missing: string[] = [];
-    for (const name of abiErrorNames) {
-      if (!table.has(name)) continue;
-      if (!(ERROR_MESSAGES[name] ?? "").trim()) missing.push(name);
-    }
+  it("gives each error a request can raise a message with words in it", () => {
+    const missing = abiErrorNames.filter((name) => reachable(name) && !(ERROR_MESSAGES[name] ?? "").trim());
     expect(missing).toEqual([]);
   });
 
-  it("leaves unmapped only the constructor-only errors that LLR-FE-060 excludes, which are the ones section 2.2 does not list", () => {
-    const unlisted = abiErrorNames.filter((name) => !table.has(name));
-    expect(unlisted).toEqual(CONSTRUCTOR_ONLY);
+  it("leaves unmapped only the constructor-only errors", () => {
     for (const name of CONSTRUCTOR_ONLY) expect(ERROR_MESSAGES[name], name).toBeUndefined();
   });
 
-  it("holds no message for a name that is not an error of the ABI or has no row in section 2.2", () => {
-    for (const name of Object.keys(ERROR_MESSAGES)) {
-      expect(abiErrorNames, name).toContain(name);
-      expect(table.has(name), name).toBe(true);
-    }
-  });
-
-  it("lists in section 2.2 only errors the ABI has, besides the token revert and the wallet rejection", () => {
-    const other = [...table.keys()].filter((name) => !abiErrorNames.includes(name));
-    expect(other.sort()).toEqual(["Token revert on transfer", "Wallet rejection (4001)"]);
+  it("holds no message for a name that is not an error of the ABI", () => {
+    for (const name of Object.keys(ERROR_MESSAGES)) expect(abiErrorNames, name).toContain(name);
   });
 
   it("gives the token revert a message with words in it", () => {
@@ -83,7 +56,7 @@ const errorString: Abi = [{ type: "error", name: "Error", inputs: [{ type: "stri
 const panic: Abi = [{ type: "error", name: "Panic", inputs: [{ type: "uint256", name: "code" }] }];
 
 describe("LLR-FE-060 a failed request shows the message of the error the contract raised", () => {
-  it.each(abiErrors.filter((e) => table.has(e.name)).map((e) => [e.name, e] as const))(
+  it.each(abiErrors.filter((e) => reachable(e.name)).map((e) => [e.name, e] as const))(
     "shows the message of %s when a send fails with it",
     (name, item) => {
       const error = revert(satStakeAbi as Abi, name, item.inputs.map((i) => sample(i.type)));

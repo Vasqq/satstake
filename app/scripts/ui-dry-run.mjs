@@ -9,7 +9,7 @@
 // session plays. The staker is the testnet operator, whose key is read by parseEnvKey and never printed or
 // written. Referee, beneficiary and an unrelated settler are throwaway keys made in memory; each is funded with
 // gas and swept back at the end, including after a failure. Screenshots go to the gitignored cache/dry-run-signed/
-// and the record to docs/evidence/ui-dry-run-signed-testnet.md. PROBE=1 rejects every send, funds nothing, stops
+// and the record to cache/ui-dry-run-signed-testnet.md. PROBE=1 rejects every send, funds nothing, stops
 // at the first rejected "Sign it", and writes its record under cache/ instead.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -38,7 +38,7 @@ if (!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(SITE)) throw new Error(`
 const PROBE = process.env.PROBE === "1";
 const RPC = "https://rpc.testnet.arc.io";
 const OUT = join(root, "cache/dry-run-signed");
-const EVIDENCE = PROBE ? join(root, "cache/ui-dry-run-signed-probe.md") : join(root, "docs/evidence/ui-dry-run-signed-testnet.md");
+const EVIDENCE = PROBE ? join(root, "cache/ui-dry-run-signed-probe.md") : join(root, "cache/ui-dry-run-signed-testnet.md");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const readJson = (rel) => JSON.parse(readFileSync(join(root, rel), "utf8"));
 
