@@ -1,12 +1,12 @@
 # SatStake brand brief
 
-Status: draft 1, for confirmation. Inferred from the repository (North Star, README, BRIEF_LANDING, `app/src/styles.css`, `app/public/favicon.svg`). Nothing here is a claim the North Star does not support.
+The brief the SatStake identity was designed from, and the decisions that came out of it.
 
 ## Product
 
 - **Name:** SatStake. The app already sets it as "Sat" in off-white and "Stake" in orange.
 - **One sentence:** Lock USDC or Bitcoin-backed cirBTC against a promise; a friend you choose judges it, and the rules send the money back if you kept it or to the person you named if you did not.
-- **Tagline (North Star):** Lock Bitcoin against a promise. Keep it and you get your sats back. Miss it and they go to someone else.
+- **Tagline:** Lock Bitcoin against a promise. Keep it and you get your sats back. Miss it and they go to someone else.
 - **Where it lives:** Arc mainnet (Circle). Static site on GitHub Pages, https://vasqq.github.io/satstake/.
 
 ## Who it is for
@@ -28,11 +28,11 @@ A promise with a **deadline**. The product's signature is the giant orange monos
 - A crypto casino or exchange (coins, charts, neon, hexagons).
 - A habit-app toy (streak flames, mascots, confetti).
 - A bank (shields, vaults, padlocks).
-- Hype. Writing rules ban "trustless", "guaranteed", "seamless". The mark should not promise what P7 says we cannot.
+- Hype. Words like "trustless" or "guaranteed" are out, and the mark should not promise more than the product does.
 
 ## Correction, 2026-10-13: the adopted design is "Signed"
 
-The table below describes the earlier dark design. Liam adopted "Signed" (LLR change log 1.28, `design/satstake-signed-frontend.html` on branch `signed-frontend`) for the whole frontend, and its wordmark is the one he wants kept: Newsreader italic 500, "Sat" in ink and "Stake" in orange.
+The table below describes the earlier dark design. The site uses the "Signed" design, and its wordmark is the one he wants kept: Newsreader italic 500, "Sat" in ink and "Stake" in orange.
 
 | Item | Light | Dark |
 |---|---|---|
@@ -83,15 +83,15 @@ Website header, favicon (16/32/48), social avatar (circular crop), hackathon lis
 - DoraHacks-style listing: PNG or JPG at least 500px, at most 2 MB (a 1024px export will satisfy this).
 - Works in one flat color first; at most two colors in the mark.
 - No third-party fonts at runtime, so the wordmark is outlined SVG.
-- Writing rules: no em dashes, no hype words, no emoji.
+- Copy: no em dashes, no hype words, no emoji.
 - No lookalike of Circle's rings, the Bitcoin glyph, or the stickK wordmark.
 
-## Open assumptions to confirm
+## Assumptions confirmed at the start
 
 1. Keep the **orange `#ec7432` on warm near-black** as the brand pair (it is the locked aesthetic).
 2. The wordmark keeps the "Sat" / "Stake" split, lowercase or Title case? Current text logo is "SatStake." with a trailing period.
 3. The mark may reference **time (the deadline)** and **a held amount**, but not coins, Bitcoin glyphs, or padlocks.
-4. Output lands in `brand/` inside this worktree (branch `worktree-fe-config-reading`), and wiring touches `app/index.html`, `app/public/`, and the header in `app/src/App.tsx`.
+4. Output lands in `brand/`, and wiring touches `app/index.html` and `app/public/`.
 
 ## Ten concepts
 
